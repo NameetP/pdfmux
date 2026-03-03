@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -31,16 +32,36 @@ def test_process_fast_quality(digital_pdf: Path) -> None:
     assert result.extractor_used == "pymupdf4llm (fast)"
 
 
+def test_process_high_quality_fallback(digital_pdf: Path) -> None:
+    """High quality without LLM installed should fall back gracefully."""
+    result = process(digital_pdf, quality="high")
+    # Without google-genai installed, should fall back to fast extractor
+    assert result.text
+    assert result.confidence > 0
+
+
 def test_process_unsupported_format(digital_pdf: Path) -> None:
     """Unsupported output formats should raise ValueError."""
     with pytest.raises(ValueError, match="Unknown output format"):
         process(digital_pdf, output_format="xml")
 
 
-def test_process_json_not_implemented(digital_pdf: Path) -> None:
-    """JSON format should raise NotImplementedError (v0.2.0)."""
-    with pytest.raises(NotImplementedError):
-        process(digital_pdf, output_format="json")
+def test_process_json_format(digital_pdf: Path) -> None:
+    """JSON format should return valid structured JSON."""
+    result = process(digital_pdf, output_format="json")
+    data = json.loads(result.text)
+    assert data["converter"] == "readable"
+    assert data["page_count"] == 2
+    assert data["confidence"] > 0
+    assert "content" in data
+    assert "pages" in data
+    assert len(data["pages"]) >= 1
+
+
+def test_process_csv_no_tables(digital_pdf: Path) -> None:
+    """CSV format on a non-table PDF should raise ValueError."""
+    with pytest.raises(ValueError, match="No tables found"):
+        process(digital_pdf, output_format="csv")
 
 
 def test_process_multi_page(multi_page_pdf: Path) -> None:
@@ -48,3 +69,12 @@ def test_process_multi_page(multi_page_pdf: Path) -> None:
     result = process(multi_page_pdf)
     assert result.page_count == 5
     assert len(result.text) > 100
+
+
+def test_process_json_metadata(multi_page_pdf: Path) -> None:
+    """JSON output should include correct metadata."""
+    result = process(multi_page_pdf, output_format="json")
+    data = json.loads(result.text)
+    assert data["page_count"] == 5
+    assert data["extractor"] == "pymupdf4llm (fast)"
+    assert isinstance(data["warnings"], list)

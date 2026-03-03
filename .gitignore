@@ -8,9 +8,16 @@ build/
 *.egg
 
 .env
-.env.local
+.env.*
 .venv/
 venv/
+
+*.pem
+*.key
+credentials
+credentials.*
+secrets
+secrets.*
 
 .pytest_cache/
 .ruff_cache/

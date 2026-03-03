@@ -4,13 +4,14 @@ This is the core of Readable. Instead of using one extraction method,
 we detect the PDF type and route to the optimal extractor:
 
   Digital, clean → PyMuPDF (free, 0.01s/page)
-  Has tables → Docling (free, 0.3-3s/page) [v0.2.0]
-  Scanned → OCR pipeline (free, 1-5s/page) [v0.2.0]
-  Complex/fallback → Gemini Flash ($0.01-0.05) [v0.2.0]
+  Has tables → Docling (free, 0.3-3s/page)
+  Scanned → OCR pipeline (free, 1-5s/page)
+  Complex/fallback → Gemini Flash ($0.01-0.05)
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from readable.detect import PDFClassification, classify
 from readable.extractors.fast import FastExtractor
 from readable.formatters.markdown import format_markdown
 from readable.postprocess import ProcessedResult, clean_and_score
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -63,7 +66,9 @@ def process(
     processed = clean_and_score(raw_text, classification.page_count)
 
     # Step 4: Format output
-    formatted = _format_output(processed, output_format, file_path, show_confidence)
+    formatted = _format_output(
+        processed, output_format, file_path, show_confidence, extractor, classification
+    )
 
     return ConversionResult(
         text=formatted,
@@ -91,40 +96,106 @@ def _route_and_extract(
         ext = FastExtractor()
         return ext.name, ext.extract(file_path)
 
-    # Standard/high mode: route based on classification
+    # High mode: use LLM for everything (if available)
+    if quality == "high":
+        return _try_llm_extractor(file_path)
+
+    # Standard mode: route based on classification
     if classification.is_digital and not classification.has_tables:
-        # Simple digital PDF — use fast extractor
         ext = FastExtractor()
         return ext.name, ext.extract(file_path)
 
     if classification.has_tables:
-        # Has tables — try fast extractor first (MVP), Docling in v0.2.0
-        # TODO(v0.2.0): Use TableExtractor for table-heavy PDFs
-        ext = FastExtractor()
-        return ext.name, ext.extract(file_path)
+        return _try_table_extractor(file_path)
 
     if classification.is_scanned:
-        # Scanned PDF — OCR needed
-        # TODO(v0.2.0): Use OCRExtractor
-        # For now, try fast extractor (will get whatever text is available)
-        ext = FastExtractor()
-        raw = ext.extract(file_path)
-        if len(raw.strip()) < 100:
-            raise RuntimeError(
-                "PDF appears to be scanned/image-based but OCR is not yet available. "
-                "OCR support is coming in v0.2.0. Install with: pip install readable[ocr]"
-            )
-        return ext.name, raw
+        return _try_ocr_extractor(file_path, classification.scanned_pages)
 
     if classification.is_mixed:
-        # Mixed: extract digital pages with PyMuPDF
-        # TODO(v0.2.0): OCR the scanned pages, merge results
-        ext = FastExtractor()
-        return ext.name, ext.extract(file_path, pages=classification.digital_pages)
+        return _handle_mixed_pdf(file_path, classification)
 
     # Default fallback
     ext = FastExtractor()
     return ext.name, ext.extract(file_path)
+
+
+def _try_table_extractor(file_path: Path) -> tuple[str, str]:
+    """Try Docling for tables, fall back to PyMuPDF."""
+    try:
+        from readable.extractors.tables import TableExtractor
+
+        ext = TableExtractor()
+        return ext.name, ext.extract(file_path)
+    except ImportError:
+        logger.info("Docling not installed, falling back to PyMuPDF for tables")
+        ext = FastExtractor()
+        return ext.name, ext.extract(file_path)
+
+
+def _try_ocr_extractor(
+    file_path: Path, pages: list[int] | None = None
+) -> tuple[str, str]:
+    """Try OCR for scanned pages, fall back to PyMuPDF."""
+    try:
+        from readable.extractors.ocr import OCRExtractor
+
+        ext = OCRExtractor()
+        return ext.name, ext.extract(file_path, pages=pages)
+    except ImportError:
+        logger.info("Surya OCR not installed, falling back to PyMuPDF")
+        ext = FastExtractor()
+        raw = ext.extract(file_path)
+        if len(raw.strip()) < 100:
+            raise RuntimeError(
+                "PDF appears to be scanned/image-based. "
+                "Install OCR support with: pip install readable[ocr]"
+            )
+        return ext.name, raw
+
+
+def _try_llm_extractor(file_path: Path) -> tuple[str, str]:
+    """Try Gemini Flash LLM, fall back to best available."""
+    try:
+        from readable.extractors.llm import LLMExtractor
+
+        ext = LLMExtractor()
+        return ext.name, ext.extract(file_path)
+    except (ImportError, RuntimeError) as e:
+        logger.info(f"LLM extractor unavailable ({e}), falling back")
+        try:
+            from readable.extractors.ocr import OCRExtractor
+
+            ext_ocr = OCRExtractor()
+            return ext_ocr.name, ext_ocr.extract(file_path)
+        except ImportError:
+            ext_fast = FastExtractor()
+            return ext_fast.name, ext_fast.extract(file_path)
+
+
+def _handle_mixed_pdf(
+    file_path: Path, classification: PDFClassification
+) -> tuple[str, str]:
+    """Handle mixed PDFs: fast extract digital pages, OCR scanned pages."""
+    parts: list[str] = []
+    extractor_name = "pymupdf4llm (fast)"
+
+    if classification.digital_pages:
+        ext = FastExtractor()
+        digital_text = ext.extract(file_path, pages=classification.digital_pages)
+        parts.append(digital_text)
+
+    if classification.scanned_pages:
+        try:
+            from readable.extractors.ocr import OCRExtractor
+
+            ext_ocr = OCRExtractor()
+            ocr_text = ext_ocr.extract(file_path, pages=classification.scanned_pages)
+            parts.append(ocr_text)
+            extractor_name = "pymupdf4llm + surya (mixed)"
+        except ImportError:
+            logger.info("Skipping scanned pages (OCR not installed)")
+
+    return extractor_name, "\n\n".join(parts)
 
 
 def _format_output(
@@ -132,6 +203,8 @@ def _format_output(
     output_format: str,
     source_path: Path,
     show_confidence: bool,
+    extractor: str,
+    classification: PDFClassification,
 ) -> str:
     """Format the processed text into the requested output format."""
     if output_format == "markdown":
@@ -148,9 +221,20 @@ def _format_output(
         return text
 
     if output_format == "json":
-        raise NotImplementedError("JSON output format is planned for v0.2.0")
+        from readable.formatters.json_fmt import format_json
+
+        return format_json(
+            text=processed.text,
+            source=str(source_path),
+            page_count=processed.page_count,
+            confidence=processed.confidence,
+            extractor=extractor,
+            warnings=processed.warnings,
+        )
 
     if output_format == "csv":
-        raise NotImplementedError("CSV output format is planned for v0.2.0")
+        from readable.formatters.csv_fmt import format_csv
+
+        return format_csv(processed.text)
 
     raise ValueError(f"Unknown output format: {output_format}")

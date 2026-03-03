@@ -26,7 +26,6 @@ class TestFastExtractor:
         """Should handle empty PDFs gracefully."""
         ext = FastExtractor()
         text = ext.extract(empty_pdf)
-        # Empty PDF should return empty or minimal text
         assert isinstance(text, str)
 
     def test_extractor_name(self) -> None:
@@ -36,30 +35,42 @@ class TestFastExtractor:
 
 
 class TestTableExtractor:
-    """Tests for the table extractor (v0.2.0 placeholder)."""
+    """Tests for the table extractor (requires docling optional dep)."""
 
-    def test_not_implemented(self, digital_pdf: Path) -> None:
-        """Should raise NotImplementedError."""
+    def test_requires_docling(self, digital_pdf: Path) -> None:
+        """Should raise ImportError when docling is not installed."""
         ext = TableExtractor()
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(ImportError, match="Docling is not installed"):
             ext.extract(digital_pdf)
+
+    def test_extractor_name(self) -> None:
+        ext = TableExtractor()
+        assert ext.name == "docling (tables)"
 
 
 class TestOCRExtractor:
-    """Tests for the OCR extractor (v0.2.0 placeholder)."""
+    """Tests for the OCR extractor (requires surya optional dep)."""
 
-    def test_not_implemented(self, digital_pdf: Path) -> None:
-        """Should raise NotImplementedError."""
+    def test_requires_surya(self, digital_pdf: Path) -> None:
+        """Should raise ImportError when surya is not installed."""
         ext = OCRExtractor()
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(ImportError, match="Surya OCR is not installed"):
             ext.extract(digital_pdf)
+
+    def test_extractor_name(self) -> None:
+        ext = OCRExtractor()
+        assert ext.name == "surya (OCR)"
 
 
 class TestLLMExtractor:
-    """Tests for the LLM extractor (v0.2.0 placeholder)."""
+    """Tests for the LLM extractor (requires google-genai optional dep)."""
 
-    def test_not_implemented(self, digital_pdf: Path) -> None:
-        """Should raise NotImplementedError."""
+    def test_requires_genai(self, digital_pdf: Path) -> None:
+        """Should raise ImportError when google-genai is not installed."""
         ext = LLMExtractor()
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(ImportError, match="Google GenAI is not installed"):
             ext.extract(digital_pdf)
+
+    def test_extractor_name(self) -> None:
+        ext = LLMExtractor()
+        assert ext.name == "gemini-flash (LLM)"
