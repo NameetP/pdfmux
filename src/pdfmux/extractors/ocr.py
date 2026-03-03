@@ -48,9 +48,7 @@ class OCRExtractor:
             Markdown text extracted via OCR.
         """
         if not _check_surya():
-            raise ImportError(
-                "Surya OCR is not installed. Install with: pip install pdfmux[ocr]"
-            )
+            raise ImportError("Surya OCR is not installed. Install with: pip install pdfmux[ocr]")
 
         from PIL import Image
         from surya.detection import DetectionPredictor

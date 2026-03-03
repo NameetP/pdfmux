@@ -132,9 +132,7 @@ def _try_table_extractor(file_path: Path) -> tuple[str, str]:
         return ext.name, ext.extract(file_path)
 
 
-def _try_ocr_extractor(
-    file_path: Path, pages: list[int] | None = None
-) -> tuple[str, str]:
+def _try_ocr_extractor(file_path: Path, pages: list[int] | None = None) -> tuple[str, str]:
     """Try OCR for scanned pages, fall back to PyMuPDF."""
     try:
         from pdfmux.extractors.ocr import OCRExtractor
@@ -172,9 +170,7 @@ def _try_llm_extractor(file_path: Path) -> tuple[str, str]:
             return ext_fast.name, ext_fast.extract(file_path)
 
 
-def _handle_mixed_pdf(
-    file_path: Path, classification: PDFClassification
-) -> tuple[str, str]:
+def _handle_mixed_pdf(file_path: Path, classification: PDFClassification) -> tuple[str, str]:
     """Handle mixed PDFs: fast extract digital pages, OCR scanned pages."""
     parts: list[str] = []
     extractor_name = "pymupdf4llm (fast)"
