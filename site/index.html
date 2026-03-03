@@ -5,18 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pdfmux — The smart PDF-to-Markdown router</title>
   <meta name="description" content="One command, zero config. pdfmux auto-detects your PDF type and routes to the best extractor. CLI + MCP server for AI agents.">
-  <meta name="theme-color" content="#0a0a0a">
+  <meta name="theme-color" content="#1a1d23">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --bg: #0a0a0a;
-      --fg: #e0e0e0;
-      --dim: #666;
-      --accent: #00ff88;
-      --code-bg: #141414;
-      --border: #222;
+      --bg: #1a1d23;
+      --fg: #c9cdd4;
+      --dim: #6b7280;
+      --accent: #7c8af6;
+      --code-bg: #22262e;
+      --border: #2e3340;
       --font: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
     }
 
@@ -102,11 +102,11 @@
       line-height: 1.7;
     }
 
-    pre .comment { color: var(--dim); }
+    pre .comment { color: #505868; }
     pre .cmd { color: var(--fg); }
-    pre .flag { color: #88aaff; }
-    pre .file { color: #ffaa44; }
-    pre .output { color: var(--accent); }
+    pre .flag { color: #c4a7e7; }
+    pre .file { color: #e0a870; }
+    pre .output { color: #7ec9a2; }
 
     .grid {
       display: grid;
@@ -138,9 +138,9 @@
       font-weight: 600;
     }
 
-    .card .value.green { color: var(--accent); }
-    .card .value.blue { color: #88aaff; }
-    .card .value.orange { color: #ffaa44; }
+    .card .value.green { color: #7ec9a2; }
+    .card .value.blue { color: #7c8af6; }
+    .card .value.orange { color: #e0a870; }
     .card .value.white { color: var(--fg); }
 
     table {
@@ -167,8 +167,8 @@
 
     td:first-child { color: var(--fg); font-weight: 500; }
 
-    .free { color: var(--accent); }
-    .cost { color: #ffaa44; }
+    .free { color: #7ec9a2; }
+    .cost { color: #e0a870; }
 
     .mcp-config {
       background: var(--code-bg);
@@ -179,8 +179,8 @@
       line-height: 1.7;
     }
 
-    .mcp-config .key { color: #88aaff; }
-    .mcp-config .str { color: var(--accent); }
+    .mcp-config .key { color: #c4a7e7; }
+    .mcp-config .str { color: #7ec9a2; }
     .mcp-config .brace { color: var(--dim); }
 
     .links {
@@ -315,7 +315,7 @@
       navigator.clipboard.writeText('pip install pdfmux');
       const hint = document.getElementById('copyHint');
       hint.textContent = 'copied!';
-      hint.style.color = '#00ff88';
+      hint.style.color = '#7ec9a2';
       setTimeout(() => { hint.textContent = 'click to copy'; hint.style.color = ''; }, 2000);
     }
   </script>
