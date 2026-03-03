@@ -71,8 +71,7 @@ class LLMExtractor:
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if not api_key:
             raise RuntimeError(
-                "No Gemini API key found. "
-                "Set GEMINI_API_KEY or GOOGLE_API_KEY env variable."
+                "No Gemini API key found. Set GEMINI_API_KEY or GOOGLE_API_KEY env variable."
             )
 
         from google import genai

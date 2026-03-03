@@ -162,8 +162,7 @@ def _convert_directory(
             )
             out_file.write_text(result.text, encoding="utf-8")
             console.print(
-                f"  [green]✓[/green] {pdf.name} → {out_file.name} "
-                f"({result.confidence:.0%})"
+                f"  [green]✓[/green] {pdf.name} → {out_file.name} ({result.confidence:.0%})"
             )
             success += 1
         except Exception as e:

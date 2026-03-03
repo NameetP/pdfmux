@@ -40,9 +40,7 @@ class TableExtractor:
             Markdown text with accurately extracted tables.
         """
         if not _check_docling():
-            raise ImportError(
-                "Docling is not installed. Install with: pip install pdfmux[tables]"
-            )
+            raise ImportError("Docling is not installed. Install with: pip install pdfmux[tables]")
 
         from docling.document_converter import DocumentConverter
 
