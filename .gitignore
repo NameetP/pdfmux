@@ -9,6 +9,7 @@ build/
 
 .env
 .env.*
+.env.local
 .venv/
 venv/
 
