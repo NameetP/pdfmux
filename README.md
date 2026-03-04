@@ -3,20 +3,18 @@
 [![CI](https://github.com/NameetP/pdfmux/actions/workflows/ci.yml/badge.svg)](https://github.com/NameetP/pdfmux/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pdfmux)](https://pypi.org/project/pdfmux/)
 
-The smart PDF-to-Markdown router. One command, zero config.
+PDF extraction that checks its own work. Built for LLM pipelines.
 
 ```
 PDF ──→ pdfmux ──→ Markdown
          │
-         ├─ digital?  → PyMuPDF     (0.01s/pg, free)
-         ├─ tables?   → Docling     (0.3s/pg, free)
-         ├─ scanned?  → Surya OCR   (1-5s/pg, free)
-         └─ complex?  → Gemini Flash (2-5s/pg, ~$0.01)
+         ├─ fast extract every page
+         ├─ audit each page (good / bad / empty)
+         ├─ re-extract bad pages with OCR
+         └─ merge → clean → confidence score
 ```
 
-We don't convert PDFs. We route them to whichever tool converts them best.
-
-90% of PDFs are digital — converted in milliseconds, for free.
+Most PDF extractors run once and hope for the best. pdfmux extracts, audits every page, and re-extracts the ones that came out wrong — automatically.
 
 ## Quick Start
 
@@ -27,28 +25,118 @@ pdfmux invoice.pdf
 # ✓ invoice.pdf → invoice.md (2 pages, 95% confidence, via pymupdf4llm)
 ```
 
-That's it. No config, no flags, no API keys needed.
+No config, no flags, no API keys needed.
 
 ## Install
 
 ```bash
-# core (handles digital PDFs — the vast majority)
+# core — handles digital PDFs instantly (the vast majority)
 pip install pdfmux
 
-# add table extraction (Docling — 97.9% table accuracy)
-pip install pdfmux[tables]
+# add OCR for scanned/image-heavy pages (~200MB, CPU-only)
+pip install "pdfmux[ocr]"
 
-# add scanned PDF support (Surya OCR)
-pip install pdfmux[ocr]
+# add table extraction (Docling — 97.9% table accuracy)
+pip install "pdfmux[tables]"
 
 # add LLM fallback for hardest cases (Gemini Flash)
-pip install pdfmux[llm]
+pip install "pdfmux[llm]"
 
 # everything
-pip install pdfmux[all]
+pip install "pdfmux[all]"
 ```
 
 Requires Python 3.11+.
+
+## How It Works
+
+### Multi-pass extraction
+
+Every PDF goes through a multi-pass pipeline. This is what makes pdfmux different.
+
+```
+Pass 1 — Fast extract + audit
+  For each page:
+    ├─ Extract text with PyMuPDF (instant)
+    ├─ Count characters + images
+    └─ Classify: "good" / "bad" / "empty"
+
+  All pages good? → done. Zero overhead.
+
+Pass 2 — Selective OCR (only bad pages)
+  For each bad/empty page:
+    ├─ Try RapidOCR  (~200MB, CPU, Apache 2.0)
+    ├─ Try Surya OCR  (fallback, heavier)
+    └─ Try Gemini LLM (fallback, API)
+
+  Smart comparison:
+    ├─ "bad" page (some text): only use OCR if it got MORE text
+    └─ "empty" page (no text): accept any OCR result >10 chars
+
+Pass 3 — Merge + score
+  ├─ Combine good pages + OCR'd pages in order
+  ├─ Clean text (broken words, control chars, spacing)
+  └─ Confidence score (honest — reflects actual quality)
+```
+
+**The fast path is free.** Digital PDFs pass through in ~0.01s/page with zero OCR overhead. The audit step adds negligible cost. You only pay for OCR on pages that actually need it.
+
+### Detection
+
+pdfmux opens each PDF with PyMuPDF and classifies it:
+
+```
+Per page:
+  ├─ Has >50 chars of text?             → digital
+  ├─ Has images but no/little text?     → graphical (image-heavy)
+  └─ No text, no images?                → empty
+
+Document level:
+  ├─ ≥80% digital pages                 → digital PDF
+  ├─ ≥80% scanned pages                 → scanned PDF
+  ├─ Image-heavy pages detected         → graphical PDF
+  └─ Mix of types                       → mixed PDF
+
+Table detection:
+  ├─ Ruled line patterns (≥3 horiz + ≥2 vert lines)
+  └─ Tab-separated or aligned text patterns
+```
+
+### Routing
+
+```
+classify(pdf)
+  │
+  ├─ quality=fast     → PyMuPDF only (instant, free)
+  ├─ quality=high     → Gemini Flash → OCR → PyMuPDF
+  │
+  └─ quality=standard (default):
+       ├─ has tables (not graphical) → Docling → PyMuPDF fallback
+       └─ everything else            → multi-pass pipeline
+```
+
+If an optional extractor isn't installed, pdfmux silently falls back to the next best option. No errors, no config.
+
+### Extractors
+
+| Tier | Extractor | What it handles | Speed | Size | Install |
+|------|-----------|----------------|-------|------|---------|
+| Fast | PyMuPDF / pymupdf4llm | Digital PDFs with clean text | 0.01s/page | Base | Base |
+| OCR | RapidOCR (PaddleOCR v4) | Scanned / image-heavy pages | 0.5-2s/page | ~200MB | `pdfmux[ocr]` |
+| Tables | Docling | Table-heavy documents | 0.3-3s/page | ~500MB | `pdfmux[tables]` |
+| OCR Heavy | Surya OCR | Scanned PDFs (legacy, GPU) | 1-5s/page | ~5GB | `pdfmux[ocr-heavy]` |
+| LLM | Gemini 2.5 Flash | Complex layouts, handwriting | 2-5s/page | API | `pdfmux[llm]` |
+
+### Confidence scoring
+
+Every result includes an honest confidence score:
+
+- **95-100%** — clean digital text, fully extractable
+- **80-95%** — good extraction, minor OCR noise on some pages
+- **50-80%** — partial extraction, some pages couldn't be recovered
+- **<50%** — significant content missing, warnings included
+
+When confidence is below 80%, pdfmux tells you exactly what went wrong and how to fix it (e.g., "Install `pdfmux[ocr]` for better results on 6 image-heavy pages").
 
 ## Usage
 
@@ -59,15 +147,20 @@ pdfmux invoice.pdf
 # ✓ invoice.pdf → invoice.md (2 pages, 95% confidence, via pymupdf4llm)
 ```
 
-Output is written to the same directory with a `.md` extension by default.
+### With OCR installed (image-heavy PDFs)
 
-### Specify output location
+```bash
+pdfmux pitch-deck.pdf
+# ✓ pitch-deck.pdf → pitch-deck.md (12 pages, 85% confidence, 6 pages OCR'd, via pymupdf4llm + rapidocr)
+```
+
+### Output location
 
 ```bash
 pdfmux report.pdf -o ./converted/report.md
 ```
 
-### Batch convert a directory
+### Batch convert
 
 ```bash
 pdfmux ./docs/ -o ./output/
@@ -94,10 +187,10 @@ pdfmux data.pdf -f csv
 ### Quality presets
 
 ```bash
-# fast — PyMuPDF only, no ML (instant, free)
+# fast — PyMuPDF only, no ML, no audit (instant, free)
 pdfmux report.pdf -q fast
 
-# standard — auto-detect and route (default)
+# standard — multi-pass pipeline (default)
 pdfmux report.pdf -q standard
 
 # high — use LLM for everything (slow, costs ~$0.01/doc)
@@ -113,17 +206,19 @@ pdfmux doctor
 # │ Extractor    │ Status      │ Version │ Install                      │
 # ├──────────────┼─────────────┼─────────┼──────────────────────────────┤
 # │ PyMuPDF      │ ✓ installed │ 1.25.3  │                              │
+# │ RapidOCR     │ ✓ installed │ 3.0.6   │                              │
 # │ Docling      │ ✗ missing   │ —       │ pip install pdfmux[tables]   │
 # └──────────────┴─────────────┴─────────┴──────────────────────────────┘
 
 # benchmark all extractors on a file
 pdfmux bench report.pdf
-# ┌──────────────┬────────┬────────────┬─────────────┬───────────────┐
-# │ Extractor    │   Time │ Confidence │      Output │ Status        │
-# ├──────────────┼────────┼────────────┼─────────────┼───────────────┤
-# │ PyMuPDF      │  0.02s │       100% │ 3,241 chars │ ✓             │
-# │ Docling      │      — │          — │           — │ not installed │
-# └──────────────┴────────┴────────────┴─────────────┴───────────────┘
+# ┌──────────────┬────────┬────────────┬─────────────┬──────────────────────┐
+# │ Extractor    │   Time │ Confidence │      Output │ Status               │
+# ├──────────────┼────────┼────────────┼─────────────┼──────────────────────┤
+# │ PyMuPDF      │  0.02s │        95% │ 3,241 chars │ ✓                    │
+# │ Multi-pass   │  0.03s │        95% │ 3,241 chars │ ✓ all pages good     │
+# │ RapidOCR     │  4.20s │        88% │ 2,891 chars │ ✓                    │
+# └──────────────┴────────┴────────────┴─────────────┴──────────────────────┘
 ```
 
 ### Other options
@@ -146,65 +241,6 @@ pdfmux report.pdf --stdout
 | `--confidence` | | `false` | Include confidence score in output |
 | `--stdout` | | `false` | Print to stdout instead of writing file |
 
-## How It Works
-
-### Detection
-
-pdfmux opens each PDF with PyMuPDF and classifies it by inspecting every page:
-
-```
-For each page:
-  ├─ Has >50 chars of extractable text?  → digital
-  ├─ Has embedded images but no text?    → scanned
-  └─ Empty or minimal content?           → digital (empty page)
-
-Classification:
-  ├─ ≥80% digital pages  → digital PDF
-  ├─ ≥80% scanned pages  → scanned PDF
-  └─ Otherwise            → mixed PDF
-
-Table detection:
-  ├─ Check for ruled line patterns (≥3 horizontal + ≥2 vertical lines)
-  └─ Check for tab-separated or multi-space aligned text patterns
-```
-
-### Routing
-
-Based on classification, pdfmux picks the best extractor:
-
-```
-classify(pdf)
-  │
-  ├─ quality=fast? ────────────────→ PyMuPDF (always)
-  ├─ quality=high? ────────────────→ Gemini Flash → Surya → PyMuPDF
-  │
-  └─ quality=standard (default):
-       ├─ digital, no tables ──────→ PyMuPDF
-       ├─ has tables ──────────────→ Docling → PyMuPDF fallback
-       ├─ scanned ─────────────────→ Surya OCR → PyMuPDF fallback
-       ├─ mixed ───────────────────→ PyMuPDF (digital pgs) + Surya (scanned pgs)
-       └─ default ─────────────────→ PyMuPDF
-```
-
-If an optional extractor isn't installed, pdfmux silently falls back to the next best option. No errors, no config.
-
-### Post-processing
-
-After extraction, every result goes through:
-
-1. **Cleanup** — remove control characters, fix broken hyphenation, normalize blank lines
-2. **Confidence scoring** — text completeness, encoding quality, structure preservation, whitespace sanity
-3. **Formatting** — heading normalization, list marker standardization, optional YAML frontmatter
-
-### Extractors
-
-| Tier | Extractor | What it handles | Speed | Cost | Install |
-|------|-----------|----------------|-------|------|---------|
-| Fast | PyMuPDF / pymupdf4llm | Digital PDFs with clean text | 0.01s/page | Free | Base |
-| Tables | Docling | Table-heavy documents | 0.3-3s/page | Free | `pdfmux[tables]` |
-| OCR | Surya | Scanned / image-based PDFs | 1-5s/page | Free | `pdfmux[ocr]` |
-| LLM | Gemini 2.5 Flash | Complex layouts, handwriting, edge cases | 2-5s/page | ~$0.01/doc | `pdfmux[llm]` |
-
 ## Output Formats
 
 ### Markdown (default)
@@ -226,15 +262,16 @@ Revenue for Q3 increased by 15% year-over-year...
 
 ### JSON
 
-Structured output with metadata, useful for pipelines:
+Structured output with metadata:
 
 ```json
 {
   "source": "report.pdf",
   "converter": "pdfmux",
-  "extractor": "pymupdf4llm (fast)",
-  "page_count": 5,
-  "confidence": 0.95,
+  "extractor": "pymupdf4llm + rapidocr (3 pages re-extracted)",
+  "page_count": 12,
+  "confidence": 0.91,
+  "ocr_pages": [2, 5, 8],
   "warnings": [],
   "content": "# Quarterly Report\n\nRevenue for Q3...",
   "pages": [
@@ -246,7 +283,7 @@ Structured output with metadata, useful for pipelines:
 
 ### CSV
 
-Extracts tables from the document into CSV format:
+Extracts tables from the document:
 
 ```csv
 Metric,Q3 2025,Q3 2024
@@ -254,11 +291,11 @@ Revenue,$12.3M,$10.7M
 Profit,$3.1M,$2.4M
 ```
 
-Raises an error if no tables are found in the document.
+Raises an error if no tables are found.
 
 ## MCP Server
 
-pdfmux includes a built-in MCP (Model Context Protocol) server so AI agents can read PDFs natively.
+pdfmux includes a built-in MCP (Model Context Protocol) server so AI agents can read PDFs natively. When extraction is limited, agents receive confidence scores and warnings alongside the text.
 
 ```bash
 pdfmux serve
@@ -287,21 +324,21 @@ claude mcp add pdfmux -- pdfmux serve
 
 ### Tool
 
-The server exposes a single `convert_pdf` tool over stdio:
+The server exposes a single `convert_pdf` tool:
 
 ```json
 {
   "name": "convert_pdf",
-  "description": "Convert a PDF to Markdown/JSON/CSV",
+  "description": "Convert a PDF to AI-readable Markdown",
   "parameters": {
-    "file_path": "string — path to the PDF file",
-    "format": "string — markdown | json | csv (default: markdown)",
+    "file_path": "string — absolute path to the PDF",
+    "format": "string — markdown (default)",
     "quality": "string — fast | standard | high (default: standard)"
   }
 }
 ```
 
-Your agent calls it, gets the extracted text back. No setup required.
+When confidence is below 80% or there are warnings, the response includes extraction metadata (confidence score, extractor used, OCR page numbers, actionable warnings).
 
 ## Environment Variables
 
@@ -316,30 +353,30 @@ No environment variables are needed for the base install or the `tables`/`ocr` e
 
 | Tool | Good at | Limitation |
 |------|---------|-----------|
-| Marker | GPU ML extraction | Overkill for simple digital PDFs, needs GPU |
+| Marker | GPU ML extraction | Overkill for digital PDFs, needs GPU |
 | Docling | Tables (97.9% accuracy) | Slow on non-table documents |
-| pymupdf4llm | Fast digital text | Can't handle scanned or complex layouts |
+| pymupdf4llm | Fast digital text | Can't handle scanned or image-heavy layouts |
 | MinerU | Full ML pipeline | Heavy, complex setup |
-| MarkItDown | Microsoft tool, wide format support | Not optimized for any specific PDF type |
-| **pdfmux** | Picking the right tool automatically | — |
+| MarkItDown | Wide format support | Not optimized for any specific PDF type |
+| **pdfmux** | **Self-healing extraction** | Audits every page, re-extracts bad ones |
 
-pdfmux uses these tools. It doesn't compete with them — it orchestrates them.
-
-The key insight: no single extractor wins on everything. PyMuPDF is 100x faster on digital PDFs. Docling is better at tables. Surya handles scans. Gemini catches what everything else misses. pdfmux routes each document to the right one.
+pdfmux doesn't compete with these tools — it orchestrates them. The key insight: no single extractor wins on everything. pdfmux routes each page to the right one, verifies the result, and re-extracts if needed.
 
 ## Project Structure
 
 ```
 src/pdfmux/
-├── cli.py              # Typer CLI (convert, serve, version)
-├── pipeline.py         # Tiered routing logic
-├── detect.py           # PDF type detection
+├── cli.py              # Typer CLI (convert, serve, doctor, bench, version)
+├── pipeline.py         # Multi-pass routing + merge logic
+├── detect.py           # PDF type classification
+├── audit.py            # Per-page quality auditing
 ├── postprocess.py      # Cleanup + confidence scoring
 ├── mcp_server.py       # MCP server (stdio JSON-RPC)
 ├── extractors/
 │   ├── fast.py         # PyMuPDF — handles 90% of PDFs
+│   ├── rapid_ocr.py    # RapidOCR — lightweight OCR (~200MB)
 │   ├── tables.py       # Docling — table-heavy docs
-│   ├── ocr.py          # Surya — scanned PDFs
+│   ├── ocr.py          # Surya — legacy heavy OCR
 │   └── llm.py          # Gemini Flash — hardest cases
 └── formatters/
     ├── markdown.py     # Markdown output
@@ -355,7 +392,7 @@ cd pdfmux
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# run tests
+# run tests (48 tests)
 pytest
 
 # lint
