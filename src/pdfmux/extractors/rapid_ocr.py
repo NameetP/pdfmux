@@ -35,10 +35,7 @@ class RapidOCRExtractor:
 
     def __init__(self) -> None:
         if not _check_rapidocr():
-            raise ImportError(
-                "RapidOCR is not installed. "
-                "Install with: pip install pdfmux[ocr]"
-            )
+            raise ImportError("RapidOCR is not installed. Install with: pip install pdfmux[ocr]")
 
         from rapidocr import RapidOCR
 

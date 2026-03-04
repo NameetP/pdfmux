@@ -68,7 +68,9 @@ def clean_and_score(
 
     # Compute confidence score
     confidence = _compute_confidence(
-        text, page_count, warnings,
+        text,
+        page_count,
+        warnings,
         extraction_limited=extraction_limited,
         graphical_page_count=graphical_page_count,
         ocr_page_count=ocr_page_count,
@@ -203,14 +205,10 @@ def _compute_confidence(
 
         if empty_ratio > 0.15:
             score -= 0.2
-            warnings.append(
-                f"{empty_pages} pages appear to have no extractable text"
-            )
+            warnings.append(f"{empty_pages} pages appear to have no extractable text")
         elif sparse_ratio > 0.25:
             score -= 0.1
-            warnings.append(
-                f"{sparse_pages} pages have very little text"
-            )
+            warnings.append(f"{sparse_pages} pages have very little text")
 
     # --- Encoding quality: mojibake detection ---
     mojibake_patterns = [r"â€", r"Ã©", r"Ã¨", r"â€™", r"ï¿½"]

@@ -173,9 +173,7 @@ def _handle_tools_call(msg_id: int | str | None, params: dict) -> None:
                 f"Pages: {result.page_count}",
             ]
             if result.ocr_pages:
-                meta_lines.append(
-                    f"OCR pages: {', '.join(str(p + 1) for p in result.ocr_pages)}"
-                )
+                meta_lines.append(f"OCR pages: {', '.join(str(p + 1) for p in result.ocr_pages)}")
             if result.warnings:
                 meta_lines.append("")
                 meta_lines.append("**Warnings:**")

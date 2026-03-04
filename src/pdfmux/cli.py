@@ -191,9 +191,7 @@ def bench(
                     classification.page_count,
                     extraction_limited=classification.is_graphical,
                     graphical_page_count=(
-                        len(classification.graphical_pages)
-                        if classification.is_graphical
-                        else 0
+                        len(classification.graphical_pages) if classification.is_graphical else 0
                     ),
                 )
                 chars = len(raw)

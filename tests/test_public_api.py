@@ -51,9 +51,16 @@ def test_extract_json_required_fields(digital_pdf: Path) -> None:
     """extract_json() should include all required schema fields."""
     data = pdfmux.extract_json(digital_pdf)
     required_fields = [
-        "schema_version", "source", "converter", "extractor",
-        "page_count", "confidence", "warnings", "ocr_pages",
-        "content", "pages",
+        "schema_version",
+        "source",
+        "converter",
+        "extractor",
+        "page_count",
+        "confidence",
+        "warnings",
+        "ocr_pages",
+        "content",
+        "pages",
     ]
     for field in required_fields:
         assert field in data, f"Missing field: {field}"

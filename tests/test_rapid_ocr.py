@@ -56,9 +56,7 @@ class TestRapidOCRExtractor:
 
     def test_import_error_without_rapidocr(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should raise ImportError when rapidocr is not available."""
-        monkeypatch.setattr(
-            "pdfmux.extractors.rapid_ocr._check_rapidocr", lambda: False
-        )
+        monkeypatch.setattr("pdfmux.extractors.rapid_ocr._check_rapidocr", lambda: False)
         with pytest.raises(ImportError, match="RapidOCR is not installed"):
             RapidOCRExtractor()
 

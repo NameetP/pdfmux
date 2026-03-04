@@ -61,9 +61,7 @@ def process(
     classification = classify(file_path)
 
     # Step 2: Route to the best extractor
-    extractor, raw_text, ocr_pages = _route_and_extract(
-        file_path, classification, quality
-    )
+    extractor, raw_text, ocr_pages = _route_and_extract(file_path, classification, quality)
 
     # Step 3: Post-process and score confidence
     # Multi-pass tracks OCR results directly. For non-multi-pass paths,
@@ -77,15 +75,18 @@ def process(
         raw_text,
         classification.page_count,
         extraction_limited=fast_on_graphical,
-        graphical_page_count=(
-            len(classification.graphical_pages) if fast_on_graphical else 0
-        ),
+        graphical_page_count=(len(classification.graphical_pages) if fast_on_graphical else 0),
         ocr_page_count=len(ocr_pages),
     )
 
     # Step 4: Format output
     formatted = _format_output(
-        processed, output_format, file_path, show_confidence, extractor, classification,
+        processed,
+        output_format,
+        file_path,
+        show_confidence,
+        extractor,
+        classification,
         ocr_pages=ocr_pages,
     )
 
@@ -218,9 +219,7 @@ def _multipass_extract(
 
     # Fast path — no bad pages, return immediately (zero overhead)
     if not audit.needs_ocr:
-        full_text = "\n\n---\n\n".join(
-            p.text for p in audit.pages if p.text.strip()
-        )
+        full_text = "\n\n---\n\n".join(p.text for p in audit.pages if p.text.strip())
         return "pymupdf4llm (fast)", full_text, []
 
     # Pass 2: Re-extract bad/empty pages with OCR
@@ -314,9 +313,7 @@ def _multipass_extract(
 
     # Build extractor name for reporting
     n_ocr = len(ocr_page_list)
-    n_unrecovered = len(still_bad) - sum(
-        1 for p in still_bad if p in ocr_results
-    )
+    n_unrecovered = len(still_bad) - sum(1 for p in still_bad if p in ocr_results)
 
     if n_ocr > 0:
         name = f"pymupdf4llm + {ocr_name} ({n_ocr} pages re-extracted)"

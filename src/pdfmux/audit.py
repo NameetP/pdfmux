@@ -111,8 +111,7 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
     n_bad = len(audit.bad_pages)
     n_empty = len(audit.empty_pages)
     logger.info(
-        f"Audit: {n_good} good, {n_bad} bad, {n_empty} empty "
-        f"out of {audit.total_pages} pages"
+        f"Audit: {n_good} good, {n_bad} bad, {n_empty} empty out of {audit.total_pages} pages"
     )
 
     return audit
