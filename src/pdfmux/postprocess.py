@@ -22,6 +22,7 @@ def clean_and_score(
     *,
     extraction_limited: bool = False,
     graphical_page_count: int = 0,
+    ocr_page_count: int = 0,
 ) -> ProcessedResult:
     """Clean extracted text and compute a confidence score.
 
@@ -37,6 +38,8 @@ def clean_and_score(
         extraction_limited: True when fast extraction was used on a graphical PDF
                             (known to miss image-embedded text).
         graphical_page_count: Number of pages detected as graphical/image-heavy.
+        ocr_page_count: Number of pages re-extracted with OCR via multi-pass.
+                        When > 0, the pipeline already recovered bad pages.
 
     Returns:
         ProcessedResult with cleaned text and confidence score.
@@ -68,6 +71,7 @@ def clean_and_score(
         text, page_count, warnings,
         extraction_limited=extraction_limited,
         graphical_page_count=graphical_page_count,
+        ocr_page_count=ocr_page_count,
     )
 
     return ProcessedResult(
@@ -134,6 +138,7 @@ def _compute_confidence(
     *,
     extraction_limited: bool = False,
     graphical_page_count: int = 0,
+    ocr_page_count: int = 0,
 ) -> float:
     """Compute a confidence score for the extracted text.
 
@@ -141,6 +146,7 @@ def _compute_confidence(
     - Text completeness (chars per page)
     - Sparse page detection (pages with very little text)
     - Extraction limitation flag (graphical PDF + fast extractor)
+    - Multi-pass OCR recovery (bonus when bad pages were re-extracted)
     - Encoding quality (mojibake detection)
     - Structure preservation (headings, lists)
     - Whitespace sanity
@@ -163,6 +169,16 @@ def _compute_confidence(
             f"text that could not be extracted. "
             f"Install pdfmux[ocr] or pdfmux[llm] for better results."
         )
+
+    # --- Multi-pass OCR recovery ---
+    # When multi-pass re-extracted bad pages, we get a confidence boost.
+    # OCR text is noisier than digital extraction, so small penalty per OCR page,
+    # but much better than having no text at all.
+    if ocr_page_count > 0:
+        ocr_ratio = ocr_page_count / page_count
+        # Small penalty for OCR noise (0.02 per 10% of pages OCR'd)
+        ocr_penalty = min(0.15, ocr_ratio * 0.2)
+        score -= ocr_penalty
 
     # --- Text completeness: chars per page ---
     chars_per_page = len(text) / page_count

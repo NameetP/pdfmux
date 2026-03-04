@@ -97,7 +97,8 @@ def doctor() -> None:
         ("pymupdf", "fitz", "PyMuPDF", "Base (always available)"),
         ("pymupdf4llm", "pymupdf4llm", "pymupdf4llm", "Base (always available)"),
         ("docling", "docling.document_converter", "Docling", r"pip install pdfmux\[tables]"),
-        ("surya-ocr", "surya.recognition", "Surya OCR", r"pip install pdfmux\[ocr]"),
+        ("rapidocr", "rapidocr", "RapidOCR", r"pip install pdfmux\[ocr]"),
+        ("surya-ocr", "surya.recognition", "Surya OCR", r"pip install pdfmux\[ocr-heavy]"),
         ("google-genai", "google.genai", "Gemini Flash", r"pip install pdfmux\[llm]"),
     ]
 
@@ -159,63 +160,114 @@ def bench(
         detected_types.append("tables")
     console.print(f"Detected: {', '.join(detected_types)}\n")
 
-    extractors: list[tuple[str, str, type | None]] = [
-        ("PyMuPDF", "pdfmux.extractors.fast", None),
-        ("Docling", "pdfmux.extractors.tables", None),
-        ("Surya OCR", "pdfmux.extractors.ocr", None),
-        ("Gemini Flash", "pdfmux.extractors.llm", None),
+    extractors_list = [
+        "PyMuPDF",
+        "Multi-pass",
+        "Docling",
+        "RapidOCR",
+        "Surya OCR",
+        "Gemini Flash",
     ]
 
     table = Table(show_header=True, header_style="bold")
-    table.add_column("Extractor", min_width=14)
+    table.add_column("Extractor", min_width=16)
     table.add_column("Time", min_width=10, justify="right")
     table.add_column("Confidence", min_width=12, justify="right")
     table.add_column("Output", min_width=10, justify="right")
     table.add_column("Status")
 
-    for name, module_path, _ in extractors:
+    for name in extractors_list:
         try:
+            start = time.perf_counter()
+
             if name == "PyMuPDF":
                 ext = FastExtractor()
+                raw = ext.extract(input_path)
+                elapsed = time.perf_counter() - start
+                processed = clean_and_score(
+                    raw,
+                    classification.page_count,
+                    extraction_limited=classification.is_graphical,
+                    graphical_page_count=(
+                        len(classification.graphical_pages)
+                        if classification.is_graphical
+                        else 0
+                    ),
+                )
+                chars = len(raw)
+                conf = processed.confidence
+                status = "[green]✓[/green]"
+
+            elif name == "Multi-pass":
+                # Run the full multi-pass pipeline
+                result = process(
+                    file_path=input_path,
+                    output_format="markdown",
+                    quality="standard",
+                )
+                elapsed = time.perf_counter() - start
+                chars = len(result.text)
+                conf = result.confidence
+                n_ocr = len(result.ocr_pages)
+                status = (
+                    f"[green]✓[/green] {n_ocr} pages OCR'd"
+                    if n_ocr > 0
+                    else "[green]✓[/green] all pages good"
+                )
+
             elif name == "Docling":
                 from pdfmux.extractors.tables import TableExtractor
 
                 ext = TableExtractor()
+                raw = ext.extract(input_path)
+                elapsed = time.perf_counter() - start
+                processed = clean_and_score(raw, classification.page_count)
+                chars = len(raw)
+                conf = processed.confidence
+                status = "[green]✓[/green]"
+
+            elif name == "RapidOCR":
+                from pdfmux.extractors.rapid_ocr import RapidOCRExtractor
+
+                ext = RapidOCRExtractor()
+                raw = ext.extract(input_path)
+                elapsed = time.perf_counter() - start
+                processed = clean_and_score(raw, classification.page_count)
+                chars = len(raw)
+                conf = processed.confidence
+                status = "[green]✓[/green]"
+
             elif name == "Surya OCR":
                 from pdfmux.extractors.ocr import OCRExtractor
 
                 ext = OCRExtractor()
+                raw = ext.extract(input_path)
+                elapsed = time.perf_counter() - start
+                processed = clean_and_score(raw, classification.page_count)
+                chars = len(raw)
+                conf = processed.confidence
+                status = "[green]✓[/green]"
+
             elif name == "Gemini Flash":
                 from pdfmux.extractors.llm import LLMExtractor
 
                 ext = LLMExtractor()
+                raw = ext.extract(input_path)
+                elapsed = time.perf_counter() - start
+                processed = clean_and_score(raw, classification.page_count)
+                chars = len(raw)
+                conf = processed.confidence
+                status = "[green]✓[/green]"
+
             else:
                 continue
-
-            start = time.perf_counter()
-            raw = ext.extract(input_path)
-            elapsed = time.perf_counter() - start
-
-            is_fast = name == "PyMuPDF"
-            processed = clean_and_score(
-                raw,
-                classification.page_count,
-                extraction_limited=is_fast and classification.is_graphical,
-                graphical_page_count=(
-                    len(classification.graphical_pages)
-                    if is_fast and classification.is_graphical
-                    else 0
-                ),
-            )
-            chars = len(raw)
-            conf = processed.confidence
 
             table.add_row(
                 name,
                 f"{elapsed:.2f}s",
                 f"{conf:.0%}",
                 f"{chars:,} chars",
-                "[green]✓[/green]",
+                status,
             )
         except ImportError:
             table.add_row(name, "—", "—", "—", "[dim]not installed[/dim]")
@@ -274,9 +326,13 @@ def _convert_file(
         else:
             conf_str = f"[red]{conf:.0%} confidence[/red]"
 
+        ocr_info = ""
+        if result.ocr_pages:
+            ocr_info = f", {len(result.ocr_pages)} pages OCR'd"
+
         console.print(
             f"[green]✓[/green] {input_path.name} → {output.name} "
-            f"({result.page_count} pages, {conf_str}, "
+            f"({result.page_count} pages, {conf_str}{ocr_info}, "
             f"via {result.extractor_used})"
         )
 

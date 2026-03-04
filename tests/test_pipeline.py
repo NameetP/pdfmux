@@ -18,6 +18,7 @@ def test_process_digital_pdf(digital_pdf: Path) -> None:
     assert result.page_count == 2
     assert result.confidence > 0
     assert result.extractor_used == "pymupdf4llm (fast)"
+    assert result.ocr_pages == []  # Digital PDF needs no OCR
 
 
 def test_process_with_confidence(digital_pdf: Path) -> None:

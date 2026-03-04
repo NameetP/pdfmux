@@ -3,16 +3,16 @@
 This is the core of Pdfmux. Instead of using one extraction method,
 we detect the PDF type and route to the optimal extractor:
 
-  Digital, clean → PyMuPDF (free, 0.01s/page)
-  Has tables → Docling (free, 0.3-3s/page)
-  Scanned → OCR pipeline (free, 1-5s/page)
-  Complex/fallback → Gemini Flash ($0.01-0.05)
+  Standard mode → multi-pass: fast extract → audit → OCR bad pages → merge
+  Has tables    → Docling (free, 0.3-3s/page)
+  Fast mode     → PyMuPDF only (free, 0.01s/page)
+  High mode     → Gemini Flash ($0.01-0.05)
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from pdfmux.detect import PDFClassification, classify
@@ -34,6 +34,7 @@ class ConversionResult:
     page_count: int
     warnings: list[str]
     classification: PDFClassification
+    ocr_pages: list[int] = field(default_factory=list)
 
 
 def process(
@@ -60,18 +61,26 @@ def process(
     classification = classify(file_path)
 
     # Step 2: Route to the best extractor
-    extractor, raw_text = _route_and_extract(file_path, classification, quality)
+    extractor, raw_text, ocr_pages = _route_and_extract(
+        file_path, classification, quality
+    )
 
     # Step 3: Post-process and score confidence
-    # Flag when extraction is likely incomplete (graphical PDF + fast extractor)
+    # Multi-pass tracks OCR results directly. For non-multi-pass paths,
+    # flag when extraction is likely incomplete (graphical PDF + fast extractor)
     fast_on_graphical = (
-        classification.is_graphical and "fast" in extractor.lower()
+        classification.is_graphical
+        and "fast" in extractor.lower()
+        and not ocr_pages  # multi-pass already handled it
     )
     processed = clean_and_score(
         raw_text,
         classification.page_count,
         extraction_limited=fast_on_graphical,
-        graphical_page_count=len(classification.graphical_pages) if fast_on_graphical else 0,
+        graphical_page_count=(
+            len(classification.graphical_pages) if fast_on_graphical else 0
+        ),
+        ocr_page_count=len(ocr_pages),
     )
 
     # Step 4: Format output
@@ -87,6 +96,7 @@ def process(
         page_count=classification.page_count,
         warnings=processed.warnings,
         classification=classification,
+        ocr_pages=ocr_pages,
     )
 
 
@@ -94,43 +104,33 @@ def _route_and_extract(
     file_path: Path,
     classification: PDFClassification,
     quality: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, list[int]]:
     """Route to the appropriate extractor based on PDF classification.
 
     Returns:
-        Tuple of (extractor_name, raw_text).
+        Tuple of (extractor_name, raw_text, ocr_pages).
     """
-    # Fast mode: always use PyMuPDF
+    # Fast mode: always use PyMuPDF, skip audit
     if quality == "fast":
         ext = FastExtractor()
-        return ext.name, ext.extract(file_path)
+        return ext.name, ext.extract(file_path), []
 
     # High mode: use LLM for everything (if available)
     if quality == "high":
-        return _try_llm_extractor(file_path)
+        name, text = _try_llm_extractor(file_path)
+        return name, text, []
 
-    # Graphical PDFs: image-heavy content that fast extraction will miss
-    # Route to OCR or LLM — fast extraction only as last resort
-    if classification.is_graphical:
-        return _handle_graphical_pdf(file_path, classification)
+    # Tables-detected PDFs route to Docling first — UNLESS also graphical.
+    # Graphical PDFs need multi-pass OCR more than table formatting,
+    # and Docling can't OCR images anyway.
+    if classification.has_tables and not classification.is_graphical:
+        name, text = _try_table_extractor(file_path)
+        return name, text, []
 
-    # Standard mode: route based on classification
-    if classification.is_digital and not classification.has_tables:
-        ext = FastExtractor()
-        return ext.name, ext.extract(file_path)
-
-    if classification.has_tables:
-        return _try_table_extractor(file_path)
-
-    if classification.is_scanned:
-        return _try_ocr_extractor(file_path, classification.scanned_pages)
-
-    if classification.is_mixed:
-        return _handle_mixed_pdf(file_path, classification)
-
-    # Default fallback
-    ext = FastExtractor()
-    return ext.name, ext.extract(file_path)
+    # Standard mode — ALL PDFs go through multi-pass.
+    # The audit step costs ~0 when all pages are good (fast path returns immediately).
+    # This handles digital, graphical, scanned, and mixed PDFs uniformly.
+    return _multipass_extract(file_path, classification)
 
 
 def _try_table_extractor(file_path: Path) -> tuple[str, str]:
@@ -147,14 +147,24 @@ def _try_table_extractor(file_path: Path) -> tuple[str, str]:
 
 
 def _try_ocr_extractor(file_path: Path, pages: list[int] | None = None) -> tuple[str, str]:
-    """Try OCR for scanned pages, fall back to PyMuPDF."""
+    """Try OCR for scanned pages — RapidOCR first, then Surya, fall back to PyMuPDF."""
+    # Try RapidOCR first (lightweight, ~200MB, Apache 2.0)
+    try:
+        from pdfmux.extractors.rapid_ocr import RapidOCRExtractor
+
+        ext = RapidOCRExtractor()
+        return ext.name, ext.extract(file_path, pages=pages)
+    except ImportError:
+        pass
+
+    # Fall back to Surya (heavy, ~5GB, GPL)
     try:
         from pdfmux.extractors.ocr import OCRExtractor
 
         ext = OCRExtractor()
         return ext.name, ext.extract(file_path, pages=pages)
     except ImportError:
-        logger.info("Surya OCR not installed, falling back to PyMuPDF")
+        logger.info("No OCR installed (RapidOCR or Surya), falling back to PyMuPDF")
         ext = FastExtractor()
         raw = ext.extract(file_path)
         if len(raw.strip()) < 100:
@@ -184,73 +194,146 @@ def _try_llm_extractor(file_path: Path) -> tuple[str, str]:
             return ext_fast.name, ext_fast.extract(file_path)
 
 
-def _handle_graphical_pdf(file_path: Path, classification: PDFClassification) -> tuple[str, str]:
-    """Handle graphical/image-heavy PDFs (e.g. pitch decks, infographics).
+def _multipass_extract(
+    file_path: Path,
+    classification: PDFClassification,
+) -> tuple[str, str, list[int]]:
+    """Multi-pass extraction: fast → audit → OCR bad pages → merge.
 
-    These PDFs have text rendered as images that fast extraction can't read.
-    Route to OCR or LLM if available, fall back to fast with honest warnings.
+    Pipeline:
+    1. Fast-extract every page (via audit) and score quality
+    2. If all pages are good → return fast text immediately (zero overhead)
+    3. For bad/empty pages → re-extract with RapidOCR
+    4. For pages OCR couldn't recover → try LLM
+    5. Merge good fast text + OCR/LLM text in page order
+
+    Returns:
+        Tuple of (extractor_name, merged_text, ocr_pages).
     """
-    n_graphical = len(classification.graphical_pages)
-    n_total = classification.page_count
+    from pdfmux.audit import audit_document
 
-    # Try OCR first — best for image-heavy pages
-    try:
-        from pdfmux.extractors.ocr import OCRExtractor
+    # Pass 1: Fast extract + audit every page
+    audit = audit_document(file_path)
 
-        ext = OCRExtractor()
-        logger.info(
-            f"Graphical PDF detected ({n_graphical}/{n_total} image-heavy pages). "
-            f"Using OCR for full extraction."
+    # Fast path — no bad pages, return immediately (zero overhead)
+    if not audit.needs_ocr:
+        full_text = "\n\n---\n\n".join(
+            p.text for p in audit.pages if p.text.strip()
         )
-        return ext.name, ext.extract(file_path)
-    except ImportError:
-        pass
+        return "pymupdf4llm (fast)", full_text, []
 
-    # Try LLM vision — catches everything but costs money
-    try:
-        from pdfmux.extractors.llm import LLMExtractor
+    # Pass 2: Re-extract bad/empty pages with OCR
+    pages_needing_ocr = audit.bad_pages + audit.empty_pages
+    ocr_results: dict[int, str] = {}
+    ocr_name = ""
 
-        ext = LLMExtractor()
-        logger.info(
-            f"Graphical PDF detected ({n_graphical}/{n_total} image-heavy pages). "
-            f"Using LLM vision for extraction."
-        )
-        return ext.name, ext.extract(file_path)
-    except (ImportError, RuntimeError):
-        pass
-
-    # Last resort: fast extraction — will miss image content
-    logger.warning(
-        f"Graphical PDF detected ({n_graphical}/{n_total} image-heavy pages) "
-        f"but no OCR or LLM extractor is installed. "
-        f"Text embedded in images will be missing from the output."
+    logger.info(
+        f"Multi-pass: {len(pages_needing_ocr)} pages need re-extraction "
+        f"(bad={len(audit.bad_pages)}, empty={len(audit.empty_pages)})"
     )
-    ext = FastExtractor()
-    return ext.name, ext.extract(file_path)
 
+    # Try RapidOCR (lightweight, preferred)
+    try:
+        from pdfmux.extractors.rapid_ocr import RapidOCRExtractor
 
-def _handle_mixed_pdf(file_path: Path, classification: PDFClassification) -> tuple[str, str]:
-    """Handle mixed PDFs: fast extract digital pages, OCR scanned pages."""
-    parts: list[str] = []
-    extractor_name = "pymupdf4llm (fast)"
+        ocr = RapidOCRExtractor()
+        for page_num in pages_needing_ocr:
+            ocr_text = ocr.extract_page(file_path, page_num)
+            page_audit = audit.pages[page_num]
 
-    if classification.digital_pages:
-        ext = FastExtractor()
-        digital_text = ext.extract(file_path, pages=classification.digital_pages)
-        parts.append(digital_text)
+            if page_audit.quality == "empty":
+                # Any OCR text is an improvement over nothing
+                if len(ocr_text.strip()) > 10:
+                    ocr_results[page_num] = ocr_text
+            elif page_audit.quality == "bad":
+                # Only replace if OCR got more than fast extraction
+                if len(ocr_text.strip()) > len(page_audit.text.strip()):
+                    ocr_results[page_num] = ocr_text
 
-    if classification.scanned_pages:
+        ocr_name = "rapidocr"
+    except ImportError:
+        logger.info("RapidOCR not installed, trying legacy OCR")
+        # Fall back to legacy Surya OCR
         try:
             from pdfmux.extractors.ocr import OCRExtractor
 
-            ext_ocr = OCRExtractor()
-            ocr_text = ext_ocr.extract(file_path, pages=classification.scanned_pages)
-            parts.append(ocr_text)
-            extractor_name = "pymupdf4llm + surya (mixed)"
-        except ImportError:
-            logger.info("Skipping scanned pages (OCR not installed)")
+            ocr_legacy = OCRExtractor()
+            for page_num in pages_needing_ocr:
+                ocr_text = ocr_legacy.extract(file_path, pages=[page_num])
+                page_audit = audit.pages[page_num]
 
-    return extractor_name, "\n\n".join(parts)
+                if page_audit.quality == "empty":
+                    if len(ocr_text.strip()) > 10:
+                        ocr_results[page_num] = ocr_text
+                elif page_audit.quality == "bad":
+                    if len(ocr_text.strip()) > len(page_audit.text.strip()):
+                        ocr_results[page_num] = ocr_text
+
+            ocr_name = "surya"
+        except ImportError:
+            logger.info("No OCR installed")
+
+    # Pass 3: Try LLM on pages that OCR couldn't recover
+    still_bad = [p for p in pages_needing_ocr if p not in ocr_results]
+    if still_bad:
+        try:
+            from pdfmux.extractors.llm import LLMExtractor
+
+            llm = LLMExtractor()
+            for page_num in still_bad:
+                llm_text = llm.extract(file_path, pages=[page_num])
+                page_audit = audit.pages[page_num]
+
+                if page_audit.quality == "empty":
+                    if len(llm_text.strip()) > 10:
+                        ocr_results[page_num] = llm_text
+                elif page_audit.quality == "bad":
+                    if len(llm_text.strip()) > len(page_audit.text.strip()):
+                        ocr_results[page_num] = llm_text
+
+            if not ocr_name:
+                ocr_name = "gemini"
+            else:
+                ocr_name += " + gemini"
+        except (ImportError, RuntimeError):
+            pass
+
+    # Merge in page order: good pages keep fast text, bad/empty pages use OCR
+    merged_parts: list[str] = []
+    ocr_page_list: list[int] = sorted(ocr_results.keys())
+
+    for page_audit in audit.pages:
+        if page_audit.page_num in ocr_results:
+            merged_parts.append(ocr_results[page_audit.page_num])
+        elif page_audit.text.strip():
+            merged_parts.append(page_audit.text)
+        # else: empty page with no OCR recovery — skip silently
+
+    merged_text = "\n\n---\n\n".join(merged_parts)
+
+    # Build extractor name for reporting
+    n_ocr = len(ocr_page_list)
+    n_unrecovered = len(still_bad) - sum(
+        1 for p in still_bad if p in ocr_results
+    )
+
+    if n_ocr > 0:
+        name = f"pymupdf4llm + {ocr_name} ({n_ocr} pages re-extracted)"
+    else:
+        name = "pymupdf4llm (fast)"
+
+    if n_unrecovered > 0:
+        logger.warning(
+            f"Multi-pass: {n_unrecovered} pages could not be recovered. "
+            f"Install pdfmux[ocr] for better results."
+        )
+
+    logger.info(
+        f"Multi-pass complete: {len(audit.good_pages)} good, "
+        f"{n_ocr} re-extracted, {n_unrecovered} unrecovered"
+    )
+
+    return name, merged_text, ocr_page_list
 
 
 def _format_output(

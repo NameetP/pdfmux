@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdfmux"
-version = "0.2.2"
+version = "0.3.0"
 description = "The smart PDF-to-Markdown router. One command, zero config, best extractor per document."
 readme = "README.md"
 license = "MIT"
@@ -34,7 +34,8 @@ dependencies = [
 
 [project.optional-dependencies]
 tables = ["docling>=2.0.0"]
-ocr = ["surya-ocr>=0.6.0"]
+ocr = ["rapidocr>=3.0.0", "onnxruntime>=1.19.0"]
+ocr-heavy = ["surya-ocr>=0.6.0"]
 llm = ["google-genai>=1.0.0"]
 all = ["pdfmux[tables,ocr,llm]"]
 dev = [

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 (2026-03-04)
+
+### Added
+- **Multi-pass extraction** — fast extract → per-page audit → selective OCR → merge. All standard-mode PDFs now go through this pipeline. Zero overhead when all pages are good.
+- **RapidOCR extractor** — lightweight OCR using PaddleOCR v4 models via ONNX runtime. ~200MB install, CPU-only, Apache 2.0 license. Replaces Surya as default `pdfmux[ocr]`.
+- **Per-page quality auditing** (`audit.py`) — classifies each page as "good", "bad", or "empty" based on text density and image presence. Drives selective re-extraction.
+- **Smart OCR comparison** — for "bad" pages (some text), only uses OCR if it extracts MORE text than fast extraction. For "empty" pages, any OCR text >10 chars is accepted.
+- **OCR fallback chain** — RapidOCR → Surya → Gemini Flash LLM. Each step only processes pages the previous step couldn't recover.
+- **`ocr_pages` tracking** — `ConversionResult` now reports which pages were re-extracted with OCR.
+- **Multi-pass in bench** — `pdfmux bench` now includes a "Multi-pass" row showing the full pipeline result.
+- **RapidOCR in doctor** — `pdfmux doctor` now checks for RapidOCR installation.
+
+### Changed
+- **`pdfmux[ocr]`** now installs RapidOCR + onnxruntime (~200MB) instead of Surya (~5GB). Surya moved to `pdfmux[ocr-heavy]`.
+- **Routing simplified** — removed `_handle_graphical_pdf()` and `_handle_mixed_pdf()`. Multi-pass handles all PDF types uniformly.
+- **Graphical + tables routing** — graphical PDFs no longer route to Docling even if table heuristics trigger. Multi-pass OCR is more valuable than table formatting for image-heavy content.
+- **Confidence scoring** — OCR-recovered pages get a small penalty for OCR noise (max 15%) instead of the large "extraction_limited" penalty.
+
+### Fixed
+- Pitch decks and slide exports now get 70-85% confidence with OCR installed (was 30-55%)
+- Digital PDFs maintain identical confidence and zero overhead through multi-pass fast path
+- RapidOCR logging noise suppressed (model paths, engine info no longer pollute output)
+
 ## 0.2.2 (2026-03-04)
 
 ### Added
