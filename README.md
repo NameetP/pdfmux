@@ -1,5 +1,8 @@
 # pdfmux
 
+[![CI](https://github.com/NameetP/pdfmux/actions/workflows/ci.yml/badge.svg)](https://github.com/NameetP/pdfmux/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/pdfmux)](https://pypi.org/project/pdfmux/)
+
 The smart PDF-to-Markdown router. One command, zero config.
 
 ```
@@ -99,6 +102,28 @@ pdfmux report.pdf -q standard
 
 # high — use LLM for everything (slow, costs ~$0.01/doc)
 pdfmux report.pdf -q high
+```
+
+### Diagnostics
+
+```bash
+# check what's installed
+pdfmux doctor
+# ┌──────────────┬─────────────┬─────────┬──────────────────────────────┐
+# │ Extractor    │ Status      │ Version │ Install                      │
+# ├──────────────┼─────────────┼─────────┼──────────────────────────────┤
+# │ PyMuPDF      │ ✓ installed │ 1.25.3  │                              │
+# │ Docling      │ ✗ missing   │ —       │ pip install pdfmux[tables]   │
+# └──────────────┴─────────────┴─────────┴──────────────────────────────┘
+
+# benchmark all extractors on a file
+pdfmux bench report.pdf
+# ┌──────────────┬────────┬────────────┬─────────────┬───────────────┐
+# │ Extractor    │   Time │ Confidence │      Output │ Status        │
+# ├──────────────┼────────┼────────────┼─────────────┼───────────────┤
+# │ PyMuPDF      │  0.02s │       100% │ 3,241 chars │ ✓             │
+# │ Docling      │      — │          — │           — │ not installed │
+# └──────────────┴────────┴────────────┴─────────────┴───────────────┘
 ```
 
 ### Other options

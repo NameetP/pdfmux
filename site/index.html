@@ -6,6 +6,16 @@
   <title>pdfmux — The smart PDF-to-Markdown router</title>
   <meta name="description" content="One command, zero config. pdfmux auto-detects your PDF type and routes to the best extractor. CLI + MCP server for AI agents.">
   <meta name="theme-color" content="#1a1d23">
+  <meta property="og:title" content="pdfmux">
+  <meta property="og:description" content="The smart PDF-to-Markdown router. One command, zero config.">
+  <meta property="og:image" content="https://pdfmux.com/og.svg">
+  <meta property="og:url" content="https://pdfmux.com">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="pdfmux">
+  <meta name="twitter:description" content="The smart PDF-to-Markdown router. One command, zero config.">
+  <meta name="twitter:image" content="https://pdfmux.com/og.svg">
+  <meta name="twitter:creator" content="@nameet">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -309,8 +319,21 @@
     </div>
 
     <footer>
-      MIT · Built by <a href="https://github.com/NameetP" style="color: var(--fg);">Nameet Potnis</a>
+      <div>MIT · Built by <a href="https://github.com/NameetP" style="color: var(--fg);">Nameet Potnis</a></div>
+      <div style="margin-top: 8px;">
+        <a href="https://github.com/NameetP/pdfmux" style="color: var(--dim); text-decoration: none; font-size: 12px;" id="starCount"></a>
+      </div>
     </footer>
+    <script>
+      fetch('https://api.github.com/repos/NameetP/pdfmux')
+        .then(r => r.json())
+        .then(d => {
+          if (d.stargazers_count !== undefined) {
+            document.getElementById('starCount').textContent = '★ ' + d.stargazers_count + ' on GitHub';
+          }
+        })
+        .catch(() => {});
+    </script>
   </div>
 
   <script>

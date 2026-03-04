@@ -1,0 +1,8 @@
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#1a1d23"/>
+  <text x="100" y="200" font-family="monospace" font-size="72" font-weight="bold" fill="#7c8af6">pdfmux</text>
+  <text x="100" y="280" font-family="monospace" font-size="28" fill="#c9cdd4">The smart PDF-to-Markdown router.</text>
+  <text x="100" y="330" font-family="monospace" font-size="28" fill="#6b7280">One command, zero config.</text>
+  <text x="100" y="440" font-family="monospace" font-size="22" fill="#505868">$ pip install pdfmux</text>
+  <text x="100" y="500" font-family="monospace" font-size="18" fill="#2e3340">digital → PyMuPDF   tables → Docling   scanned → Surya   complex → Gemini</text>
+</svg>

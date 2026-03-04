@@ -5,15 +5,19 @@ Usage:
     pdfmux ./docs/ -o ./output/     → batch convert
     pdfmux report.pdf --confidence  → show confidence score
     pdfmux serve                    → start MCP server
+    pdfmux doctor                   → check your setup
+    pdfmux bench report.pdf         → benchmark extractors
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 from pdfmux import __version__
 from pdfmux.pipeline import process
@@ -77,6 +81,132 @@ def serve() -> None:
 
     console.print("[bold]Starting Pdfmux MCP server...[/bold]")
     run_server()
+
+
+@app.command()
+def doctor() -> None:
+    """Check your setup — installed extractors, versions, and readiness."""
+    import importlib
+    import sys
+
+    console.print(f"\n[bold]pdfmux {__version__}[/bold]")
+    console.print(f"Python {sys.version.split()[0]}\n")
+
+    checks = [
+        ("pymupdf", "fitz", "PyMuPDF", "Base (always available)"),
+        ("pymupdf4llm", "pymupdf4llm", "pymupdf4llm", "Base (always available)"),
+        ("docling", "docling.document_converter", "Docling", r"pip install pdfmux\[tables]"),
+        ("surya-ocr", "surya.recognition", "Surya OCR", r"pip install pdfmux\[ocr]"),
+        ("google-genai", "google.genai", "Gemini Flash", r"pip install pdfmux\[llm]"),
+    ]
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Extractor", min_width=14)
+    table.add_column("Status", min_width=12)
+    table.add_column("Version", min_width=10)
+    table.add_column("Install", min_width=28)
+
+    for pkg_name, import_name, display_name, install_hint in checks:
+        try:
+            mod = importlib.import_module(import_name)
+            ver = getattr(mod, "__version__", "—")
+            table.add_row(display_name, "[green]✓ installed[/green]", ver, "")
+        except ImportError:
+            table.add_row(display_name, "[dim]✗ missing[/dim]", "—", f"[dim]{install_hint}[/dim]")
+
+    console.print(table)
+
+    # Check for API keys
+    import os
+
+    console.print()
+    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if gemini_key:
+        console.print("[green]✓[/green] GEMINI_API_KEY set")
+    else:
+        console.print(r"[dim]✗ GEMINI_API_KEY not set (only needed for pdfmux\[llm])[/dim]")
+
+    console.print()
+
+
+@app.command()
+def bench(
+    input_path: Path = typer.Argument(
+        ...,
+        help="PDF file to benchmark.",
+        exists=True,
+    ),
+) -> None:
+    """Benchmark all available extractors on a PDF. Shows speed and confidence side by side."""
+    from pdfmux.detect import classify
+    from pdfmux.extractors.fast import FastExtractor
+    from pdfmux.postprocess import clean_and_score
+
+    classification = classify(input_path)
+    console.print(f"\n[bold]{input_path.name}[/bold] — {classification.page_count} pages")
+    console.print(
+        f"Detected: {'digital' if classification.is_digital else ''}"
+        f"{'scanned' if classification.is_scanned else ''}"
+        f"{'mixed' if classification.is_mixed else ''}"
+        f"{', tables' if classification.has_tables else ''}\n"
+    )
+
+    extractors: list[tuple[str, str, type | None]] = [
+        ("PyMuPDF", "pdfmux.extractors.fast", None),
+        ("Docling", "pdfmux.extractors.tables", None),
+        ("Surya OCR", "pdfmux.extractors.ocr", None),
+        ("Gemini Flash", "pdfmux.extractors.llm", None),
+    ]
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Extractor", min_width=14)
+    table.add_column("Time", min_width=10, justify="right")
+    table.add_column("Confidence", min_width=12, justify="right")
+    table.add_column("Output", min_width=10, justify="right")
+    table.add_column("Status")
+
+    for name, module_path, _ in extractors:
+        try:
+            if name == "PyMuPDF":
+                ext = FastExtractor()
+            elif name == "Docling":
+                from pdfmux.extractors.tables import TableExtractor
+
+                ext = TableExtractor()
+            elif name == "Surya OCR":
+                from pdfmux.extractors.ocr import OCRExtractor
+
+                ext = OCRExtractor()
+            elif name == "Gemini Flash":
+                from pdfmux.extractors.llm import LLMExtractor
+
+                ext = LLMExtractor()
+            else:
+                continue
+
+            start = time.perf_counter()
+            raw = ext.extract(input_path)
+            elapsed = time.perf_counter() - start
+
+            processed = clean_and_score(raw, classification.page_count)
+            chars = len(raw)
+            conf = processed.confidence
+
+            table.add_row(
+                name,
+                f"{elapsed:.2f}s",
+                f"{conf:.0%}",
+                f"{chars:,} chars",
+                "[green]✓[/green]",
+            )
+        except ImportError:
+            table.add_row(name, "—", "—", "—", "[dim]not installed[/dim]")
+        except Exception as e:
+            msg = str(e)[:40]
+            table.add_row(name, "—", "—", "—", f"[red]✗ {msg}[/red]")
+
+    console.print(table)
+    console.print()
 
 
 @app.command()
