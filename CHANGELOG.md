@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 (2026-03-04)
+
+### Added
+- **`pdfmux doctor`** — check installed extractors, versions, and API keys
+- **`pdfmux bench`** — benchmark all available extractors on a PDF side by side
+
+### Fixed
+- Suppressed upstream pymupdf4llm "Consider using pymupdf_layout" noise from all commands
+
 ## 0.2.0 (2026-03-03)
 
 First public release.
@@ -16,6 +25,4 @@ First public release.
 - **Batch conversion** — convert entire directories
 - **MCP server** — built-in stdio server for AI agents
 - **Confidence scoring** — text completeness, encoding quality, structure checks
-- **`pdfmux doctor`** — check installed extractors and API keys
-- **`pdfmux bench`** — benchmark all extractors on a file side by side
 - **Graceful fallback** — missing extractors fall back silently to next best

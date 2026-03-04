@@ -14,4 +14,4 @@ finally:
     _sys.stdout = _orig
 del _orig, _io
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"

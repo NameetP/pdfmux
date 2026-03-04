@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdfmux"
-version = "0.2.0"
+version = "0.2.1"
 description = "The smart PDF-to-Markdown router. One command, zero config, best extractor per document."
 readme = "README.md"
 license = "MIT"
