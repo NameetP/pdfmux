@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pdfmux"
 version = "0.3.0"
-description = "The smart PDF-to-Markdown router. One command, zero config, best extractor per document."
+description = "PDF extraction that checks its own work. Multi-pass pipeline for LLM-ready Markdown."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

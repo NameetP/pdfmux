@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pdfmux — The smart PDF-to-Markdown router</title>
-  <meta name="description" content="One command, zero config. pdfmux auto-detects your PDF type and routes to the best extractor. CLI + MCP server for AI agents.">
+  <title>pdfmux — PDF extraction that checks its own work</title>
+  <meta name="description" content="Self-healing PDF extraction for LLM pipelines. Extracts every page, audits quality, re-extracts bad pages with OCR. CLI + MCP server.">
   <meta name="theme-color" content="#1a1d23">
   <meta property="og:title" content="pdfmux">
-  <meta property="og:description" content="The smart PDF-to-Markdown router. One command, zero config.">
+  <meta property="og:description" content="PDF extraction that checks its own work. Built for LLM pipelines.">
   <meta property="og:image" content="https://pdfmux.com/og.svg">
   <meta property="og:url" content="https://pdfmux.com">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="pdfmux">
-  <meta name="twitter:description" content="The smart PDF-to-Markdown router. One command, zero config.">
+  <meta name="twitter:description" content="PDF extraction that checks its own work. Built for LLM pipelines.">
   <meta name="twitter:image" content="https://pdfmux.com/og.svg">
   <meta name="twitter:creator" content="@nameet">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
@@ -61,6 +61,13 @@
     .tagline {
       color: var(--dim);
       font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .sub-tagline {
+      color: var(--dim);
+      font-size: 12px;
+      opacity: 0.7;
     }
 
     .install {
@@ -180,6 +187,20 @@
     .free { color: #7ec9a2; }
     .cost { color: #e0a870; }
 
+    .pipeline {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 20px;
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--dim);
+    }
+
+    .pipeline .step { color: var(--fg); font-weight: 500; }
+    .pipeline .good { color: #7ec9a2; }
+    .pipeline .fix { color: #e0a870; }
+
     .mcp-config {
       background: var(--code-bg);
       border: 1px solid var(--border);
@@ -226,7 +247,8 @@
         <h1><span>pdfmux</span></h1>
         <a href="https://twitter.com/nameet" target="_blank" rel="noopener" style="color: var(--dim); text-decoration: none; font-size: 13px; margin-top: 8px; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--dim)'">@nameet</a>
       </div>
-      <p class="tagline">The smart PDF-to-Markdown router. One command, zero config.</p>
+      <p class="tagline">PDF extraction that checks its own work.</p>
+      <p class="sub-tagline">Built for LLM pipelines.</p>
     </header>
 
     <div class="install" onclick="copy()" id="installBox">
@@ -236,14 +258,15 @@
 
     <section>
       <h2>Usage</h2>
-      <pre><span class="comment"># convert a pdf to markdown</span>
+      <pre><span class="comment"># convert a pdf — auto-audits every page</span>
 <span class="cmd">$ pdfmux</span> <span class="file">invoice.pdf</span>
-<span class="output">✓ invoice.pdf → invoice.md (2 pages, 100% confidence)</span>
+<span class="output">✓ invoice.pdf → invoice.md (2 pages, 95% confidence)</span>
 
-<span class="comment"># json output with metadata</span>
-<span class="cmd">$ pdfmux</span> <span class="file">report.pdf</span> <span class="flag">-f json</span>
+<span class="comment"># image-heavy pdf — bad pages re-extracted with ocr</span>
+<span class="cmd">$ pdfmux</span> <span class="file">pitch-deck.pdf</span>
+<span class="output">✓ pitch-deck.md (12 pages, 85% confidence, 6 pages OCR'd)</span>
 
-<span class="comment"># batch convert</span>
+<span class="comment"># batch convert a directory</span>
 <span class="cmd">$ pdfmux</span> <span class="file">./docs/</span> <span class="flag">-o ./output/</span>
 
 <span class="comment"># start mcp server for ai agents</span>
@@ -252,18 +275,15 @@
 
     <section>
       <h2>How it works</h2>
-      <p style="color: var(--dim); margin-bottom: 16px;">We don't convert PDFs. We route them to whichever tool converts them best.</p>
-      <table>
-        <thead>
-          <tr><th>PDF Type</th><th>Extractor</th><th>Speed</th><th>Cost</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Digital</td><td>PyMuPDF</td><td>0.01s/pg</td><td class="free">Free</td></tr>
-          <tr><td>Tables</td><td>Docling</td><td>0.3-3s/pg</td><td class="free">Free</td></tr>
-          <tr><td>Scanned</td><td>Surya OCR</td><td>1-5s/pg</td><td class="free">Free</td></tr>
-          <tr><td>Complex</td><td>Gemini Flash</td><td>2-5s/pg</td><td class="cost">~$0.01</td></tr>
-        </tbody>
-      </table>
+      <p style="color: var(--dim); margin-bottom: 16px;">Extract every page. Audit quality. Re-extract the bad ones.</p>
+      <div class="pipeline">
+        <span class="step">1. Fast extract</span> — PyMuPDF on every page (instant)<br>
+        <span class="step">2. Audit</span> — classify each page: <span class="good">good</span> / <span class="fix">bad</span> / empty<br>
+        <span class="step">3. Re-extract</span> — OCR only the <span class="fix">bad</span> pages (RapidOCR)<br>
+        <span class="step">4. Merge</span> — combine <span class="good">good</span> + OCR'd pages in order<br>
+        <br>
+        <span style="color: var(--dim);">All pages good? Zero OCR overhead. You only pay for what's broken.</span>
+      </div>
     </section>
 
     <section>
@@ -274,18 +294,33 @@
           <div class="value green">0.01s/page</div>
         </div>
         <div class="card">
-          <div class="label">Table accuracy</div>
-          <div class="value blue">97.9%</div>
+          <div class="label">OCR install size</div>
+          <div class="value blue">~200MB</div>
         </div>
         <div class="card">
           <div class="label">Cost (90% of PDFs)</div>
           <div class="value green">$0</div>
         </div>
         <div class="card">
-          <div class="label">Output format</div>
-          <div class="value orange">Markdown</div>
+          <div class="label">Confidence scoring</div>
+          <div class="value orange">Per-page</div>
         </div>
       </div>
+    </section>
+
+    <section>
+      <h2>Extractors</h2>
+      <table>
+        <thead>
+          <tr><th>Extractor</th><th>Handles</th><th>Speed</th><th>Install</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>PyMuPDF</td><td>Digital text</td><td>0.01s/pg</td><td class="free">Base</td></tr>
+          <tr><td>RapidOCR</td><td>Scanned / images</td><td>0.5-2s/pg</td><td class="free">pdfmux[ocr]</td></tr>
+          <tr><td>Docling</td><td>Tables</td><td>0.3-3s/pg</td><td class="free">pdfmux[tables]</td></tr>
+          <tr><td>Gemini Flash</td><td>Complex layouts</td><td>2-5s/pg</td><td class="cost">pdfmux[llm]</td></tr>
+        </tbody>
+      </table>
     </section>
 
     <section>
@@ -301,19 +336,20 @@
   <span class="brace">}</span>
 <span class="brace">}</span>
       </div>
+      <p style="color: var(--dim); margin-top: 12px; font-size: 12px;">Agents receive confidence scores + warnings when extraction is limited.</p>
     </section>
 
     <section>
-      <h2>Optional extractors</h2>
-      <pre><span class="cmd">$ pip install</span> <span class="file">pdfmux[tables]</span>  <span class="comment"># Docling</span>
-<span class="cmd">$ pip install</span> <span class="file">pdfmux[ocr]</span>     <span class="comment"># Surya OCR</span>
-<span class="cmd">$ pip install</span> <span class="file">pdfmux[llm]</span>     <span class="comment"># Gemini Flash</span>
-<span class="cmd">$ pip install</span> <span class="file">pdfmux[all]</span>     <span class="comment"># everything</span></pre>
+      <h2>Optional extras</h2>
+      <pre><span class="cmd">$ pip install</span> <span class="file">"pdfmux[ocr]"</span>     <span class="comment"># RapidOCR (~200MB, CPU)</span>
+<span class="cmd">$ pip install</span> <span class="file">"pdfmux[tables]"</span>  <span class="comment"># Docling</span>
+<span class="cmd">$ pip install</span> <span class="file">"pdfmux[llm]"</span>     <span class="comment"># Gemini Flash</span>
+<span class="cmd">$ pip install</span> <span class="file">"pdfmux[all]"</span>     <span class="comment"># everything</span></pre>
     </section>
 
     <div class="links">
       <a href="https://github.com/NameetP/pdfmux">GitHub</a>
-      <a href="https://github.com/NameetP/pdfmux#usage">Docs</a>
+      <a href="https://github.com/NameetP/pdfmux#how-it-works">Docs</a>
       <a href="https://pypi.org/project/pdfmux/">PyPI</a>
       <a href="https://github.com/NameetP/pdfmux/issues">Issues</a>
     </div>
