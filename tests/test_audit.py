@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import fitz
 import pytest
 
 from pdfmux.audit import (
     EMPTY_TEXT_THRESHOLD,
     GOOD_TEXT_THRESHOLD,
-    MINIMAL_TEXT_THRESHOLD,
     DocumentAudit,
     PageAudit,
     _classify_page,

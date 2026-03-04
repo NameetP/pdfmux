@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 (2026-03-04)
+
+### Added
+- **Public Python API** — three importable functions: `extract_text()`, `extract_json()`, `load_llm_context()`. No more CLI-only usage.
+- **Section-aware chunking** (`chunking.py`) — splits Markdown at heading boundaries with per-chunk page tracking and token estimates (chars/4). Powers `load_llm_context()` and `--format llm`.
+- **LLM output format** — `pdfmux report.pdf -f llm` outputs chunked JSON with `{title, text, page_start, page_end, tokens, confidence}` per section. Designed for RAG pipelines and context windows.
+- **`pdfmux analyze`** — per-page extraction breakdown showing page type (digital/graphical/scanned), quality (good/bad/empty), char count, confidence, and extractor used.
+- **Locked JSON schema** — JSON output now includes `schema_version: "0.4.0"` and `ocr_pages` field for downstream stability.
+
+### Changed
+- **JSON output** now includes `schema_version` and `ocr_pages` fields in every response.
+- **`--format` option** accepts `llm` in addition to `markdown`, `json`, `csv`.
+
 ## 0.3.0 (2026-03-04)
 
 ### Added

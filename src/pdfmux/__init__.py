@@ -1,8 +1,17 @@
-"""pdfmux — The smart PDF-to-Markdown router."""
+"""pdfmux — PDF extraction that checks its own work.
+
+Public API:
+    extract_text(path)       → Markdown string
+    extract_json(path)       → dict with locked schema
+    load_llm_context(path)   → list of chunk dicts with token estimates
+"""
+
+from __future__ import annotations
 
 # Suppress pymupdf4llm "Consider using pymupdf_layout" noise on import
 import io as _io
 import sys as _sys
+from pathlib import Path
 
 _orig = _sys.stdout
 _sys.stdout = _io.StringIO()
@@ -14,4 +23,99 @@ finally:
     _sys.stdout = _orig
 del _orig, _io
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
+__all__ = ["extract_text", "extract_json", "load_llm_context"]
+
+
+def extract_text(
+    path: str | Path,
+    *,
+    quality: str = "standard",
+) -> str:
+    """Extract text from a PDF as Markdown.
+
+    This is the simplest way to use pdfmux programmatically.
+
+    Args:
+        path: Path to the PDF file.
+        quality: "fast", "standard" (default), or "high".
+
+    Returns:
+        Markdown text extracted from the PDF.
+
+    Example::
+
+        import pdfmux
+        text = pdfmux.extract_text("report.pdf")
+        print(text[:200])
+    """
+    from pdfmux.pipeline import process
+
+    result = process(file_path=path, output_format="markdown", quality=quality)
+    return result.text
+
+
+def extract_json(
+    path: str | Path,
+    *,
+    quality: str = "standard",
+) -> dict:
+    """Extract text from a PDF as a structured dictionary.
+
+    Returns the locked JSON schema with metadata, pages, and confidence.
+    Schema version: 0.4.0.
+
+    Args:
+        path: Path to the PDF file.
+        quality: "fast", "standard" (default), or "high".
+
+    Returns:
+        Dictionary with keys: schema_version, source, converter, extractor,
+        page_count, confidence, warnings, ocr_pages, content, pages.
+
+    Example::
+
+        import pdfmux
+        data = pdfmux.extract_json("report.pdf")
+        print(f"{data['page_count']} pages, {data['confidence']:.0%}")
+    """
+    import json
+
+    from pdfmux.pipeline import process
+
+    result = process(file_path=path, output_format="json", quality=quality)
+    return json.loads(result.text)
+
+
+def load_llm_context(
+    path: str | Path,
+    *,
+    quality: str = "standard",
+) -> list[dict]:
+    """Extract text from a PDF as LLM-ready chunks.
+
+    Returns section-aware chunks with token estimates, designed
+    for RAG pipelines and context windows.
+
+    Args:
+        path: Path to the PDF file.
+        quality: "fast", "standard" (default), or "high".
+
+    Returns:
+        List of chunk dicts, each with: title, text, page_start,
+        page_end, tokens, confidence.
+
+    Example::
+
+        import pdfmux
+        chunks = pdfmux.load_llm_context("report.pdf")
+        for c in chunks:
+            print(f"{c['title']}: {c['tokens']} tokens")
+    """
+    import json
+
+    from pdfmux.pipeline import process
+
+    result = process(file_path=path, output_format="llm", quality=quality)
+    data = json.loads(result.text)
+    return data["chunks"]

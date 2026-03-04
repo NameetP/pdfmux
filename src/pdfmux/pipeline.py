@@ -85,7 +85,8 @@ def process(
 
     # Step 4: Format output
     formatted = _format_output(
-        processed, output_format, file_path, show_confidence, extractor, classification
+        processed, output_format, file_path, show_confidence, extractor, classification,
+        ocr_pages=ocr_pages,
     )
 
     return ConversionResult(
@@ -343,6 +344,8 @@ def _format_output(
     show_confidence: bool,
     extractor: str,
     classification: PDFClassification,
+    *,
+    ocr_pages: list[int] | None = None,
 ) -> str:
     """Format the processed text into the requested output format."""
     if output_format == "markdown":
@@ -368,6 +371,16 @@ def _format_output(
             confidence=processed.confidence,
             extractor=extractor,
             warnings=processed.warnings,
+            ocr_pages=ocr_pages,
+        )
+
+    if output_format == "llm":
+        from pdfmux.formatters.json_fmt import format_llm
+
+        return format_llm(
+            text=processed.text,
+            source=str(source_path),
+            confidence=processed.confidence,
         )
 
     if output_format == "csv":

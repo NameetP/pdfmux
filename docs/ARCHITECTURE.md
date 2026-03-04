@@ -1,11 +1,13 @@
-# Architecture — pdfmux v0.3.0
+# Architecture — pdfmux v0.4.0
 
 PDF extraction that checks its own work. This document describes how.
 
 ## System Overview
 
 ```
-pdfmux CLI / MCP server
+pdfmux Python API / CLI / MCP server
+    │
+    ├─ __init__.py        public API: extract_text, extract_json, load_llm_context
     │
     ├─ detect.py          classify PDF (digital / scanned / graphical / mixed / tables)
     │
@@ -18,6 +20,8 @@ pdfmux CLI / MCP server
     │
     ├─ audit.py           per-page quality auditing (the core of multi-pass)
     │
+    ├─ chunking.py        section-aware splitting + token estimation
+    │
     ├─ extractors/
     │   ├─ fast.py          PyMuPDF / pymupdf4llm — 0.01s/page, handles 90%
     │   ├─ rapid_ocr.py     RapidOCR (PaddleOCR v4 + ONNX) — ~200MB, CPU
@@ -27,7 +31,7 @@ pdfmux CLI / MCP server
     │
     ├─ postprocess.py     text cleanup + confidence scoring
     │
-    └─ formatters/        markdown, json, csv output
+    └─ formatters/        markdown, json, csv, llm output
 ```
 
 ## Multi-Pass Pipeline
@@ -149,6 +153,43 @@ standard         → _multipass_extract()
 Key design decision: **graphical PDFs with false-positive table detection skip Docling** and go through multi-pass. Table formatting is less valuable than OCR text recovery for image-heavy content.
 
 `ConversionResult` includes `ocr_pages: list[int]` — which pages were re-extracted with OCR, for transparency.
+
+### `chunking.py` — Section-Aware Splitting
+
+Splits extracted Markdown into chunks at heading boundaries for LLM consumption.
+
+**Strategy:**
+1. Build page offset map from `\n\n---\n\n` separators
+2. Find all ATX headings (`^#{1,6} `) as section boundaries
+3. Map each section to `page_start`/`page_end` via character offsets
+4. No headings → fall back to one chunk per page with title "Page N"
+
+**Token estimation:** `len(text.strip()) // 4` — standard GPT-family approximation, no external tokenizer dependency.
+
+```python
+@dataclass(frozen=True)
+class Chunk:
+    title: str           # heading text, or "Page N"
+    text: str            # content under this heading
+    page_start: int      # 1-indexed
+    page_end: int        # 1-indexed
+    tokens: int          # estimated token count
+    confidence: float    # inherited from document
+```
+
+Used by `load_llm_context()` public API and `--format llm` CLI output.
+
+### `__init__.py` — Public Python API
+
+Three thin wrappers around `pipeline.process()`:
+
+```python
+extract_text(path, *, quality="standard") → str         # Markdown string
+extract_json(path, *, quality="standard") → dict         # dict with locked schema
+load_llm_context(path, *, quality="standard") → list[dict]  # chunk dicts with tokens
+```
+
+All imports are lazy (inside functions) to avoid circular deps and keep `import pdfmux` fast.
 
 ### `postprocess.py` — Cleanup + Confidence
 

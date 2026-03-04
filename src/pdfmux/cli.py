@@ -4,6 +4,8 @@ Usage:
     pdfmux invoice.pdf              → invoice.md
     pdfmux ./docs/ -o ./output/     → batch convert
     pdfmux report.pdf --confidence  → show confidence score
+    pdfmux report.pdf -f llm        → LLM-ready chunked JSON
+    pdfmux analyze report.pdf       → per-page extraction breakdown
     pdfmux serve                    → start MCP server
     pdfmux doctor                   → check your setup
     pdfmux bench report.pdf         → benchmark extractors
@@ -49,7 +51,7 @@ def convert(
         "markdown",
         "--format",
         "-f",
-        help="Output format: markdown (default), json, csv.",
+        help="Output format: markdown (default), json, csv, llm.",
     ),
     quality: str = typer.Option(
         "standard",
@@ -280,6 +282,92 @@ def bench(
 
 
 @app.command()
+def analyze(
+    input_path: Path = typer.Argument(
+        ...,
+        help="PDF file to analyze.",
+        exists=True,
+    ),
+) -> None:
+    """Analyze a PDF — per-page extraction breakdown with confidence scores."""
+    from pdfmux.audit import audit_document
+    from pdfmux.detect import classify
+
+    classification = classify(input_path)
+    audit = audit_document(input_path)
+
+    console.print(f"\n[bold]{input_path.name}[/bold] — {classification.page_count} pages\n")
+
+    # Per-page table
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Page", min_width=6, justify="right")
+    table.add_column("Type", min_width=12)
+    table.add_column("Quality", min_width=14)
+    table.add_column("Chars", min_width=10, justify="right")
+
+    for page_audit in audit.pages:
+        page_num = page_audit.page_num + 1  # display 1-indexed
+
+        # Determine page type from classification
+        if page_audit.page_num in getattr(classification, "graphical_pages", []):
+            page_type = "[yellow]graphical[/yellow]"
+        elif page_audit.page_num in getattr(classification, "scanned_pages", []):
+            page_type = "[cyan]scanned[/cyan]"
+        else:
+            page_type = "[green]digital[/green]"
+
+        # Quality indicator
+        if page_audit.quality == "good":
+            quality_str = "[green]good[/green] → fast extraction"
+        elif page_audit.quality == "bad":
+            quality_str = "[yellow]bad[/yellow] → needs OCR"
+        else:
+            quality_str = "[red]empty[/red] → needs OCR"
+
+        table.add_row(
+            str(page_num),
+            page_type,
+            quality_str,
+            f"{page_audit.text_len:,}",
+        )
+
+    console.print(table)
+
+    # Run the full pipeline for summary stats
+    result = process(
+        file_path=input_path,
+        output_format="markdown",
+        quality="standard",
+    )
+
+    console.print()
+
+    # Summary
+    conf = result.confidence
+    if conf >= 0.8:
+        conf_str = f"[green]{conf:.0%}[/green]"
+    elif conf >= 0.5:
+        conf_str = f"[yellow]{conf:.0%}[/yellow]"
+    else:
+        conf_str = f"[red]{conf:.0%}[/red]"
+
+    console.print(f"  Confidence: {conf_str}")
+
+    if result.ocr_pages:
+        ocr_display = ", ".join(str(p + 1) for p in result.ocr_pages)
+        console.print(f"  OCR pages:  {ocr_display}")
+
+    console.print(f"  Extractor:  {result.extractor_used}")
+
+    if result.warnings:
+        console.print()
+        for warning in result.warnings:
+            console.print(f"  [yellow]⚠[/yellow] {rich_escape(warning)}")
+
+    console.print()
+
+
+@app.command()
 def version() -> None:
     """Show the version."""
     console.print(f"pdfmux {__version__}")
@@ -295,7 +383,7 @@ def _convert_file(
 ) -> None:
     """Convert a single PDF file."""
     if output is None:
-        ext = {"markdown": ".md", "json": ".json", "csv": ".csv"}.get(fmt, ".md")
+        ext = {"markdown": ".md", "json": ".json", "csv": ".csv", "llm": ".json"}.get(fmt, ".md")
         output = input_path.with_suffix(ext)
 
     with Progress(
@@ -364,7 +452,7 @@ def _convert_directory(
     failed = 0
 
     for pdf in pdfs:
-        ext = {"markdown": ".md", "json": ".json", "csv": ".csv"}.get(fmt, ".md")
+        ext = {"markdown": ".md", "json": ".json", "csv": ".csv", "llm": ".json"}.get(fmt, ".md")
         out_file = output_dir / pdf.with_suffix(ext).name
 
         try:

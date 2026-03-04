@@ -138,7 +138,29 @@ Every result includes an honest confidence score:
 
 When confidence is below 80%, pdfmux tells you exactly what went wrong and how to fix it (e.g., "Install `pdfmux[ocr]` for better results on 6 image-heavy pages").
 
-## Usage
+## Python API
+
+```python
+import pdfmux
+
+# Simple text extraction → Markdown string
+text = pdfmux.extract_text("report.pdf")
+print(text[:200])
+
+# Structured extraction → dict with locked schema
+data = pdfmux.extract_json("report.pdf")
+print(f"{data['page_count']} pages, {data['confidence']:.0%}")
+print(f"OCR pages: {data['ocr_pages']}")
+
+# LLM-ready chunks → list of dicts with token estimates
+chunks = pdfmux.load_llm_context("report.pdf")
+for c in chunks:
+    print(f"{c['title']}: {c['tokens']} tokens (pages {c['page_start']}-{c['page_end']})")
+```
+
+All three functions accept `quality="fast"`, `"standard"` (default), or `"high"`.
+
+## CLI Usage
 
 ### Convert a single file
 
@@ -179,6 +201,9 @@ pdfmux report.pdf
 
 # json — structured output with metadata
 pdfmux report.pdf -f json
+
+# llm — section-aware chunks with token estimates
+pdfmux report.pdf -f llm
 
 # csv — extracts tables only
 pdfmux data.pdf -f csv
@@ -221,6 +246,25 @@ pdfmux bench report.pdf
 # └──────────────┴────────┴────────────┴─────────────┴──────────────────────┘
 ```
 
+### Analyze a PDF
+
+```bash
+pdfmux analyze report.pdf
+# report.pdf — 12 pages
+#
+# ┌──────┬────────────┬────────────────────────┬────────┐
+# │ Page │ Type       │ Quality                │  Chars │
+# ├──────┼────────────┼────────────────────────┼────────┤
+# │    1 │ digital    │ good → fast extraction │  1,204 │
+# │    2 │ graphical  │ bad → needs OCR        │     42 │
+# │    3 │ digital    │ good → fast extraction │  2,108 │
+# └──────┴────────────┴────────────────────────┴────────┘
+#
+#   Confidence: 91%
+#   OCR pages:  2
+#   Extractor:  pymupdf4llm + rapidocr (1 page re-extracted)
+```
+
 ### Other options
 
 ```bash
@@ -236,7 +280,7 @@ pdfmux report.pdf --stdout
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--output` | `-o` | Same dir, `.md` ext | Output file or directory |
-| `--format` | `-f` | `markdown` | Output format: `markdown`, `json`, `csv` |
+| `--format` | `-f` | `markdown` | Output format: `markdown`, `json`, `csv`, `llm` |
 | `--quality` | `-q` | `standard` | Quality: `fast`, `standard`, `high` |
 | `--confidence` | | `false` | Include confidence score in output |
 | `--stdout` | | `false` | Print to stdout instead of writing file |
@@ -277,6 +321,34 @@ Structured output with metadata:
   "pages": [
     { "page": 1, "content": "# Quarterly Report..." },
     { "page": 2, "content": "## Financial Summary..." }
+  ]
+}
+```
+
+### LLM (chunked JSON)
+
+Section-aware chunks with token estimates, designed for RAG pipelines:
+
+```json
+{
+  "document": "report.pdf",
+  "chunks": [
+    {
+      "title": "Quarterly Report",
+      "text": "Revenue for Q3 increased by 15%...",
+      "page_start": 1,
+      "page_end": 2,
+      "tokens": 312,
+      "confidence": 0.95
+    },
+    {
+      "title": "Financial Summary",
+      "text": "| Metric | Q3 2025 | Q3 2024 |...",
+      "page_start": 3,
+      "page_end": 3,
+      "tokens": 156,
+      "confidence": 0.95
+    }
   ]
 }
 ```
@@ -366,10 +438,12 @@ pdfmux doesn't compete with these tools — it orchestrates them. The key insigh
 
 ```
 src/pdfmux/
-├── cli.py              # Typer CLI (convert, serve, doctor, bench, version)
+├── __init__.py         # Public API: extract_text, extract_json, load_llm_context
+├── cli.py              # Typer CLI (convert, analyze, serve, doctor, bench)
 ├── pipeline.py         # Multi-pass routing + merge logic
 ├── detect.py           # PDF type classification
 ├── audit.py            # Per-page quality auditing
+├── chunking.py         # Section-aware splitting + token estimation
 ├── postprocess.py      # Cleanup + confidence scoring
 ├── mcp_server.py       # MCP server (stdio JSON-RPC)
 ├── extractors/
@@ -380,7 +454,7 @@ src/pdfmux/
 │   └── llm.py          # Gemini Flash — hardest cases
 └── formatters/
     ├── markdown.py     # Markdown output
-    ├── json_fmt.py     # JSON output
+    ├── json_fmt.py     # JSON + LLM chunked output
     └── csv_fmt.py      # CSV output (tables only)
 ```
 
@@ -392,7 +466,7 @@ cd pdfmux
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# run tests (48 tests)
+# run tests (85 tests)
 pytest
 
 # lint

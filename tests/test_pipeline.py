@@ -79,3 +79,38 @@ def test_process_json_metadata(multi_page_pdf: Path) -> None:
     assert data["page_count"] == 5
     assert data["extractor"] == "pymupdf4llm (fast)"
     assert isinstance(data["warnings"], list)
+
+
+def test_process_llm_format(digital_pdf: Path) -> None:
+    """LLM format should return valid chunked JSON."""
+    result = process(digital_pdf, output_format="llm")
+    data = json.loads(result.text)
+    assert "document" in data
+    assert "chunks" in data
+    assert isinstance(data["chunks"], list)
+    assert len(data["chunks"]) > 0
+    # Each chunk should have required fields
+    chunk = data["chunks"][0]
+    assert "title" in chunk
+    assert "text" in chunk
+    assert "page_start" in chunk
+    assert "page_end" in chunk
+    assert "tokens" in chunk
+    assert "confidence" in chunk
+
+
+def test_process_json_has_ocr_pages(digital_pdf: Path) -> None:
+    """JSON format should include ocr_pages field."""
+    result = process(digital_pdf, output_format="json")
+    data = json.loads(result.text)
+    assert "ocr_pages" in data
+    assert isinstance(data["ocr_pages"], list)
+    # Digital PDF should not need OCR
+    assert data["ocr_pages"] == []
+
+
+def test_process_json_has_schema_version(digital_pdf: Path) -> None:
+    """JSON format should include schema_version 0.4.0."""
+    result = process(digital_pdf, output_format="json")
+    data = json.loads(result.text)
+    assert data["schema_version"] == "0.4.0"
