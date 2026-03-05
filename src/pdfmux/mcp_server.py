@@ -15,10 +15,27 @@ Tools:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
+from pdfmux import __version__
 from pdfmux.pipeline import process
+
+# Security: restrict file access to allowed directories.
+# Default: current working directory. Override via PDFMUX_ALLOWED_DIRS (colon-separated).
+_ALLOWED_DIRS_ENV = os.environ.get("PDFMUX_ALLOWED_DIRS", "")
+ALLOWED_DIRS: list[Path] = (
+    [Path(d).resolve() for d in _ALLOWED_DIRS_ENV.split(":") if d.strip()]
+    if _ALLOWED_DIRS_ENV
+    else [Path.cwd().resolve()]
+)
+
+
+def _is_path_allowed(file_path: Path) -> bool:
+    """Check if the given path is inside one of the allowed directories."""
+    resolved = file_path.resolve()
+    return any(resolved == d or d in resolved.parents for d in ALLOWED_DIRS)
 
 
 def run_server() -> None:
@@ -70,7 +87,7 @@ def _handle_initialize(msg_id: int | str | None) -> None:
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "pdfmux",
-                    "version": "1.0.0",
+                    "version": __version__,
                 },
             },
         }
@@ -202,6 +219,22 @@ def _handle_convert_pdf(msg_id: int | str | None, arguments: dict) -> None:
         )
         return
 
+    if not _is_path_allowed(Path(file_path)):
+        _write_message(
+            {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {
+                    "code": -32602,
+                    "message": (
+                        f"Access denied: {file_path} is outside allowed directories. "
+                        "Set PDFMUX_ALLOWED_DIRS to configure access."
+                    ),
+                },
+            }
+        )
+        return
+
     try:
         result = process(
             file_path=file_path,
@@ -267,6 +300,22 @@ def _handle_analyze_pdf(msg_id: int | str | None, arguments: dict) -> None:
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "error": {"code": -32602, "message": "file_path is required"},
+            }
+        )
+        return
+
+    if not _is_path_allowed(Path(file_path)):
+        _write_message(
+            {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {
+                    "code": -32602,
+                    "message": (
+                        f"Access denied: {file_path} is outside allowed directories. "
+                        "Set PDFMUX_ALLOWED_DIRS to configure access."
+                    ),
+                },
             }
         )
         return
@@ -353,6 +402,22 @@ def _handle_batch_convert(msg_id: int | str | None, arguments: dict) -> None:
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "error": {"code": -32602, "message": "directory is required"},
+            }
+        )
+        return
+
+    if not _is_path_allowed(Path(directory)):
+        _write_message(
+            {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {
+                    "code": -32602,
+                    "message": (
+                        f"Access denied: {directory} is outside allowed directories. "
+                        "Set PDFMUX_ALLOWED_DIRS to configure access."
+                    ),
+                },
             }
         )
         return

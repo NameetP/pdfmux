@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdfmux"
-version = "1.0.0"
+version = "1.0.1"
 description = "PDF extraction that checks its own work. Typed, streaming multi-pass pipeline for LLM-ready Markdown."
 readme = "README.md"
 license = "MIT"
@@ -23,23 +23,25 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Text Processing :: Markup :: Markdown",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+    "Environment :: Console",
 ]
 dependencies = [
     "typer>=0.9.0",
     "pymupdf>=1.24.0",
     "pymupdf4llm>=0.0.10",
     "rich>=13.0.0",
-    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]
+serve = ["mcp>=1.0.0"]
 tables = ["docling>=2.0.0"]
 ocr = ["rapidocr>=3.0.0", "onnxruntime>=1.19.0"]
 ocr-heavy = ["surya-ocr>=0.6.0"]
 llm = ["google-genai>=1.0.0"]
 langchain = ["langchain-core>=0.2.0"]
 llamaindex = ["llama-index-core>=0.10.0"]
-all = ["pdfmux[tables,ocr,llm,langchain,llamaindex]"]
+all = ["pdfmux[serve,tables,ocr,llm,langchain,llamaindex]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
@@ -51,8 +53,10 @@ pdfmux = "pdfmux.cli:app"
 
 [project.urls]
 Homepage = "https://pdfmux.com"
+Documentation = "https://github.com/NameetP/pdfmux#readme"
 Repository = "https://github.com/NameetP/pdfmux"
 Issues = "https://github.com/NameetP/pdfmux/issues"
+Changelog = "https://github.com/NameetP/pdfmux/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdfmux"]

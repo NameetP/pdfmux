@@ -106,12 +106,44 @@ def convert(
         _convert_file(input_path, output, format, quality, confidence, stdout)
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        import sys
+
+        sys.stderr.write(f"pdfmux {__version__}\n")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show pdfmux version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """PDF extraction that checks its own work."""
+
+
 @app.command()
 def serve() -> None:
     """Start the MCP server for AI agent integration."""
-    from pdfmux.mcp_server import run_server
+    import sys
 
-    console.print("[bold]Starting pdfmux MCP server...[/bold]")
+    try:
+        from pdfmux.mcp_server import run_server
+    except ImportError:
+        console.print(
+            '[red]MCP server requires the "mcp" package.[/red]\n'
+            'Install with: [bold]pip install "pdfmux[serve]"[/bold]'
+        )
+        raise typer.Exit(1)
+
+    # Print to stderr — stdout is reserved for MCP JSON-RPC protocol
+    sys.stderr.write("Starting pdfmux MCP server...\n")
     run_server()
 
 

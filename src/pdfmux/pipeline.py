@@ -25,7 +25,7 @@ from pdfmux.audit import (
     score_page,
 )
 from pdfmux.detect import PDFClassification, classify
-from pdfmux.errors import FileError, FormatError
+from pdfmux.errors import FileError, FormatError, OCRTimeoutError
 from pdfmux.types import (
     OutputFormat,
     PageQuality,
@@ -117,7 +117,10 @@ def process(
     try:
         qual = Quality(quality)
     except ValueError:
-        qual = Quality.STANDARD
+        valid = ", ".join(q.value for q in Quality)
+        raise FormatError(
+            f"Unknown quality preset: {quality}. Valid presets: {valid}"
+        )
 
     # Step 1: Classify the PDF
     classification = classify(file_path)
@@ -130,8 +133,22 @@ def process(
             code="PDF_TOO_LARGE",
         )
 
-    # Step 2: Route to the best extractor, get page results
-    pages, extractor_name, ocr_pages = _route_and_extract(file_path, classification, qual)
+    # Step 2: Route to the best extractor, get page results (with timeout)
+    if EXTRACTION_TIMEOUT_S > 0:
+        from concurrent.futures import TimeoutError as FuturesTimeout
+
+        with ThreadPoolExecutor(max_workers=1) as _timeout_pool:
+            _fut = _timeout_pool.submit(_route_and_extract, file_path, classification, qual)
+            try:
+                pages, extractor_name, ocr_pages = _fut.result(timeout=EXTRACTION_TIMEOUT_S)
+            except FuturesTimeout:
+                _fut.cancel()
+                raise OCRTimeoutError(
+                    f"Extraction timed out after {EXTRACTION_TIMEOUT_S}s. "
+                    "Set PDFMUX_TIMEOUT to increase the limit."
+                )
+    else:
+        pages, extractor_name, ocr_pages = _route_and_extract(file_path, classification, qual)
 
     # Step 3: Compute confidence
     unrecovered = sum(

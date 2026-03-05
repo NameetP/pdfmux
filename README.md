@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/NameetP/pdfmux/actions/workflows/ci.yml/badge.svg)](https://github.com/NameetP/pdfmux/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pdfmux)](https://pypi.org/project/pdfmux/)
+[![Python 3.11+](https://img.shields.io/pypi/pyversions/pdfmux)](https://pypi.org/project/pdfmux/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Downloads](https://img.shields.io/pypi/dm/pdfmux)](https://pypi.org/project/pdfmux/)
 
 PDF extraction that checks its own work. Built for LLM pipelines.
 
@@ -441,9 +444,9 @@ Add to your config:
 claude mcp add pdfmux -- pdfmux serve
 ```
 
-### Tool
+### Tools
 
-The server exposes a single `convert_pdf` tool:
+The server exposes three tools:
 
 ```json
 {
@@ -458,6 +461,14 @@ The server exposes a single `convert_pdf` tool:
 ```
 
 When confidence is below 80% or there are warnings, the response includes extraction metadata (confidence score, extractor used, OCR page numbers, actionable warnings).
+
+## Examples
+
+See the [`examples/`](examples/) directory for runnable scripts:
+
+- [`basic_usage.py`](examples/basic_usage.py) — extract_text, extract_json, load_llm_context
+- [`batch_processing.py`](examples/batch_processing.py) — directory processing with progress
+- [`mcp_agent.py`](examples/mcp_agent.py) — MCP config and tool examples
 
 ## Environment Variables
 
@@ -486,15 +497,18 @@ pdfmux doesn't compete with these tools — it orchestrates them. The key insigh
 ```
 src/pdfmux/
 ├── __init__.py         # Public API: extract_text, extract_json, load_llm_context + type/error re-exports
+├── py.typed            # PEP 561 marker — mypy/pyright recognize pdfmux as typed
 ├── types.py            # Frozen dataclasses + enums: Quality, OutputFormat, PageResult, DocumentResult, Chunk
 ├── errors.py           # Exception hierarchy: PdfmuxError → FileError, ExtractionError, FormatError, AuditError
-├── pipeline.py         # Multi-pass routing + merge + process_batch()
-├── detect.py           # PDF type classification
+├── pipeline.py         # Multi-pass routing + merge + process_batch() + security limits
+├── detect.py           # PDF type classification + layout detection
 ├── audit.py            # 5-check per-page confidence scoring + quality classification
+├── regions.py          # Region OCR — surgical image extraction for bad pages
+├── parallel.py         # Parallel OCR dispatch with thread pool
 ├── chunking.py         # Section-aware splitting + token estimation
 ├── postprocess.py      # Text cleanup
-├── mcp_server.py       # MCP server (stdio JSON-RPC)
-├── cli.py              # Typer CLI (convert, analyze, serve, doctor, bench)
+├── mcp_server.py       # MCP server (stdio JSON-RPC) with path restrictions
+├── cli.py              # Typer CLI (convert, analyze, serve, doctor, bench, version)
 ├── extractors/
 │   ├── __init__.py     # Extractor protocol + @register decorator + priority-ordered registry
 │   ├── fast.py         # PyMuPDF — handles 90% of PDFs (priority 10)
@@ -502,6 +516,9 @@ src/pdfmux/
 │   ├── tables.py       # Docling — table-heavy docs (priority 40)
 │   ├── ocr.py          # Surya — legacy heavy OCR (priority 30)
 │   └── llm.py          # Gemini Flash — hardest cases (priority 50)
+├── integrations/
+│   ├── langchain.py    # PDFMuxLoader for LangChain
+│   └── llamaindex.py   # PDFMuxReader for LlamaIndex
 └── formatters/
     ├── markdown.py     # Markdown output
     ├── json_fmt.py     # JSON + LLM chunked output
@@ -516,7 +533,7 @@ cd pdfmux
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# run tests (86 tests)
+# run tests (151 tests)
 pytest
 
 # lint
