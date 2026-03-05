@@ -1,7 +1,7 @@
 """RapidOCR extractor — lightweight OCR for image-heavy pages.
 
 ~200MB install (ONNX runtime + PaddleOCR v4 models).
-Replaces Surya (2-5GB, PyTorch, GPL) as the default pdfmux[ocr] backend.
+Default pdfmux[ocr] backend — CPU-only, Apache 2.0.
 
 Install: pip install pdfmux[ocr]
 """
@@ -9,9 +9,13 @@ Install: pip install pdfmux[ocr]
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 
 import fitz  # PyMuPDF
+
+from pdfmux.extractors import register
+from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
 
@@ -26,22 +30,25 @@ def _check_rapidocr() -> bool:
         return False
 
 
+@register(name="rapidocr", priority=20)
 class RapidOCRExtractor:
     """Extract text from PDF pages using RapidOCR.
 
     RapidOCR uses PaddleOCR v4 models via ONNX runtime.
     CPU-only, no GPU required, ~200MB footprint.
+    Engine is created once and cached for the instance lifetime.
     """
 
     def __init__(self) -> None:
-        if not _check_rapidocr():
-            raise ImportError("RapidOCR is not installed. Install with: pip install pdfmux[ocr]")
+        self._engine = None
+        if _check_rapidocr():
+            self._init_engine()
 
+    def _init_engine(self) -> None:
+        """Lazy-init the RapidOCR engine (loads 3 ONNX models, ~1s)."""
         from rapidocr import RapidOCR
 
-        # Suppress noisy RapidOCR INFO logs (model paths, engine info).
-        # Must be done AFTER import because rapidocr's import resets the
-        # logger level and adds its own StreamHandler.
+        # Suppress noisy RapidOCR INFO logs
         rapid_logger = logging.getLogger("RapidOCR")
         rapid_logger.setLevel(logging.WARNING)
         for handler in rapid_logger.handlers:
@@ -51,47 +58,57 @@ class RapidOCRExtractor:
 
     @property
     def name(self) -> str:
-        return "rapidocr (OCR)"
+        return "rapidocr"
 
-    def extract(self, file_path: str | Path, pages: list[int] | None = None) -> str:
-        """Extract text from a PDF using OCR.
+    def available(self) -> bool:
+        return _check_rapidocr()
 
-        Args:
-            file_path: Path to the PDF file.
-            pages: Optional list of 0-indexed page numbers. If None, all pages.
+    def extract(
+        self,
+        file_path: str | Path,
+        pages: list[int] | None = None,
+    ) -> Iterator[PageResult]:
+        """Yield one PageResult per page via OCR.
 
-        Returns:
-            Markdown text with page headers.
+        Opens the PDF once, renders each page at 200 DPI,
+        runs OCR, yields result.
         """
+        if not self.available():
+            from pdfmux.errors import ExtractorNotAvailable
+
+            raise ExtractorNotAvailable(
+                "RapidOCR is not installed. Install with: pip install pdfmux[ocr]"
+            )
+
+        if self._engine is None:
+            self._init_engine()
+
         file_path = Path(file_path)
         doc = fitz.open(str(file_path))
 
         page_range = pages if pages is not None else list(range(len(doc)))
-        all_text: list[str] = []
 
         for page_num in page_range:
-            page_text = self._ocr_page(doc, page_num)
+            text = self._ocr_page(doc, page_num)
+            has_text = len(text.strip()) > 10
 
-            if page_text.strip():
-                all_text.append(f"## Page {page_num + 1}\n\n{page_text}")
-            else:
-                all_text.append(f"## Page {page_num + 1}\n\n*(No text detected)*")
+            yield PageResult(
+                page_num=page_num,
+                text=text,
+                confidence=0.85 if has_text else 0.0,
+                quality=PageQuality.GOOD if has_text else PageQuality.EMPTY,
+                extractor=self.name,
+                image_count=len(doc[page_num].get_images(full=True)),
+                ocr_applied=True,
+            )
 
         doc.close()
-        return "\n\n".join(all_text)
 
     def extract_page(self, file_path: str | Path, page_num: int) -> str:
-        """Extract text from a single PDF page using OCR.
+        """Extract text from a single page — used by multi-pass merge."""
+        if self._engine is None:
+            self._init_engine()
 
-        Used by multi-pass merge to surgically re-extract bad pages.
-
-        Args:
-            file_path: Path to the PDF file.
-            page_num: 0-indexed page number.
-
-        Returns:
-            Plain text extracted from the page.
-        """
         file_path = Path(file_path)
         doc = fitz.open(str(file_path))
         text = self._ocr_page(doc, page_num)
@@ -99,21 +116,7 @@ class RapidOCRExtractor:
         return text
 
     def _ocr_page(self, doc: fitz.Document, page_num: int) -> str:
-        """Run OCR on a single page.
-
-        Pipeline:
-        1. Render page to image at 200 DPI
-        2. Get PNG bytes
-        3. Run RapidOCR engine
-        4. Join detected text lines
-
-        Args:
-            doc: Open fitz document.
-            page_num: 0-indexed page number.
-
-        Returns:
-            Extracted text as a string.
-        """
+        """Run OCR on a single page at 200 DPI."""
         page = doc[page_num]
         pix = page.get_pixmap(dpi=200)
         img_bytes = pix.tobytes("png")

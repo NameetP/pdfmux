@@ -1,8 +1,11 @@
 """LLM vision extractor — Gemini Flash for the hardest cases.
 
-This is the premium fallback for handwriting, complex forms, and documents
+Premium fallback for handwriting, complex forms, and documents
 that defeat rule-based extraction. Uses Gemini 2.5 Flash for best
 cost/accuracy ratio (~$0.01-0.05 per document).
+
+Install: pip install pdfmux[llm]
+Requires: GEMINI_API_KEY or GOOGLE_API_KEY env variable.
 """
 
 from __future__ import annotations
@@ -11,9 +14,13 @@ import base64
 import logging
 import os
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import fitz  # PyMuPDF
+
+from pdfmux.extractors import register
+from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
 
@@ -41,38 +48,38 @@ Rules:
 - Do not add any commentary — only output the extracted content"""
 
 
+@register(name="llm", priority=50)
 class LLMExtractor:
-    """Extract text from PDFs using LLM vision API (Gemini Flash)."""
+    """Extract text from PDFs using Gemini Flash vision API."""
 
     @property
     def name(self) -> str:
-        return "gemini-flash (LLM)"
+        return "gemini-flash"
 
-    def extract(self, file_path: str | Path, pages: list[int] | None = None) -> str:
-        """Extract text from a PDF using Gemini Flash vision.
-
-        Pipeline:
-        1. Render PDF pages to images via PyMuPDF
-        2. Send each image to Gemini Flash with extraction prompt
-        3. Concatenate results into Markdown
-
-        Args:
-            file_path: Path to the PDF file.
-            pages: Optional list of 0-indexed page numbers to extract.
-
-        Returns:
-            Markdown text extracted via LLM vision.
-        """
+    def available(self) -> bool:
         if not _check_genai():
-            raise ImportError(
+            return False
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        return api_key is not None
+
+    def extract(
+        self,
+        file_path: str | Path,
+        pages: list[int] | None = None,
+    ) -> Iterator[PageResult]:
+        """Yield one PageResult per page via LLM vision."""
+        if not _check_genai():
+            from pdfmux.errors import ExtractorNotAvailable
+
+            raise ExtractorNotAvailable(
                 "Google GenAI is not installed. Install with: pip install pdfmux[llm]"
             )
 
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if not api_key:
-            raise RuntimeError(
-                "No Gemini API key found. Set GEMINI_API_KEY or GOOGLE_API_KEY env variable."
-            )
+            from pdfmux.errors import ExtractionError
+
+            raise ExtractionError("No Gemini API key found. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
 
         from google import genai
 
@@ -82,11 +89,9 @@ class LLMExtractor:
         doc = fitz.open(str(file_path))
 
         page_range = pages if pages is not None else list(range(len(doc)))
-        all_text: list[str] = []
 
         for page_num in page_range:
             page = doc[page_num]
-            # Render at 200 DPI — good balance of quality vs token cost
             pix = page.get_pixmap(dpi=200)
 
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -113,12 +118,17 @@ class LLMExtractor:
                 ],
             )
 
-            page_text = response.text if response.text else ""
+            text = response.text if response.text else ""
+            has_text = len(text.strip()) > 10
 
-            if page_text.strip():
-                all_text.append(page_text.strip())
-            else:
-                all_text.append(f"*(Page {page_num + 1}: no text extracted)*")
+            yield PageResult(
+                page_num=page_num,
+                text=text.strip(),
+                confidence=0.90 if has_text else 0.0,
+                quality=PageQuality.GOOD if has_text else PageQuality.EMPTY,
+                extractor=self.name,
+                image_count=len(page.get_images(full=True)),
+                ocr_applied=True,
+            )
 
         doc.close()
-        return "\n\n---\n\n".join(all_text)

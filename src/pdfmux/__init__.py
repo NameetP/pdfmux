@@ -4,6 +4,13 @@ Public API:
     extract_text(path)       → Markdown string
     extract_json(path)       → dict with locked schema
     load_llm_context(path)   → list of chunk dicts with token estimates
+
+Types:
+    Quality, OutputFormat, PageQuality, PageResult, DocumentResult, Chunk
+
+Errors:
+    PdfmuxError, FileError, ExtractionError, ExtractorNotAvailable,
+    FormatError, AuditError
 """
 
 from __future__ import annotations
@@ -23,8 +30,45 @@ finally:
     _sys.stdout = _orig
 del _orig, _io
 
-__version__ = "0.4.0"
-__all__ = ["extract_text", "extract_json", "load_llm_context"]
+__version__ = "0.5.0"
+__all__ = [
+    # Public API
+    "extract_text",
+    "extract_json",
+    "load_llm_context",
+    # Types
+    "Quality",
+    "OutputFormat",
+    "PageQuality",
+    "PageResult",
+    "DocumentResult",
+    "Chunk",
+    # Errors
+    "PdfmuxError",
+    "FileError",
+    "ExtractionError",
+    "ExtractorNotAvailable",
+    "FormatError",
+    "AuditError",
+]
+
+# Re-export types for convenience: import pdfmux; pdfmux.PageResult(...)
+from pdfmux.errors import (  # noqa: E402, F401
+    AuditError,
+    ExtractionError,
+    ExtractorNotAvailable,
+    FileError,
+    FormatError,
+    PdfmuxError,
+)
+from pdfmux.types import (  # noqa: E402, F401
+    Chunk,
+    DocumentResult,
+    OutputFormat,
+    PageQuality,
+    PageResult,
+    Quality,
+)
 
 
 def extract_text(
@@ -34,14 +78,16 @@ def extract_text(
 ) -> str:
     """Extract text from a PDF as Markdown.
 
-    This is the simplest way to use pdfmux programmatically.
-
     Args:
         path: Path to the PDF file.
         quality: "fast", "standard" (default), or "high".
 
     Returns:
         Markdown text extracted from the PDF.
+
+    Raises:
+        FileError: If the file doesn't exist or isn't a PDF.
+        PdfmuxError: On extraction failures.
 
     Example::
 
@@ -63,7 +109,6 @@ def extract_json(
     """Extract text from a PDF as a structured dictionary.
 
     Returns the locked JSON schema with metadata, pages, and confidence.
-    Schema version: 0.4.0.
 
     Args:
         path: Path to the PDF file.
@@ -72,6 +117,10 @@ def extract_json(
     Returns:
         Dictionary with keys: schema_version, source, converter, extractor,
         page_count, confidence, warnings, ocr_pages, content, pages.
+
+    Raises:
+        FileError: If the file doesn't exist or isn't a PDF.
+        PdfmuxError: On extraction failures.
 
     Example::
 
@@ -104,6 +153,10 @@ def load_llm_context(
     Returns:
         List of chunk dicts, each with: title, text, page_start,
         page_end, tokens, confidence.
+
+    Raises:
+        FileError: If the file doesn't exist or isn't a PDF.
+        PdfmuxError: On extraction failures.
 
     Example::
 

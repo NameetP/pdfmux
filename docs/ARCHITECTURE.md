@@ -1,4 +1,4 @@
-# Architecture — pdfmux v0.4.0
+# Architecture — pdfmux v0.5.0
 
 PDF extraction that checks its own work. This document describes how.
 
@@ -7,7 +7,10 @@ PDF extraction that checks its own work. This document describes how.
 ```
 pdfmux Python API / CLI / MCP server
     │
-    ├─ __init__.py        public API: extract_text, extract_json, load_llm_context
+    ├─ __init__.py        public API: extract_text, extract_json, load_llm_context + type/error exports
+    │
+    ├─ types.py           frozen dataclasses + enums: Quality, OutputFormat, PageResult, DocumentResult, Chunk
+    ├─ errors.py          exception hierarchy: PdfmuxError → FileError, ExtractionError, FormatError, AuditError
     │
     ├─ detect.py          classify PDF (digital / scanned / graphical / mixed / tables)
     │
@@ -18,21 +21,120 @@ pdfmux Python API / CLI / MCP server
     │   ├─ has_tables       → TableExtractor → Fast fallback
     │   └─ standard         → multi-pass pipeline (below)
     │
-    ├─ audit.py           per-page quality auditing (the core of multi-pass)
+    ├─ audit.py           5-check per-page confidence scoring + quality classification
     │
     ├─ chunking.py        section-aware splitting + token estimation
     │
     ├─ extractors/
-    │   ├─ fast.py          PyMuPDF / pymupdf4llm — 0.01s/page, handles 90%
-    │   ├─ rapid_ocr.py     RapidOCR (PaddleOCR v4 + ONNX) — ~200MB, CPU
-    │   ├─ ocr.py           Surya OCR — legacy, ~5GB, GPU
-    │   ├─ tables.py        Docling — 97.9% table accuracy
-    │   └─ llm.py           Gemini 2.5 Flash — API, ~$0.01/doc
+    │   ├─ __init__.py      Extractor protocol + @register decorator + priority-ordered registry
+    │   ├─ fast.py          PyMuPDF / pymupdf4llm — 0.01s/page, handles 90% (priority 10)
+    │   ├─ rapid_ocr.py     RapidOCR (PaddleOCR v4 + ONNX) — ~200MB, CPU (priority 20)
+    │   ├─ ocr.py           Surya OCR — legacy, ~5GB, GPU (priority 30)
+    │   ├─ tables.py        Docling — 97.9% table accuracy (priority 40)
+    │   └─ llm.py           Gemini 2.5 Flash — API, ~$0.01/doc (priority 50)
     │
-    ├─ postprocess.py     text cleanup + confidence scoring
+    ├─ postprocess.py     text cleanup
     │
     └─ formatters/        markdown, json, csv, llm output
 ```
+
+## Type System
+
+All data flowing through the pipeline is represented by frozen dataclasses and enums defined in `types.py`. Nothing is a raw dict. Nothing is mutable after construction.
+
+```python
+class Quality(Enum):         # FAST, STANDARD, HIGH
+class OutputFormat(Enum):    # MARKDOWN, JSON, CSV, LLM
+class PageQuality(Enum):     # GOOD, BAD, EMPTY
+
+@dataclass(frozen=True)
+class PageResult:            # page_num, text, confidence, quality, extractor, image_count, ocr_applied
+@dataclass(frozen=True)
+class DocumentResult:        # pages, source, confidence, extractor_used, format, text, warnings, ocr_pages
+@dataclass(frozen=True)
+class Chunk:                 # title, text, page_start, page_end, tokens, confidence
+```
+
+All types are exported from `import pdfmux`. They are frozen (`@dataclass(frozen=True)`) so they can be hashed, stored in sets, and passed across threads safely.
+
+## Error Hierarchy
+
+Exceptions follow a flat hierarchy in `errors.py`:
+
+```
+PdfmuxError                      base — catch this to handle all pdfmux errors
+├── FileError                    bad path, unreadable, not a PDF, corrupted
+├── ExtractionError              extractor failed to produce output
+├── ExtractorNotAvailable        optional dependency not installed (includes install instructions)
+├── FormatError                  invalid or unsupported output format
+└── AuditError                   per-page quality audit failed (non-fatal in pipeline)
+```
+
+Propagation rules:
+- `FileError` → raise immediately, nothing to retry
+- `ExtractorNotAvailable` → log + try next extractor in registry
+- `ExtractionError` → log + try next extractor in registry
+- `FormatError` → raise immediately, caller picked bad format
+- `AuditError` → log + skip audit, return unaudited result
+
+## Extractor Protocol & Registry
+
+Every extractor implements the `Extractor` protocol:
+
+```python
+@runtime_checkable
+class Extractor(Protocol):
+    @property
+    def name(self) -> str: ...
+    def extract(self, file_path: str | Path, pages: list[int] | None = None) -> Iterator[PageResult]: ...
+    def available(self) -> bool: ...
+```
+
+Extractors register themselves with `@register(name, priority)` at class definition time:
+
+```python
+@register(name="fast", priority=10)
+class FastExtractor:
+    ...
+```
+
+The registry maintains priority order. Lower priority = tried first. The pipeline queries at runtime:
+
+- `get_extractor("fast")` — get a specific extractor by name
+- `available_extractors()` — list all extractors whose dependencies are installed
+- `extractor_names()` — list all registered names (installed or not)
+
+| Priority | Registry Name | Backend | Use Case |
+|----------|--------------|---------|----------|
+| 10 | `fast` | PyMuPDF / pymupdf4llm | Digital text PDFs |
+| 20 | `rapidocr` | RapidOCR (PaddleOCR v4) | Lightweight OCR (~200MB, CPU) |
+| 30 | `surya` | Surya OCR | Heavy OCR (~5GB, GPU) |
+| 40 | `docling` | Docling | Table-heavy documents |
+| 50 | `llm` | Gemini 2.5 Flash | Complex layouts, handwriting |
+
+## Streaming Architecture
+
+All extractors yield `Iterator[PageResult]` — one page object at a time. The pipeline consumes pages lazily. This bounds memory to roughly one page of text plus extractor overhead, regardless of document length.
+
+Measured: ~135MB peak on a 500-page PDF. Before v0.5.0, memory scaled linearly with page count.
+
+```
+Extract (streaming) → Audit (per-page) → Re-extract failures (streaming) → Merge → Format
+```
+
+## 5-Check Confidence Scoring
+
+Each page receives a confidence score from 0.0 to 1.0, computed from 5 independent checks in `audit.score_page()`:
+
+| Check | What it measures |
+|-------|-----------------|
+| Character density | Characters per page — catches blank extractions |
+| Alphabetic ratio | Proportion of alphabetic characters — catches garbage/binary data |
+| Word structure | Average word length and variance — catches joined/split text |
+| Whitespace sanity | Whitespace distribution — catches formatting collapse |
+| Encoding quality | Mojibake detection via regex — catches encoding failures |
+
+Document-level confidence (`audit.compute_document_confidence()`) is a content-weighted average: longer pages contribute more than shorter ones. Additional penalties for OCR'd pages and unrecovered pages.
 
 ## Multi-Pass Pipeline
 
@@ -52,10 +154,10 @@ _multipass_extract()                    ← pipeline.py
  ├── Pass 1: Fast extract + audit
  │    │
  │    ├── pymupdf4llm extracts every page (page_chunks=True)
- │    ├── audit.py scores each page:
- │    │    ├── "good":  ≥200 chars, OR ≥50 chars with no images
- │    │    ├── "bad":   <200 chars AND has images (text in images)
- │    │    └── "empty": <20 chars (blank or near-blank)
+ │    ├── audit.score_page() scores each page with 5 checks
+ │    │    ├── "good":  sufficient text density and quality
+ │    │    ├── "bad":   low text with images (text in images)
+ │    │    └── "empty": near-blank page
  │    │
  │    └── All pages good? → return fast text. Done. Zero overhead.
  │
@@ -74,10 +176,8 @@ _multipass_extract()                    ← pipeline.py
  └── Pass 3: Merge + clean + score
       │
       ├── Combine good pages + OCR'd pages in page order
-      ├── postprocess.py cleans text
-      └── Confidence score reflects actual quality
-           ├── OCR'd pages get small penalty (max 15%)
-           └── Unrecovered pages get proportional penalty
+      ├── postprocess.clean_text() cleans text
+      └── audit.compute_document_confidence() scores the merged result
 ```
 
 ### Why Multi-Pass?
@@ -98,6 +198,8 @@ Opens the PDF with PyMuPDF. Inspects every page for:
 - Line patterns (table detection)
 - Text alignment patterns (table detection)
 
+Raises `FileError` for missing files, non-PDFs, or corrupted documents.
+
 Returns a `PDFClassification` dataclass:
 ```python
 @dataclass
@@ -110,33 +212,6 @@ class PDFClassification:
     has_tables: bool
     graphical_pages: list[int]
     page_types: list[str]     # per-page: "digital", "scanned", "graphical"
-```
-
-### `audit.py` — Per-Page Quality Auditing
-
-The core of multi-pass. Uses pymupdf4llm with `page_chunks=True` to get per-page text, then classifies each page.
-
-**Thresholds** (hardcoded constants):
-- `GOOD_TEXT_THRESHOLD = 200` chars — pages with 200+ chars are reliably extractable
-- `MINIMAL_TEXT_THRESHOLD = 50` chars — pages with 50+ chars and no images are fine
-- `EMPTY_TEXT_THRESHOLD = 20` chars — below this, page is effectively empty
-
-Returns:
-```python
-@dataclass(frozen=True)
-class PageAudit:
-    page_num: int       # 0-indexed
-    text: str           # text from fast extraction
-    text_len: int
-    image_count: int
-    quality: str        # "good" | "bad" | "empty"
-    reason: str         # human-readable
-
-@dataclass
-class DocumentAudit:
-    pages: list[PageAudit]
-    total_pages: int
-    # Properties: good_pages, bad_pages, empty_pages, needs_ocr
 ```
 
 ### `pipeline.py` — Routing + Multi-Pass Orchestration
@@ -152,7 +227,9 @@ standard         → _multipass_extract()
 
 Key design decision: **graphical PDFs with false-positive table detection skip Docling** and go through multi-pass. Table formatting is less valuable than OCR text recovery for image-heavy content.
 
-`ConversionResult` includes `ocr_pages: list[int]` — which pages were re-extracted with OCR, for transparency.
+`process()` returns a `ConversionResult` (legacy wrapper) with text, confidence, extractor_used, ocr_pages, and warnings.
+
+`process_batch()` uses `ThreadPoolExecutor` for concurrent processing with per-file error isolation.
 
 ### `chunking.py` — Section-Aware Splitting
 
@@ -166,6 +243,7 @@ Splits extracted Markdown into chunks at heading boundaries for LLM consumption.
 
 **Token estimation:** `len(text.strip()) // 4` — standard GPT-family approximation, no external tokenizer dependency.
 
+Uses `Chunk` from `pdfmux.types`:
 ```python
 @dataclass(frozen=True)
 class Chunk:
@@ -177,55 +255,27 @@ class Chunk:
     confidence: float    # inherited from document
 ```
 
-Used by `load_llm_context()` public API and `--format llm` CLI output.
-
 ### `__init__.py` — Public Python API
 
 Three thin wrappers around `pipeline.process()`:
 
 ```python
-extract_text(path, *, quality="standard") → str         # Markdown string
-extract_json(path, *, quality="standard") → dict         # dict with locked schema
-load_llm_context(path, *, quality="standard") → list[dict]  # chunk dicts with tokens
+extract_text(path, *, quality="standard") → str            # Markdown string
+extract_json(path, *, quality="standard") → dict           # dict with locked schema
+load_llm_context(path, *, quality="standard") → list[dict] # chunk dicts with tokens
 ```
 
 All imports are lazy (inside functions) to avoid circular deps and keep `import pdfmux` fast.
 
-### `postprocess.py` — Cleanup + Confidence
+Re-exports all 6 types and all 6 error classes for convenience.
+
+### `postprocess.py` — Cleanup
 
 Text cleanup:
 - Remove control characters (except newlines/tabs)
 - Fix broken hyphenation across lines
 - Normalize excessive blank lines
 - Fix spaced-out text artifacts ("W i t h" → "With")
-
-Confidence scoring factors:
-- Text completeness (chars per page)
-- Encoding quality (valid UTF-8 ratio)
-- Structure preservation (headings, lists detected)
-- Whitespace sanity
-- Graphical page penalty (proportional to unrecovered pages)
-- OCR noise penalty (max 15% for OCR'd pages)
-
-### `extractors/` — Extractor Protocol
-
-All extractors implement:
-```python
-class Extractor(Protocol):
-    def extract(self, file_path: str | Path, pages: list[int] | None = None) -> str: ...
-    @property
-    def name(self) -> str: ...
-```
-
-**FastExtractor** (`fast.py`): pymupdf4llm → raw fitz fallback. Always available.
-
-**RapidOCRExtractor** (`rapid_ocr.py`): PaddleOCR v4 models via ONNX runtime. ~200MB, CPU-only, Apache 2.0. Renders pages at 200 DPI, runs OCR, returns text. Has `extract_page()` for single-page extraction (used by multi-pass).
-
-**OCRExtractor** (`ocr.py`): Surya OCR. ~5GB, PyTorch, GPU recommended. Legacy — kept for users who need it.
-
-**TableExtractor** (`tables.py`): Docling. Best for table-heavy documents (97.9% accuracy).
-
-**LLMExtractor** (`llm.py`): Gemini 2.5 Flash. API-based, ~$0.01/doc. Last-resort fallback for handwriting, complex layouts.
 
 ### `mcp_server.py` — MCP Server
 
@@ -254,4 +304,5 @@ Optional:
 3. **Deterministic by default.** Same PDF → same output. OCR is the exception (documented).
 4. **Base install stays small.** ~30MB. OCR is opt-in.
 5. **Flat is better than nested.** No `core/`, `recovery/` folders until complexity justifies it.
-6. **Hardest technical risk first.** Multi-pass shipped before API polish.
+6. **Types over dicts.** All data flows through frozen dataclasses. No raw dicts in the pipeline.
+7. **Hardest technical risk first.** Multi-pass shipped before API polish.

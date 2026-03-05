@@ -1,4 +1,4 @@
-"""MCP server — expose Pdfmux as a tool for AI agents.
+"""MCP server — expose pdfmux as a tool for AI agents.
 
 Usage:
     pdfmux serve
@@ -16,12 +16,7 @@ from pdfmux.pipeline import process
 
 
 def run_server() -> None:
-    """Run the MCP server over stdio.
-
-    Implements the Model Context Protocol (MCP) for tool execution.
-    Reads JSON-RPC messages from stdin, processes them, writes responses to stdout.
-    """
-    # Write server info
+    """Run the MCP server over stdio (JSON-RPC)."""
     _write_message(
         {
             "jsonrpc": "2.0",
@@ -60,7 +55,6 @@ def run_server() -> None:
 
 
 def _handle_initialize(msg_id: int | str | None) -> None:
-    """Handle the initialize request."""
     _write_message(
         {
             "jsonrpc": "2.0",
@@ -70,7 +64,7 @@ def _handle_initialize(msg_id: int | str | None) -> None:
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "pdfmux",
-                    "version": "0.4.0",
+                    "version": "0.5.0",
                 },
             },
         }
@@ -78,7 +72,6 @@ def _handle_initialize(msg_id: int | str | None) -> None:
 
 
 def _handle_tools_list(msg_id: int | str | None) -> None:
-    """Handle the tools/list request."""
     _write_message(
         {
             "jsonrpc": "2.0",
@@ -89,10 +82,9 @@ def _handle_tools_list(msg_id: int | str | None) -> None:
                         "name": "convert_pdf",
                         "description": (
                             "Convert a PDF to AI-readable Markdown. "
-                            "Automatically detects the PDF type (digital, "
-                            "graphical, scanned, mixed) and picks the best "
-                            "extraction method. Returns confidence score "
-                            "and warnings when extraction is limited."
+                            "Automatically detects the PDF type and picks "
+                            "the best extraction method. Returns confidence "
+                            "score and warnings when extraction is limited."
                         ),
                         "inputSchema": {
                             "type": "object",
@@ -110,8 +102,7 @@ def _handle_tools_list(msg_id: int | str | None) -> None:
                                 "quality": {
                                     "type": "string",
                                     "description": (
-                                        "Quality preset: fast (rule-based), "
-                                        "standard (auto), high (ML-based)"
+                                        "Quality preset: fast, standard (default), high"
                                     ),
                                     "enum": ["fast", "standard", "high"],
                                     "default": "standard",
@@ -127,7 +118,6 @@ def _handle_tools_list(msg_id: int | str | None) -> None:
 
 
 def _handle_tools_call(msg_id: int | str | None, params: dict) -> None:
-    """Handle a tools/call request."""
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
 
@@ -162,10 +152,8 @@ def _handle_tools_call(msg_id: int | str | None, params: dict) -> None:
             quality=quality,
         )
 
-        # Build response with extraction metadata and warnings
         content_parts = []
 
-        # Add warnings/metadata header if confidence is below 80%
         if result.confidence < 0.8 or result.warnings:
             meta_lines = [
                 f"**Extraction confidence: {result.confidence:.0%}**",
@@ -178,31 +166,19 @@ def _handle_tools_call(msg_id: int | str | None, params: dict) -> None:
                 meta_lines.append("")
                 meta_lines.append("**Warnings:**")
                 for w in result.warnings:
-                    meta_lines.append(f"- ⚠ {w}")
+                    meta_lines.append(f"- {w}")
             meta_lines.append("")
             meta_lines.append("---")
             meta_lines.append("")
-            content_parts.append(
-                {
-                    "type": "text",
-                    "text": "\n".join(meta_lines),
-                }
-            )
+            content_parts.append({"type": "text", "text": "\n".join(meta_lines)})
 
-        content_parts.append(
-            {
-                "type": "text",
-                "text": result.text,
-            }
-        )
+        content_parts.append({"type": "text", "text": result.text})
 
         _write_message(
             {
                 "jsonrpc": "2.0",
                 "id": msg_id,
-                "result": {
-                    "content": content_parts,
-                },
+                "result": {"content": content_parts},
             }
         )
     except Exception as e:
@@ -211,12 +187,7 @@ def _handle_tools_call(msg_id: int | str | None, params: dict) -> None:
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"Error converting PDF: {e}",
-                        }
-                    ],
+                    "content": [{"type": "text", "text": f"Error converting PDF: {e}"}],
                     "isError": True,
                 },
             }
@@ -224,6 +195,5 @@ def _handle_tools_call(msg_id: int | str | None, params: dict) -> None:
 
 
 def _write_message(message: dict) -> None:
-    """Write a JSON-RPC message to stdout."""
     sys.stdout.write(json.dumps(message) + "\n")
     sys.stdout.flush()

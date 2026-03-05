@@ -11,33 +11,20 @@ Used by:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
-# Page separator used throughout pdfmux (pipeline.py, fast.py, json_fmt.py)
+from pdfmux.types import Chunk
+
+# Page separator used throughout pdfmux
 PAGE_SEPARATOR = "\n\n---\n\n"
 
 # Heading pattern: ATX-style headings at start of line
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 
 
-@dataclass(frozen=True)
-class Chunk:
-    """A single section-aware chunk of a document."""
-
-    title: str  # heading text, or "Page N" if no heading
-    text: str  # the content under this heading
-    page_start: int  # 1-indexed first page
-    page_end: int  # 1-indexed last page
-    tokens: int  # estimated token count
-    confidence: float  # inherited from document confidence
-
-
 def estimate_tokens(text: str) -> int:
     """Estimate token count using chars/4 approximation.
 
-    This is the standard GPT-family approximation. No external
-    tokenizer dependency needed. Good enough for context window
-    planning and RAG chunk sizing.
+    Standard GPT-family approximation. No external tokenizer needed.
     """
     return max(1, len(text.strip()) // 4)
 
@@ -64,10 +51,7 @@ def chunk_by_sections(
     if not text or not text.strip():
         return []
 
-    # Build page offset map: list of (start_offset, end_offset) per page
     page_offsets = _build_page_offsets(text)
-
-    # Find heading-based sections
     sections = _find_sections(text)
 
     if sections:
@@ -77,10 +61,7 @@ def chunk_by_sections(
 
 
 def _build_page_offsets(text: str) -> list[tuple[int, int]]:
-    """Build a list of (start, end) character offsets for each page.
-
-    Pages are delimited by PAGE_SEPARATOR in the text.
-    """
+    """Build (start, end) character offsets for each page."""
     pages = text.split(PAGE_SEPARATOR)
     offsets = []
     pos = 0
@@ -88,7 +69,7 @@ def _build_page_offsets(text: str) -> list[tuple[int, int]]:
         start = pos
         end = pos + len(page_text)
         offsets.append((start, end))
-        pos = end + len(PAGE_SEPARATOR)  # skip the separator
+        pos = end + len(PAGE_SEPARATOR)
     return offsets
 
 
@@ -97,15 +78,11 @@ def _offset_to_page(offset: int, page_offsets: list[tuple[int, int]]) -> int:
     for i, (start, end) in enumerate(page_offsets):
         if start <= offset <= end:
             return i + 1
-    # Past the end → last page
     return len(page_offsets)
 
 
 def _find_sections(text: str) -> list[tuple[str, int, int]]:
-    """Find heading-based sections in the text.
-
-    Returns list of (title, start_offset, end_offset) tuples.
-    """
+    """Find heading-based sections. Returns (title, start, end) tuples."""
     matches = list(_HEADING_RE.finditer(text))
     if not matches:
         return []
@@ -114,7 +91,6 @@ def _find_sections(text: str) -> list[tuple[str, int, int]]:
     for i, match in enumerate(matches):
         title = match.group(2).strip()
         start = match.start()
-        # Section ends at the next heading, or end of text
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         sections.append((title, start, end))
 
@@ -130,7 +106,6 @@ def _chunks_from_sections(
     """Create chunks from heading-based sections."""
     chunks = []
     for title, start, end in sections:
-        # Slice the full section text from the original document
         section_text = text[start:end].strip()
         if not section_text:
             continue
@@ -156,7 +131,7 @@ def _chunks_from_pages(
     page_offsets: list[tuple[int, int]],
     confidence: float,
 ) -> list[Chunk]:
-    """Fallback: create one chunk per page when no headings exist."""
+    """Fallback: one chunk per page when no headings exist."""
     pages = text.split(PAGE_SEPARATOR)
     chunks = []
     for i, page_text in enumerate(pages):

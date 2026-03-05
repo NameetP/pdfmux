@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from pdfmux.detect import classify
+from pdfmux.errors import FileError
 
 
 def test_classify_digital_pdf(digital_pdf: Path) -> None:
@@ -34,14 +35,14 @@ def test_classify_multi_page(multi_page_pdf: Path) -> None:
 
 
 def test_classify_nonexistent_file() -> None:
-    """Should raise FileNotFoundError for missing files."""
-    with pytest.raises(FileNotFoundError):
+    """Should raise FileError for missing files."""
+    with pytest.raises(FileError):
         classify("/nonexistent/file.pdf")
 
 
 def test_classify_non_pdf(tmp_path: Path) -> None:
-    """Should raise ValueError for non-PDF files."""
+    """Should raise FileError for non-PDF files."""
     txt = tmp_path / "test.txt"
     txt.write_text("not a pdf")
-    with pytest.raises(ValueError, match="Not a PDF"):
+    with pytest.raises(FileError):
         classify(txt)

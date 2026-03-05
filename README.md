@@ -160,6 +160,53 @@ for c in chunks:
 
 All three functions accept `quality="fast"`, `"standard"` (default), or `"high"`.
 
+### Types & Errors
+
+Every object in the pipeline is typed and immutable. All types and errors are exported from the top-level package.
+
+```python
+from pdfmux import (
+    # Enums
+    Quality,              # FAST, STANDARD, HIGH
+    OutputFormat,         # MARKDOWN, JSON, CSV, LLM
+    PageQuality,          # GOOD, BAD, EMPTY
+
+    # Data objects (frozen dataclasses)
+    PageResult,           # Single page: text, page_num, confidence, quality, extractor
+    DocumentResult,       # Full document: pages, source, confidence, extractor_used
+    Chunk,                # Section-aware chunk: title, text, page_start, page_end, tokens
+
+    # Errors
+    PdfmuxError,          # Base — catch this to handle all pdfmux errors
+    FileError,            # File not found, unreadable, not a PDF
+    ExtractionError,      # Extraction failed
+    ExtractorNotAvailable,# Requested extractor not installed
+    FormatError,          # Invalid output format
+    AuditError,           # Audit could not complete
+)
+```
+
+Catch broad or narrow:
+
+```python
+try:
+    text = pdfmux.extract_text("report.pdf")
+except pdfmux.ExtractorNotAvailable as e:
+    print(f"Missing dependency: {e}")
+except pdfmux.PdfmuxError as e:
+    print(f"pdfmux error: {e}")
+```
+
+Stream pages with bounded memory:
+
+```python
+from pdfmux.extractors import get_extractor
+
+ext = get_extractor("fast")
+for page in ext.extract("large-500-pages.pdf"):  # Iterator[PageResult]
+    process(page.text)  # bounded memory, even on 500-page PDFs
+```
+
 ## CLI Usage
 
 ### Convert a single file
@@ -438,20 +485,23 @@ pdfmux doesn't compete with these tools — it orchestrates them. The key insigh
 
 ```
 src/pdfmux/
-├── __init__.py         # Public API: extract_text, extract_json, load_llm_context
-├── cli.py              # Typer CLI (convert, analyze, serve, doctor, bench)
-├── pipeline.py         # Multi-pass routing + merge logic
+├── __init__.py         # Public API: extract_text, extract_json, load_llm_context + type/error re-exports
+├── types.py            # Frozen dataclasses + enums: Quality, OutputFormat, PageResult, DocumentResult, Chunk
+├── errors.py           # Exception hierarchy: PdfmuxError → FileError, ExtractionError, FormatError, AuditError
+├── pipeline.py         # Multi-pass routing + merge + process_batch()
 ├── detect.py           # PDF type classification
-├── audit.py            # Per-page quality auditing
+├── audit.py            # 5-check per-page confidence scoring + quality classification
 ├── chunking.py         # Section-aware splitting + token estimation
-├── postprocess.py      # Cleanup + confidence scoring
+├── postprocess.py      # Text cleanup
 ├── mcp_server.py       # MCP server (stdio JSON-RPC)
+├── cli.py              # Typer CLI (convert, analyze, serve, doctor, bench)
 ├── extractors/
-│   ├── fast.py         # PyMuPDF — handles 90% of PDFs
-│   ├── rapid_ocr.py    # RapidOCR — lightweight OCR (~200MB)
-│   ├── tables.py       # Docling — table-heavy docs
-│   ├── ocr.py          # Surya — legacy heavy OCR
-│   └── llm.py          # Gemini Flash — hardest cases
+│   ├── __init__.py     # Extractor protocol + @register decorator + priority-ordered registry
+│   ├── fast.py         # PyMuPDF — handles 90% of PDFs (priority 10)
+│   ├── rapid_ocr.py    # RapidOCR — lightweight OCR (~200MB, priority 20)
+│   ├── tables.py       # Docling — table-heavy docs (priority 40)
+│   ├── ocr.py          # Surya — legacy heavy OCR (priority 30)
+│   └── llm.py          # Gemini Flash — hardest cases (priority 50)
 └── formatters/
     ├── markdown.py     # Markdown output
     ├── json_fmt.py     # JSON + LLM chunked output
@@ -466,7 +516,7 @@ cd pdfmux
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# run tests (85 tests)
+# run tests (86 tests)
 pytest
 
 # lint
