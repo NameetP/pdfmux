@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 GOOD_TEXT_THRESHOLD = 200  # chars — above this, page is probably fine
 MINIMAL_TEXT_THRESHOLD = 50  # chars — below this with images = bad
 EMPTY_TEXT_THRESHOLD = 20  # chars — below this = empty regardless
+PAGE_WINDOW = 50  # pages per batch for windowed processing
 
 
 # ---------------------------------------------------------------------------
@@ -219,29 +220,42 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
     """
     file_path = Path(file_path)
 
-    chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True)
+    # Determine total page count
+    import fitz
 
+    doc = fitz.open(str(file_path))
+    total_pages = len(doc)
+    doc.close()
+
+    # Process in windows to bound memory on large documents
     page_audits: list[PageAudit] = []
 
-    for i, chunk in enumerate(chunks):
-        text = chunk.get("text", "")
-        text_len = len(text.strip())
-        image_count = len(chunk.get("images", []))
+    for start in range(0, total_pages, PAGE_WINDOW):
+        end = min(start + PAGE_WINDOW, total_pages)
+        page_range = list(range(start, end))
 
-        quality, reason = _classify_page(text_len, image_count)
+        chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True, pages=page_range)
 
-        page_audits.append(
-            PageAudit(
-                page_num=i,
-                text=text,
-                text_len=text_len,
-                image_count=image_count,
-                quality=quality,
-                reason=reason,
+        for i, chunk in enumerate(chunks):
+            page_num = start + i
+            text = chunk.get("text", "")
+            text_len = len(text.strip())
+            image_count = len(chunk.get("images", []))
+
+            quality, reason = _classify_page(text_len, image_count)
+
+            page_audits.append(
+                PageAudit(
+                    page_num=page_num,
+                    text=text,
+                    text_len=text_len,
+                    image_count=image_count,
+                    quality=quality,
+                    reason=reason,
+                )
             )
-        )
 
-    audit = DocumentAudit(pages=page_audits, total_pages=len(chunks))
+    audit = DocumentAudit(pages=page_audits, total_pages=total_pages)
 
     n_good = len(audit.good_pages)
     n_bad = len(audit.bad_pages)

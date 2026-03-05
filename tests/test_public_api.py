@@ -35,9 +35,9 @@ def test_extract_json_returns_dict(digital_pdf: Path) -> None:
 
 
 def test_extract_json_schema_version(digital_pdf: Path) -> None:
-    """extract_json() should include schema_version 0.5.0."""
+    """extract_json() should include schema_version 0.6.0."""
     data = pdfmux.extract_json(digital_pdf)
-    assert data["schema_version"] == "0.5.0"
+    assert data["schema_version"] == "0.6.0"
 
 
 def test_extract_json_has_ocr_pages(digital_pdf: Path) -> None:
@@ -105,9 +105,9 @@ def test_load_llm_context_pages_1_indexed(digital_pdf: Path) -> None:
         assert chunk["page_end"] >= chunk["page_start"]
 
 
-def test_version_is_0_5_0() -> None:
-    """Module version should be 0.5.0."""
-    assert pdfmux.__version__ == "0.5.0"
+def test_version_is_0_6_0() -> None:
+    """Module version should be 0.6.0."""
+    assert pdfmux.__version__ == "0.6.0"
 
 
 def test_all_exports() -> None:

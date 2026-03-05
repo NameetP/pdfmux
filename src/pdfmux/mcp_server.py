@@ -64,7 +64,7 @@ def _handle_initialize(msg_id: int | str | None) -> None:
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "pdfmux",
-                    "version": "0.5.0",
+                    "version": "0.6.0",
                 },
             },
         }

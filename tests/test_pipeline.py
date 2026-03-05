@@ -111,7 +111,7 @@ def test_process_json_has_ocr_pages(digital_pdf: Path) -> None:
 
 
 def test_process_json_has_schema_version(digital_pdf: Path) -> None:
-    """JSON format should include schema_version 0.5.0."""
+    """JSON format should include schema_version 0.6.0."""
     result = process(digital_pdf, output_format="json")
     data = json.loads(result.text)
-    assert data["schema_version"] == "0.5.0"
+    assert data["schema_version"] == "0.6.0"

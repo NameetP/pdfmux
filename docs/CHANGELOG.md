@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0 (2026-03-05)
+
+### Added
+- **Parallel OCR dispatch** (`parallel.py`) — OCR re-extraction now runs across 4 threads via `ThreadPoolExecutor`. ONNX runtime releases the GIL during inference, giving real parallelism. Per-page timing and error isolation via `PageOCRResult` frozen dataclass.
+- **OCR budget control** — Standard mode caps OCR at 30% of document pages. Prioritizes "bad" pages (some text) over "empty" pages. `quality=high` ignores the budget. Override with `PDFMUX_OCR_BUDGET` env var.
+- **Windowed audit** — `audit_document()` now processes pages in windows of 50 instead of loading the entire document at once. Bounds memory on 500+ page PDFs.
+- 7 new tests: parallel OCR dispatch (4 tests) and budget control logic (3 tests).
+
+### Changed
+- Multi-pass pipeline uses parallel OCR dispatch instead of serial page-by-page loop.
+- JSON schema version bumped to `0.6.0`.
+- Total test count: 93.
+
 ## 0.5.0 (2026-03-05)
 
 ### Added

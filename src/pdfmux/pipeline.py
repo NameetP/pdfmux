@@ -13,6 +13,7 @@ Returns DocumentResult with streaming PageResults internally.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -33,6 +34,9 @@ from pdfmux.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# OCR budget: cap at 30% of document pages in standard mode
+OCR_BUDGET_RATIO = float(os.environ.get("PDFMUX_OCR_BUDGET", "0.30"))
 
 
 # ---------------------------------------------------------------------------
@@ -316,23 +320,50 @@ def _multipass_extract(
         return fast_pages, "pymupdf4llm", []
 
     # Pass 2: Re-extract bad/empty pages with OCR
-    pages_needing_ocr = audit.bad_pages + audit.empty_pages
+    all_pages_needing_ocr = audit.bad_pages + audit.empty_pages
     ocr_results: dict[int, str] = {}
     ocr_name = ""
+    budget_warnings: list[str] = []
+
+    # OCR budget: cap at budget ratio of document pages
+    max_ocr_pages = max(1, int(classification.page_count * OCR_BUDGET_RATIO))
+    if len(all_pages_needing_ocr) > max_ocr_pages:
+        # Prioritize "bad" pages (some text) over "empty" pages
+        prioritized = sorted(
+            all_pages_needing_ocr,
+            key=lambda pn: (0 if audit.pages[pn].quality == "bad" else 1, pn),
+        )
+        pages_needing_ocr = prioritized[:max_ocr_pages]
+        skipped = len(all_pages_needing_ocr) - max_ocr_pages
+        logger.warning(
+            f"OCR budget: processing {max_ocr_pages} of {len(all_pages_needing_ocr)} "
+            f"pages (budget={OCR_BUDGET_RATIO:.0%} of {classification.page_count}). "
+            f"Skipping {skipped} pages."
+        )
+        budget_warnings.append(
+            f"{skipped} pages skipped due to OCR budget. Use --quality high to process all pages."
+        )
+    else:
+        pages_needing_ocr = all_pages_needing_ocr
 
     logger.info(
         f"Multi-pass: {len(pages_needing_ocr)} pages need re-extraction "
         f"(bad={len(audit.bad_pages)}, empty={len(audit.empty_pages)})"
     )
 
-    # Try RapidOCR first
+    # Try RapidOCR first — now with parallel dispatch
     try:
         from pdfmux.extractors.rapid_ocr import RapidOCRExtractor
 
         ocr = RapidOCRExtractor()
         if ocr.available():
-            for page_num in pages_needing_ocr:
-                ocr_text = ocr.extract_page(file_path, page_num)
+            from pdfmux.parallel import parallel_ocr
+
+            ocr_raw = parallel_ocr(file_path, pages_needing_ocr, ocr)
+            for page_num, page_ocr in ocr_raw.items():
+                if not page_ocr.success:
+                    continue
+                ocr_text = page_ocr.text
                 page_audit = audit.pages[page_num]
 
                 if page_audit.quality == "empty":
