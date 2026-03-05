@@ -8,6 +8,7 @@ Install: pip install pdfmux[ocr-heavy]
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -70,11 +71,17 @@ class OCRExtractor:
             page = doc[page_num]
             pix = page.get_pixmap(dpi=300)
 
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                pix.save(tmp.name)
-                image = Image.open(tmp.name)
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    tmp_path = tmp.name
+                    pix.save(tmp_path)
+                image = Image.open(tmp_path)
 
-            predictions = rec_predictor([image], [det_predictor([image])[0].bboxes])
+                predictions = rec_predictor([image], [det_predictor([image])[0].bboxes])
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
 
             text = ""
             if predictions and predictions[0].text_lines:

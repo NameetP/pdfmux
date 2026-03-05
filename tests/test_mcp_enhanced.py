@@ -12,6 +12,11 @@ from pdfmux.mcp_server import (
 )
 
 
+def _allow_path(path: Path):
+    """Context manager to allow a path in MCP server."""
+    return patch("pdfmux.mcp_server.ALLOWED_DIRS", [path.resolve()])
+
+
 class TestAnalyzePdf:
     """Tests for the analyze_pdf MCP tool."""
 
@@ -19,7 +24,10 @@ class TestAnalyzePdf:
         """analyze_pdf should return classification and audit metadata."""
         captured = []
 
-        with patch("pdfmux.mcp_server._write_message", side_effect=captured.append):
+        with (
+            patch("pdfmux.mcp_server._write_message", side_effect=captured.append),
+            _allow_path(digital_pdf.parent),
+        ):
             _handle_analyze_pdf(msg_id=1, arguments={"file_path": str(digital_pdf)})
 
         assert len(captured) == 1
@@ -55,7 +63,10 @@ class TestAnalyzePdf:
         """Each page in analyze output should have quality fields."""
         captured = []
 
-        with patch("pdfmux.mcp_server._write_message", side_effect=captured.append):
+        with (
+            patch("pdfmux.mcp_server._write_message", side_effect=captured.append),
+            _allow_path(digital_pdf.parent),
+        ):
             _handle_analyze_pdf(msg_id=3, arguments={"file_path": str(digital_pdf)})
 
         content = captured[0]["result"]["content"][0]["text"]
@@ -84,7 +95,10 @@ class TestBatchConvert:
 
         captured = []
 
-        with patch("pdfmux.mcp_server._write_message", side_effect=captured.append):
+        with (
+            patch("pdfmux.mcp_server._write_message", side_effect=captured.append),
+            _allow_path(tmp_path),
+        ):
             _handle_batch_convert(msg_id=4, arguments={"directory": str(batch_dir)})
 
         assert len(captured) == 1
@@ -105,7 +119,10 @@ class TestBatchConvert:
         """batch_convert with no PDFs should report empty."""
         captured = []
 
-        with patch("pdfmux.mcp_server._write_message", side_effect=captured.append):
+        with (
+            patch("pdfmux.mcp_server._write_message", side_effect=captured.append),
+            _allow_path(tmp_path),
+        ):
             _handle_batch_convert(msg_id=5, arguments={"directory": str(tmp_path)})
 
         assert len(captured) == 1

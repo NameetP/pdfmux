@@ -1,4 +1,4 @@
-# Architecture — pdfmux v0.5.0
+# Architecture — pdfmux v1.0.0
 
 PDF extraction that checks its own work. This document describes how.
 

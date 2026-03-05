@@ -94,10 +94,16 @@ class LLMExtractor:
             page = doc[page_num]
             pix = page.get_pixmap(dpi=200)
 
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                pix.save(tmp.name)
-                with open(tmp.name, "rb") as f:
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    tmp_path = tmp.name
+                    pix.save(tmp_path)
+                with open(tmp_path, "rb") as f:
                     image_bytes = f.read()
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
 
             image_b64 = base64.b64encode(image_bytes).decode()
 
