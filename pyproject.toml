@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdfmux"
-version = "0.4.0"
-description = "PDF extraction that checks its own work. Multi-pass pipeline for LLM-ready Markdown."
+version = "0.5.0"
+description = "PDF extraction that checks its own work. Typed, streaming multi-pass pipeline for LLM-ready Markdown."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

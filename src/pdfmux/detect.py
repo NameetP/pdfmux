@@ -1,4 +1,11 @@
-"""PDF type detection — classify a PDF to route it to the best extractor."""
+"""PDF type detection — classify a PDF to route it to the best extractor.
+
+Opens the PDF with PyMuPDF. Inspects every page for:
+- Text content (character count)
+- Embedded images (count + coverage area)
+- Line patterns (table detection)
+- Text alignment patterns (table detection)
+"""
 
 from __future__ import annotations
 
@@ -6,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import fitz  # PyMuPDF
+
+from pdfmux.errors import FileError
 
 
 @dataclass
@@ -28,19 +37,26 @@ class PDFClassification:
 def classify(file_path: str | Path) -> PDFClassification:
     """Classify a PDF to determine the best extraction strategy.
 
-    Strategy:
-    1. Open with PyMuPDF, read metadata
-    2. Per page: check if text is extractable (digital) or image-only (scanned)
-    3. Check for table patterns (ruled lines, aligned blocks)
-    4. Return classification with confidence
+    Args:
+        file_path: Path to the PDF file.
+
+    Returns:
+        PDFClassification with detection results.
+
+    Raises:
+        FileError: If the file doesn't exist or isn't a PDF.
     """
     file_path = Path(file_path)
     if not file_path.exists():
-        raise FileNotFoundError(f"PDF not found: {file_path}")
+        raise FileError(f"PDF not found: {file_path}")
     if not file_path.suffix.lower() == ".pdf":
-        raise ValueError(f"Not a PDF file: {file_path}")
+        raise FileError(f"Not a PDF file: {file_path}")
 
-    doc = fitz.open(str(file_path))
+    try:
+        doc = fitz.open(str(file_path))
+    except Exception as e:
+        raise FileError(f"Cannot open PDF: {file_path} — {e}") from e
+
     result = PDFClassification(page_count=len(doc))
 
     digital_pages = []
@@ -54,7 +70,7 @@ def classify(file_path: str | Path) -> PDFClassification:
         text_len = len(text)
         image_count = len(images)
 
-        # --- Classify into digital / scanned (existing logic) ---
+        # Classify into digital / scanned
         if text_len > 50:
             digital_pages.append(page_num)
         elif images:
@@ -62,12 +78,7 @@ def classify(file_path: str | Path) -> PDFClassification:
         else:
             digital_pages.append(page_num)
 
-        # --- Detect graphical pages (NEW) ---
-        # A page is "graphical" if it has images but limited extractable text.
-        # This catches pitch decks, infographics, slides with text-in-images.
-        # Two tiers:
-        #   - ≥2 images + < 500 chars → likely has visual content PyMuPDF can't read
-        #   - ≥1 image + < 100 chars → almost no text, image-dominated
+        # Detect graphical pages (pitch decks, infographics, slides)
         if (image_count >= 2 and text_len < 500) or (image_count >= 1 and text_len < 100):
             graphical_pages.append(page_num)
 
@@ -91,14 +102,12 @@ def classify(file_path: str | Path) -> PDFClassification:
         result.confidence = min(0.95, 1 - digital_ratio)
     else:
         result.is_mixed = True
-        result.confidence = 0.7  # Mixed docs are harder to classify
+        result.confidence = 0.7
 
-    # Graphical detection: if >25% of pages are image-heavy with sparse text
     graphical_ratio = len(graphical_pages) / total
     if graphical_ratio > 0.25:
         result.is_graphical = True
 
-    # Table detection: look for ruled lines or grid patterns
     result.has_tables = _detect_tables(doc)
 
     doc.close()
@@ -106,11 +115,8 @@ def classify(file_path: str | Path) -> PDFClassification:
 
 
 def _detect_tables(doc: fitz.Document) -> bool:
-    """Heuristic table detection using line analysis.
-
-    Checks for horizontal/vertical line patterns that suggest tables.
-    """
-    for page_num in range(min(len(doc), 5)):  # Check first 5 pages
+    """Heuristic table detection using line analysis."""
+    for page_num in range(min(len(doc), 5)):
         page = doc[page_num]
         drawings = page.get_drawings()
 
@@ -119,20 +125,16 @@ def _detect_tables(doc: fitz.Document) -> bool:
 
         for drawing in drawings:
             for item in drawing.get("items", []):
-                if item[0] == "l":  # Line
+                if item[0] == "l":
                     p1, p2 = item[1], item[2]
-                    # Horizontal line: y-coordinates are similar
                     if abs(p1.y - p2.y) < 2 and abs(p1.x - p2.x) > 50:
                         horizontal_lines += 1
-                    # Vertical line: x-coordinates are similar
                     elif abs(p1.x - p2.x) < 2 and abs(p1.y - p2.y) > 20:
                         vertical_lines += 1
 
-        # If we see a grid pattern, it's likely a table
         if horizontal_lines >= 3 and vertical_lines >= 2:
             return True
 
-    # Fallback: check for tab-separated or aligned text patterns
     for page_num in range(min(len(doc), 5)):
         page = doc[page_num]
         text = page.get_text("text")

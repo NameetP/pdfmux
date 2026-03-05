@@ -2,12 +2,18 @@
 
 Uses IBM's Docling library for 97.9% table accuracy.
 Slower than PyMuPDF but dramatically better on structured documents.
+
+Install: pip install pdfmux[tables]
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
+
+from pdfmux.extractors import register
+from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
 
@@ -22,25 +28,39 @@ def _check_docling() -> bool:
         return False
 
 
+@register(name="docling", priority=40)
 class TableExtractor:
-    """Extract tables from PDFs using Docling."""
+    """Extract tables from PDFs using Docling.
+
+    Docling processes the full document at once (not per-page),
+    so we yield a single PageResult with page_num=0 for the
+    full document text, then synthetic pages if page separators
+    are found in the output.
+    """
 
     @property
     def name(self) -> str:
-        return "docling (tables)"
+        return "docling"
 
-    def extract(self, file_path: str | Path, pages: list[int] | None = None) -> str:
-        """Extract text and tables from a PDF using Docling.
+    def available(self) -> bool:
+        return _check_docling()
 
-        Args:
-            file_path: Path to the PDF file.
-            pages: Optional list of 0-indexed page numbers to extract.
+    def extract(
+        self,
+        file_path: str | Path,
+        pages: list[int] | None = None,
+    ) -> Iterator[PageResult]:
+        """Yield PageResults from Docling extraction.
 
-        Returns:
-            Markdown text with accurately extracted tables.
+        Docling extracts the full document at once. We split the
+        output into pages based on content structure.
         """
-        if not _check_docling():
-            raise ImportError("Docling is not installed. Install with: pip install pdfmux[tables]")
+        if not self.available():
+            from pdfmux.errors import ExtractorNotAvailable
+
+            raise ExtractorNotAvailable(
+                "Docling is not installed. Install with: pip install pdfmux[tables]"
+            )
 
         from docling.document_converter import DocumentConverter
 
@@ -48,12 +68,24 @@ class TableExtractor:
         converter = DocumentConverter()
         result = converter.convert(str(file_path))
 
-        # Export to markdown — Docling handles table formatting
         markdown = result.document.export_to_markdown()
 
         if pages is not None:
-            # Docling processes the whole doc; we filter pages via markers
-            # For now return the full markdown (page filtering is complex with Docling)
-            logger.info("Page filtering with Docling extracts full document; filtering deferred")
+            logger.info("Page filtering with Docling: extracting full document")
 
-        return markdown
+        # Split on page separators if present, otherwise treat as single page
+        page_texts = markdown.split("\n\n---\n\n") if "\n\n---\n\n" in markdown else [markdown]
+
+        for i, text in enumerate(page_texts):
+            if pages is not None and i not in pages:
+                continue
+
+            has_text = len(text.strip()) > 10
+
+            yield PageResult(
+                page_num=i,
+                text=text,
+                confidence=0.95 if has_text else 0.0,
+                quality=PageQuality.GOOD if has_text else PageQuality.EMPTY,
+                extractor=self.name,
+            )

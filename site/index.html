@@ -422,7 +422,7 @@
       <p>Extracts every page. Audits quality. Re-extracts the ones that came out wrong. Python API + CLI + MCP server.</p>
       <div class="hero-ctas">
         <a class="btn-primary" href="https://github.com/NameetP/pdfmux">get started →</a>
-        <a class="btn-secondary" href="https://pypi.org/project/pdfmux/">v0.4.0 on PyPI</a>
+        <a class="btn-secondary" href="https://pypi.org/project/pdfmux/">v0.5.0 on PyPI</a>
       </div>
     </div>
 
@@ -446,6 +446,27 @@ data = pdfmux.<span class="f">extract_json</span>(<span class="s">"report.pdf"</
 <span class="c"># LLM-ready chunks with token estimates</span>
 chunks = pdfmux.<span class="f">load_llm_context</span>(<span class="s">"report.pdf"</span>)
 <span class="c"># → [{title, text, page_start, page_end, tokens, confidence}]</span></pre>
+    </section>
+
+    <!-- TYPES -->
+    <section>
+      <h2>Typed from input to output</h2>
+      <p>Every object pdfmux returns is a frozen dataclass. Catch structured errors. Stream pages without loading the full document.</p>
+      <pre><span class="k">from</span> pdfmux <span class="k">import</span> PageResult, PdfmuxError, ExtractorNotAvailable
+<span class="k">from</span> pdfmux.extractors <span class="k">import</span> get_extractor
+
+<span class="c"># stream pages — bounded memory on any size PDF</span>
+ext = <span class="f">get_extractor</span>(<span class="s">"fast"</span>)
+<span class="k">for</span> page <span class="k">in</span> ext.<span class="f">extract</span>(<span class="s">"500-pages.pdf"</span>):  <span class="c"># Iterator[PageResult]</span>
+    <span class="f">process</span>(page.text)
+
+<span class="c"># catch structured errors</span>
+<span class="k">try</span>:
+    text = pdfmux.<span class="f">extract_text</span>(<span class="s">"report.pdf"</span>)
+<span class="k">except</span> ExtractorNotAvailable <span class="k">as</span> e:
+    <span class="f">print</span>(<span class="s">f"Missing dep: </span>{e}<span class="s">"</span>)
+<span class="k">except</span> PdfmuxError <span class="k">as</span> e:
+    <span class="f">print</span>(<span class="s">f"pdfmux error: </span>{e}<span class="s">"</span>)</pre>
     </section>
 
     <!-- CLI -->
@@ -488,32 +509,32 @@ $ pdfmux serve</pre>
         <div class="feature">
           <span class="icon">&#x1f504;</span>
           <div class="title">Multi-pass pipeline</div>
-          <div class="desc">Extract, audit, re-extract. Every page verified.</div>
+          <div class="desc">Extract every page, audit quality, re-extract failures with OCR. No manual fallback logic.</div>
         </div>
         <div class="feature">
-          <span class="icon">&#x1f9e9;</span>
-          <div class="title">LLM chunking</div>
-          <div class="desc">Section-aware splitting with token estimates for RAG.</div>
+          <span class="icon">&#x1f4d0;</span>
+          <div class="title">Typed Python API</div>
+          <div class="desc">Frozen dataclasses and enums for every object. <code>PageResult</code>, <code>DocumentResult</code>, <code>Chunk</code> &mdash; all immutable.</div>
         </div>
         <div class="feature">
           <span class="icon">&#x1f3af;</span>
-          <div class="title">Honest confidence</div>
-          <div class="desc">0-100% score that reflects actual extraction quality.</div>
+          <div class="title">5-check confidence</div>
+          <div class="desc">Character density, alphabetic ratio, word structure, whitespace, mojibake detection. Per-page scores.</div>
         </div>
         <div class="feature">
           <span class="icon">&#x1f916;</span>
           <div class="title">MCP server</div>
-          <div class="desc">Give AI agents the ability to read any PDF.</div>
+          <div class="desc">Give AI agents the ability to read any PDF. Confidence scores included.</div>
         </div>
         <div class="feature">
-          <span class="icon">&#x1f4c4;</span>
-          <div class="title">4 output formats</div>
-          <div class="desc">Markdown, JSON, CSV, or LLM-chunked JSON.</div>
+          <span class="icon">&#x1f30a;</span>
+          <div class="title">Streaming extractors</div>
+          <div class="desc">All 5 extractors yield <code>Iterator[PageResult]</code>. Bounded memory on any size PDF.</div>
         </div>
         <div class="feature">
           <span class="icon">&#x26a1;</span>
-          <div class="title">Zero config</div>
-          <div class="desc">Works out of the box. OCR only when you need it.</div>
+          <div class="title">Concurrent batching</div>
+          <div class="desc"><code>process_batch()</code> processes multiple PDFs in parallel. One failure doesn't stop the batch.</div>
         </div>
       </div>
     </section>

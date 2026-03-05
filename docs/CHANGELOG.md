@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0 (2026-03-05)
+
+### Added
+- **Typed architecture** — 6 frozen dataclasses and enums in `types.py` (`Quality`, `OutputFormat`, `PageQuality`, `PageResult`, `DocumentResult`, `Chunk`). Every data flow in the pipeline now passes through typed, immutable objects.
+- **Error hierarchy** — flat exception tree in `errors.py`: `PdfmuxError` base with `FileError`, `ExtractionError`, `ExtractorNotAvailable`, `FormatError`, `AuditError`. All exported from `import pdfmux`.
+- **Streaming extractors** — all 5 extractors yield `Iterator[PageResult]`, one page at a time. Memory stays bounded even on 500-page PDFs (~135MB peak vs unbounded before).
+- **Extractor protocol + registry** — `Extractor` Protocol class + `@register(name, priority)` decorator for auto-registration. Programmatic access via `get_extractor()`, `available_extractors()`, `extractor_names()`.
+- **5-check confidence scoring** — per-page confidence computed from character density, alphabetic ratio, word structure, whitespace sanity, and encoding quality (mojibake detection). Content-weighted document average replaces the old heuristic scorer.
+- **Concurrent batch processing** — `process_batch()` with `ThreadPoolExecutor`. Error isolation per file — one failure doesn't stop the batch. Used by CLI batch conversion.
+
+### Changed
+- JSON schema version bumped to `0.5.0`.
+- All public types and errors exported from the top-level `pdfmux` package (`pdfmux.PageResult`, `pdfmux.FileError`, etc.).
+- Extractors conform to a common `Extractor` protocol and register via decorator instead of hardcoded lookup.
+- Confidence scoring is now deterministic and auditable — 5 named checks with individual scores, content-weighted aggregation.
+- Extractor names simplified: `"pymupdf4llm (fast)"` → `"pymupdf4llm"`, `"docling (tables)"` → `"docling"`, etc.
+- `detect.py` now raises `FileError` instead of `FileNotFoundError`/`ValueError` for consistency with the error hierarchy.
+
+### Fixed
+- Memory usage no longer scales linearly with page count during extraction (streaming architecture).
+
 ## 0.4.0 (2026-03-04)
 
 ### Added

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from pdfmux.errors import FormatError
 from pdfmux.pipeline import process
 
 
@@ -17,7 +18,7 @@ def test_process_digital_pdf(digital_pdf: Path) -> None:
     assert result.format == "markdown"
     assert result.page_count == 2
     assert result.confidence > 0
-    assert result.extractor_used == "pymupdf4llm (fast)"
+    assert result.extractor_used == "pymupdf4llm"
     assert result.ocr_pages == []  # Digital PDF needs no OCR
 
 
@@ -30,7 +31,7 @@ def test_process_with_confidence(digital_pdf: Path) -> None:
 def test_process_fast_quality(digital_pdf: Path) -> None:
     """Fast quality should always use PyMuPDF."""
     result = process(digital_pdf, quality="fast")
-    assert result.extractor_used == "pymupdf4llm (fast)"
+    assert result.extractor_used == "pymupdf4llm"
 
 
 def test_process_high_quality_fallback(digital_pdf: Path) -> None:
@@ -42,8 +43,8 @@ def test_process_high_quality_fallback(digital_pdf: Path) -> None:
 
 
 def test_process_unsupported_format(digital_pdf: Path) -> None:
-    """Unsupported output formats should raise ValueError."""
-    with pytest.raises(ValueError, match="Unknown output format"):
+    """Unsupported output formats should raise FormatError."""
+    with pytest.raises(FormatError, match="Unknown output format"):
         process(digital_pdf, output_format="xml")
 
 
@@ -77,7 +78,7 @@ def test_process_json_metadata(multi_page_pdf: Path) -> None:
     result = process(multi_page_pdf, output_format="json")
     data = json.loads(result.text)
     assert data["page_count"] == 5
-    assert data["extractor"] == "pymupdf4llm (fast)"
+    assert data["extractor"] == "pymupdf4llm"
     assert isinstance(data["warnings"], list)
 
 
@@ -110,7 +111,7 @@ def test_process_json_has_ocr_pages(digital_pdf: Path) -> None:
 
 
 def test_process_json_has_schema_version(digital_pdf: Path) -> None:
-    """JSON format should include schema_version 0.4.0."""
+    """JSON format should include schema_version 0.5.0."""
     result = process(digital_pdf, output_format="json")
     data = json.loads(result.text)
-    assert data["schema_version"] == "0.4.0"
+    assert data["schema_version"] == "0.5.0"

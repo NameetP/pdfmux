@@ -40,7 +40,7 @@ def format_json(
         pages = [text]
 
     output = {
-        "schema_version": "0.4.0",
+        "schema_version": "0.5.0",
         "source": source,
         "converter": "pdfmux",
         "extractor": extractor,

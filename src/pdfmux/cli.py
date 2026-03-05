@@ -23,11 +23,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from pdfmux import __version__
-from pdfmux.pipeline import process
+from pdfmux.pipeline import process, process_batch
 
 app = typer.Typer(
     name="pdfmux",
-    help="The smart PDF-to-Markdown router. One command, zero config.",
+    help="PDF extraction that checks its own work.",
     add_completion=False,
     no_args_is_help=True,
 )
@@ -82,7 +82,7 @@ def serve() -> None:
     """Start the MCP server for AI agent integration."""
     from pdfmux.mcp_server import run_server
 
-    console.print("[bold]Starting Pdfmux MCP server...[/bold]")
+    console.print("[bold]Starting pdfmux MCP server...[/bold]")
     run_server()
 
 
@@ -120,7 +120,6 @@ def doctor() -> None:
 
     console.print(table)
 
-    # Check for API keys
     import os
 
     console.print()
@@ -141,7 +140,7 @@ def bench(
         exists=True,
     ),
 ) -> None:
-    """Benchmark all available extractors on a PDF. Shows speed and confidence side by side."""
+    """Benchmark all available extractors on a PDF."""
     from pdfmux.detect import classify
     from pdfmux.extractors.fast import FastExtractor
     from pdfmux.postprocess import clean_and_score
@@ -184,7 +183,7 @@ def bench(
 
             if name == "PyMuPDF":
                 ext = FastExtractor()
-                raw = ext.extract(input_path)
+                raw = ext.extract_text(input_path)
                 elapsed = time.perf_counter() - start
                 processed = clean_and_score(
                     raw,
@@ -199,7 +198,6 @@ def bench(
                 status = "[green]✓[/green]"
 
             elif name == "Multi-pass":
-                # Run the full multi-pass pipeline
                 result = process(
                     file_path=input_path,
                     output_format="markdown",
@@ -218,8 +216,10 @@ def bench(
             elif name == "Docling":
                 from pdfmux.extractors.tables import TableExtractor
 
-                ext = TableExtractor()
-                raw = ext.extract(input_path)
+                ext_t = TableExtractor()
+                if not ext_t.available():
+                    raise ImportError("Not installed")
+                raw = "\n\n---\n\n".join(p.text for p in ext_t.extract(input_path))
                 elapsed = time.perf_counter() - start
                 processed = clean_and_score(raw, classification.page_count)
                 chars = len(raw)
@@ -229,8 +229,10 @@ def bench(
             elif name == "RapidOCR":
                 from pdfmux.extractors.rapid_ocr import RapidOCRExtractor
 
-                ext = RapidOCRExtractor()
-                raw = ext.extract(input_path)
+                ext_r = RapidOCRExtractor()
+                if not ext_r.available():
+                    raise ImportError("Not installed")
+                raw = "\n\n---\n\n".join(p.text for p in ext_r.extract(input_path))
                 elapsed = time.perf_counter() - start
                 processed = clean_and_score(raw, classification.page_count)
                 chars = len(raw)
@@ -240,8 +242,10 @@ def bench(
             elif name == "Surya OCR":
                 from pdfmux.extractors.ocr import OCRExtractor
 
-                ext = OCRExtractor()
-                raw = ext.extract(input_path)
+                ext_s = OCRExtractor()
+                if not ext_s.available():
+                    raise ImportError("Not installed")
+                raw = "\n\n---\n\n".join(p.text for p in ext_s.extract(input_path))
                 elapsed = time.perf_counter() - start
                 processed = clean_and_score(raw, classification.page_count)
                 chars = len(raw)
@@ -251,8 +255,10 @@ def bench(
             elif name == "Gemini Flash":
                 from pdfmux.extractors.llm import LLMExtractor
 
-                ext = LLMExtractor()
-                raw = ext.extract(input_path)
+                ext_l = LLMExtractor()
+                if not ext_l.available():
+                    raise ImportError("Not installed")
+                raw = "\n\n---\n\n".join(p.text for p in ext_l.extract(input_path))
                 elapsed = time.perf_counter() - start
                 processed = clean_and_score(raw, classification.page_count)
                 chars = len(raw)
@@ -296,7 +302,6 @@ def analyze(
 
     console.print(f"\n[bold]{input_path.name}[/bold] — {classification.page_count} pages\n")
 
-    # Per-page table
     table = Table(show_header=True, header_style="bold")
     table.add_column("Page", min_width=6, justify="right")
     table.add_column("Type", min_width=12)
@@ -304,9 +309,8 @@ def analyze(
     table.add_column("Chars", min_width=10, justify="right")
 
     for page_audit in audit.pages:
-        page_num = page_audit.page_num + 1  # display 1-indexed
+        page_num = page_audit.page_num + 1
 
-        # Determine page type from classification
         if page_audit.page_num in getattr(classification, "graphical_pages", []):
             page_type = "[yellow]graphical[/yellow]"
         elif page_audit.page_num in getattr(classification, "scanned_pages", []):
@@ -314,7 +318,6 @@ def analyze(
         else:
             page_type = "[green]digital[/green]"
 
-        # Quality indicator
         if page_audit.quality == "good":
             quality_str = "[green]good[/green] → fast extraction"
         elif page_audit.quality == "bad":
@@ -331,7 +334,6 @@ def analyze(
 
     console.print(table)
 
-    # Run the full pipeline for summary stats
     result = process(
         file_path=input_path,
         output_format="markdown",
@@ -340,7 +342,6 @@ def analyze(
 
     console.print()
 
-    # Summary
     conf = result.confidence
     if conf >= 0.8:
         conf_str = f"[green]{conf:.0%}[/green]"
@@ -403,7 +404,6 @@ def _convert_file(
     else:
         output.write_text(result.text, encoding="utf-8")
 
-        # Color the confidence indicator based on quality
         conf = result.confidence
         if conf >= 0.8:
             conf_str = f"[green]{conf:.0%} confidence[/green]"
@@ -434,7 +434,7 @@ def _convert_directory(
     quality: str,
     confidence: bool,
 ) -> None:
-    """Convert all PDFs in a directory."""
+    """Convert all PDFs in a directory using process_batch()."""
     if output_dir is None:
         output_dir = input_dir
 
@@ -449,25 +449,20 @@ def _convert_directory(
     success = 0
     failed = 0
 
-    for pdf in pdfs:
+    for path, result_or_error in process_batch(pdfs, output_format=fmt, quality=quality):
         ext = {"markdown": ".md", "json": ".json", "csv": ".csv", "llm": ".json"}.get(fmt, ".md")
-        out_file = output_dir / pdf.with_suffix(ext).name
+        out_file = output_dir / path.with_suffix(ext).name
 
-        try:
-            result = process(
-                file_path=pdf,
-                output_format=fmt,
-                quality=quality,
-                show_confidence=confidence,
-            )
-            out_file.write_text(result.text, encoding="utf-8")
+        if isinstance(result_or_error, Exception):
+            console.print(f"  [red]✗[/red] {path.name}: {result_or_error}")
+            failed += 1
+        else:
+            out_file.write_text(result_or_error.text, encoding="utf-8")
             console.print(
-                f"  [green]✓[/green] {pdf.name} → {out_file.name} ({result.confidence:.0%})"
+                f"  [green]✓[/green] {path.name} → {out_file.name} "
+                f"({result_or_error.confidence:.0%})"
             )
             success += 1
-        except Exception as e:
-            console.print(f"  [red]✗[/red] {pdf.name}: {e}")
-            failed += 1
 
     console.print(f"\nDone: {success} converted, {failed} failed")
 
