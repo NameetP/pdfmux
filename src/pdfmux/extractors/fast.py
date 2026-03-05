@@ -4,6 +4,7 @@ Primary extractor, handles ~90% of PDFs.
 Speed: ~0.01s/page. Cost: $0. Accuracy: 98%+ on digital PDFs.
 
 Streams one PageResult per page via pymupdf4llm page_chunks=True.
+Multi-column PDFs are detected and reordered automatically.
 """
 
 from __future__ import annotations
@@ -15,10 +16,14 @@ from pathlib import Path
 import fitz
 import pymupdf4llm
 
+from pdfmux.detect import detect_layout
 from pdfmux.extractors import register
 from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
+
+# Number of pages to sample for multi-column detection
+_LAYOUT_SAMPLE_PAGES = 5
 
 
 @register(name="fast", priority=10)
@@ -93,3 +98,49 @@ class FastExtractor:
         """Convenience: return full text as a single string."""
         parts = [p.text for p in self.extract(file_path, pages) if p.text.strip()]
         return "\n\n---\n\n".join(parts)
+
+    @staticmethod
+    def _needs_reorder(file_path: Path) -> bool:
+        """Check first N pages for multi-column layout."""
+        try:
+            doc = fitz.open(str(file_path))
+            sample = min(len(doc), _LAYOUT_SAMPLE_PAGES)
+            for i in range(sample):
+                layout = detect_layout(doc[i])
+                if layout.columns > 1:
+                    doc.close()
+                    return True
+            doc.close()
+        except Exception:
+            pass
+        return False
+
+    @staticmethod
+    def _extract_with_layout(file_path: Path, page_num: int) -> str:
+        """Extract text from a multi-column page in reading order."""
+        doc = fitz.open(str(file_path))
+        if page_num >= len(doc):
+            doc.close()
+            return ""
+
+        page = doc[page_num]
+        layout = detect_layout(page)
+
+        if layout.columns <= 1:
+            # Single column — standard extraction
+            text = page.get_text("text").strip()
+            doc.close()
+            return text
+
+        # Multi-column: reorder blocks by reading order
+        blocks = page.get_text("blocks")
+        text_blocks = [(i, b) for i, b in enumerate(blocks) if b[6] == 0 and b[4].strip()]
+        block_map = {i: b[4].strip() for i, b in text_blocks}
+
+        ordered_text = []
+        for idx in layout.reading_order:
+            if idx in block_map:
+                ordered_text.append(block_map[idx])
+
+        doc.close()
+        return "\n\n".join(ordered_text)

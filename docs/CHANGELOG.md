@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 (2026-03-05)
+
+### Added
+- **Column detection** (`detect.py`) — `detect_layout(page)` detects multi-column PDFs by clustering text block x-positions with gap detection. Returns `PageLayout` with column count, boundaries, and reading order.
+- **Layout-aware extraction** (`fast.py`) — `_needs_reorder()` samples first 5 pages; if multi-column detected, `_extract_with_layout()` reorders blocks column-by-column. Single-column PDFs take existing fast path with zero overhead.
+- **Block-level scoring** (`audit.py`) — `score_block(text)` applies 3 lightweight quality checks (alphabetic ratio, word structure, encoding quality) at individual text block granularity.
+- **`PageLayout` type** (`types.py`) — frozen dataclass with `columns`, `column_boundaries`, `reading_order`. Exported from `pdfmux`.
+- 8 new tests: layout detection (5 tests) and block scoring (3 tests).
+
+### Changed
+- JSON schema version bumped to `0.8.0`.
+- Total test count: 118.
+
 ## 0.7.0 (2026-03-05)
 
 ### Added

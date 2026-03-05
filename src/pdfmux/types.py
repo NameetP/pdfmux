@@ -95,6 +95,19 @@ class DocumentResult:
 
 
 @dataclass(frozen=True)
+class PageLayout:
+    """Layout analysis for a single page.
+
+    Identifies column structure to enable correct reading order
+    for multi-column PDFs (academic papers, newsletters, etc).
+    """
+
+    columns: int  # number of detected columns (1 = single-column)
+    column_boundaries: tuple[tuple[float, float], ...]  # (x_min, x_max) per column
+    reading_order: tuple[int, ...]  # block indices in reading order
+
+
+@dataclass(frozen=True)
 class Chunk:
     """Section-aware chunk for LLM consumption.
 

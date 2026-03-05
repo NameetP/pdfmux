@@ -138,6 +138,48 @@ def score_page(text: str, image_count: int = 0) -> float:
     return max(0.0, min(1.0, score))
 
 
+def score_block(text: str) -> float:
+    """Score a single text block's quality (0.0–1.0).
+
+    Lightweight variant of score_page() — uses 3 of the 5 checks:
+    alphabetic ratio, word structure, and encoding quality.
+    No image analysis or character density thresholds.
+
+    Used for block-level quality assessment in layout-aware extraction.
+    """
+    stripped = text.strip()
+    if not stripped or len(stripped) < 5:
+        return 0.0
+
+    score = 1.0
+
+    # 1. Alphabetic ratio
+    non_space = re.sub(r"\s", "", stripped)
+    if non_space:
+        alpha_count = sum(1 for c in non_space if c.isalpha())
+        alpha_ratio = alpha_count / len(non_space)
+        if alpha_ratio < 0.3:
+            score -= 0.3
+        elif alpha_ratio < 0.5:
+            score -= 0.15
+
+    # 2. Word structure
+    words = stripped.split()
+    if words:
+        avg_word_len = sum(len(w) for w in words) / len(words)
+        if avg_word_len < 2 or avg_word_len > 25:
+            score -= 0.2
+
+    # 3. Encoding quality
+    mojibake_count = len(_MOJIBAKE_RE.findall(text))
+    if mojibake_count > 3:
+        score -= 0.25
+    elif mojibake_count > 0:
+        score -= 0.1
+
+    return max(0.0, min(1.0, score))
+
+
 def compute_document_confidence(
     pages: list[PageResult],
     *,

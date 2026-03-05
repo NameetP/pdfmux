@@ -30,7 +30,7 @@ finally:
     _sys.stdout = _orig
 del _orig, _io
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 __all__ = [
     # Public API
     "extract_text",
@@ -43,6 +43,7 @@ __all__ = [
     "PageResult",
     "DocumentResult",
     "Chunk",
+    "PageLayout",
     # Errors
     "PdfmuxError",
     "FileError",
@@ -67,6 +68,7 @@ from pdfmux.types import (  # noqa: E402, F401
     Chunk,
     DocumentResult,
     OutputFormat,
+    PageLayout,
     PageQuality,
     PageResult,
     Quality,
