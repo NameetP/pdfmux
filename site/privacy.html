@@ -20,20 +20,47 @@
       --font: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
     }
 
+    [data-theme="dark"] {
+      --bg: #0f0f0f;
+      --fg: #e5e5e5;
+      --dim: #a0a0a0;
+      --muted: #666666;
+      --accent: #818cf8;
+      --border: #2a2a2a;
+    }
+
     body {
       font-family: var(--font);
       background: var(--bg);
       color: var(--fg);
       line-height: 1.7;
-      font-size: 15px;
+      font-size: 16px;
       -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a:focus-visible,
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
 
     nav { max-width: 720px; margin: 0 auto; padding: 24px 28px; display: flex; justify-content: space-between; align-items: center; }
     nav .logo { font-size: 17px; font-weight: 700; color: var(--fg); text-decoration: none; letter-spacing: -0.3px; }
-    nav .nav-links { display: flex; gap: 24px; align-items: center; }
+    nav .logo span { color: var(--accent); }
+    nav .nav-links { display: flex; gap: 16px; align-items: center; }
     nav .nav-links a { font-size: 14px; color: var(--dim); text-decoration: none; transition: color 0.15s; }
-    nav .nav-links a:hover { color: var(--fg); }
+    nav .nav-links a:hover,
+    nav .nav-links a:focus-visible { color: var(--fg); }
+
+    .theme-toggle { background: none; border: none; cursor: pointer; color: var(--dim); padding: 4px; display: inline-flex; align-items: center; transition: color 0.15s; }
+    .theme-toggle:hover,
+    .theme-toggle:focus-visible { color: var(--fg); }
+    .theme-toggle svg { width: 18px; height: 18px; }
+    .theme-toggle .icon-moon { display: block; }
+    .theme-toggle .icon-sun { display: none; }
+    [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+    [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
 
     .container { max-width: 720px; margin: 0 auto; padding: 0 28px 80px; }
 
@@ -41,22 +68,25 @@
     .updated { color: var(--muted); font-size: 13px; margin-bottom: 40px; }
 
     h2 { font-size: 18px; font-weight: 600; color: var(--fg); margin: 36px 0 12px; text-transform: none; letter-spacing: 0; }
-    p { color: var(--dim); font-size: 15px; margin-bottom: 16px; line-height: 1.7; }
-    ul { color: var(--dim); font-size: 15px; margin-bottom: 16px; padding-left: 24px; }
+    p { color: var(--dim); font-size: 16px; margin-bottom: 16px; line-height: 1.7; }
+    ul { color: var(--dim); font-size: 16px; margin-bottom: 16px; padding-left: 24px; }
     li { margin-bottom: 6px; }
     strong { color: var(--fg); }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
+    code { font-family: var(--font); }
 
     footer { max-width: 720px; margin: 0 auto; padding: 24px 28px 48px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); }
     footer a { color: var(--dim); text-decoration: none; transition: color 0.15s; }
-    footer a:hover { color: var(--fg); }
+    footer a:hover,
+    footer a:focus-visible { color: var(--fg); }
     footer .footer-links { display: flex; gap: 20px; }
 
     @media (max-width: 560px) {
       h1 { font-size: 24px; }
       footer { flex-direction: column; gap: 16px; align-items: flex-start; }
       nav { padding: 20px 20px; }
+      nav .nav-links { gap: 12px; }
       .container { padding: 0 20px 60px; }
     }
   </style>
@@ -64,11 +94,15 @@
 <body>
 
   <nav>
-    <a class="logo" href="/">pdf<span style="color: var(--accent)">mux</span></a>
+    <a class="logo" href="/">pdf<span>mux</span></a>
     <div class="nav-links">
       <a href="https://github.com/NameetP/pdfmux">docs</a>
       <a href="https://pypi.org/project/pdfmux/">pypi</a>
       <a href="https://github.com/NameetP/pdfmux">github</a>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
     </div>
   </nav>
 
@@ -106,6 +140,37 @@
       <a href="https://github.com/NameetP/pdfmux/issues">issues</a>
     </div>
   </footer>
+
+  <script>
+    function getPreferredTheme() {
+      var stored = localStorage.getItem('theme');
+      if (stored) return stored;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function applyTheme(theme) {
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+    }
+
+    function toggleTheme() {
+      var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      localStorage.setItem('theme', next);
+    }
+
+    applyTheme(getPreferredTheme());
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+      if (!localStorage.getItem('theme')) {
+        applyTheme(e.matches ? 'dark' : 'light');
+      }
+    });
+  </script>
 
 </body>
 </html>
