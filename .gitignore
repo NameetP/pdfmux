@@ -27,3 +27,8 @@ secrets.*
 
 *.pdf
 !tests/fixtures/*.pdf
+
+# Hugo build output
+blog/public/
+blog/resources/
+blog/.hugo_build.lock

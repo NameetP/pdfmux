@@ -1,0 +1,36 @@
+baseURL = "https://pdfmux.com/blog/"
+languageCode = "en-us"
+title = "pdfmux blog"
+copyright = "MIT · Nameet Potnis"
+
+[params]
+  description = "Engineering blog for pdfmux — self-healing PDF extraction for LLM pipelines."
+  author = "Nameet Potnis"
+  github = "https://github.com/NameetP/pdfmux"
+  pypi = "https://pypi.org/project/pdfmux/"
+  twitter = "@nameetp"
+  siteUrl = "https://pdfmux.com"
+
+[markup]
+  [markup.highlight]
+    codeFences = true
+    guessSyntax = true
+    lineNos = false
+    noClasses = false
+    style = "monokailight"
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+
+[outputs]
+  home = ["HTML", "RSS"]
+
+[sitemap]
+  changeFreq = "weekly"
+  priority = 0.5
+
+[taxonomies]
+  tag = "tags"
+
+[permalinks]
+  posts = "/:slug/"

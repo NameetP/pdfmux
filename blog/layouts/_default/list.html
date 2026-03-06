@@ -1,0 +1,22 @@
+{{ define "main" }}
+<div class="blog-header">
+  <h1>Blog</h1>
+  <p>Engineering notes on PDF extraction, LLM pipelines, and building pdfmux.</p>
+</div>
+<ul class="post-list">
+  {{ range where .Site.RegularPages "Section" "posts" }}
+  <li class="post-item">
+    <a href="{{ .Permalink }}">
+      <div class="post-title">{{ .Title }}</div>
+      <div class="post-meta">{{ .Date.Format "January 2, 2006" }} · {{ .ReadingTime }} min read</div>
+      {{ with .Description }}<div class="post-excerpt">{{ . }}</div>{{ end }}
+      {{ with .Params.tags }}
+      <div class="post-tags">
+        {{ range . }}<span class="post-tag">{{ . }}</span>{{ end }}
+      </div>
+      {{ end }}
+    </a>
+  </li>
+  {{ end }}
+</ul>
+{{ end }}
