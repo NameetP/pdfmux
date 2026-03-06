@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "site/", "-l", "3456"],
       "port": 3456
+    },
+    {
+      "name": "blog",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "blog/public/", "-l", "3457", "--no-clipboard"],
+      "port": 3457
     }
   ]
 }
