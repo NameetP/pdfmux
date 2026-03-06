@@ -1,0 +1,37 @@
+[
+  {
+    "event": "PyCon US 2026",
+    "month": 5,
+    "boost_clusters": ["A", "D"],
+    "boost_keywords": ["python pdf library", "best python pdf library 2026"],
+    "content_play": "Publish 'State of PDF Extraction in Python' 2 weeks before"
+  },
+  {
+    "event": "AI Engineer Summit",
+    "month": 6,
+    "boost_clusters": ["B"],
+    "boost_keywords": ["mcp server pdf", "ai agent pdf extraction"],
+    "content_play": "MCP and agent-focused content sprint"
+  },
+  {
+    "event": "Hacktoberfest",
+    "month": 10,
+    "boost_clusters": ["A"],
+    "boost_keywords": ["open source pdf python", "contributing to open source"],
+    "content_play": "Label 10-15 issues, publish contributing guide"
+  },
+  {
+    "event": "NeurIPS",
+    "month": 11,
+    "boost_clusters": ["A", "C"],
+    "boost_keywords": ["document processing ml", "pdf extraction ml pipeline"],
+    "content_play": "ML-focused document processing content"
+  },
+  {
+    "event": "Year-end roundups",
+    "month": 12,
+    "boost_clusters": ["D"],
+    "boost_keywords": ["best pdf tools 2026", "python libraries 2026"],
+    "content_play": "Publish '2026 in PDF Extraction: What Changed'"
+  }
+]

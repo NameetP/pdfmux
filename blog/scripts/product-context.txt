@@ -1,0 +1,73 @@
+pdfmux is an open-source Python library for PDF extraction that checks its own work. Multi-pass pipeline: fast extract, audit every page, selective OCR on bad pages, merge with confidence scores. MIT licensed, v1.0.1, Python 3.11+.
+
+INSTALL:
+  pip install pdfmux              # core — handles 90% of PDFs instantly
+  pip install "pdfmux[ocr]"       # add OCR for scanned pages (~200MB, CPU-only)
+  pip install "pdfmux[tables]"    # add table extraction (Docling, 97.9% accuracy)
+  pip install "pdfmux[llm]"       # add Gemini Flash for complex layouts
+  pip install "pdfmux[all]"       # everything
+
+PYTHON API (3 core functions):
+  import pdfmux
+  text = pdfmux.extract_text("report.pdf")          # → Markdown string
+  data = pdfmux.extract_json("report.pdf")           # → dict with locked schema
+  chunks = pdfmux.load_llm_context("report.pdf")     # → list of dicts with token estimates
+  # All accept quality="fast"|"standard"|"high"
+
+TYPES: Quality, OutputFormat, PageQuality (GOOD/BAD/EMPTY), PageResult, DocumentResult, Chunk
+ERRORS: PdfmuxError → FileError, ExtractionError, ExtractorNotAvailable, FormatError, AuditError
+
+CLI:
+  pdfmux invoice.pdf                    # → invoice.md (2 pages, 95% confidence)
+  pdfmux pitch-deck.pdf                 # auto-OCRs scanned pages
+  pdfmux analyze report.pdf             # per-page quality triage
+  pdfmux report.pdf -f json             # structured JSON output
+  pdfmux report.pdf -f llm              # section-aware chunks with token estimates
+  pdfmux bench report.pdf               # benchmark all extractors on a file
+  pdfmux doctor                         # check installed extractors
+  pdfmux serve                          # start MCP server
+
+EXTRACTORS (5-tier hierarchy):
+  | Tier    | Extractor              | Speed      | Install           |
+  |---------|------------------------|------------|-------------------|
+  | Fast    | PyMuPDF / pymupdf4llm  | 0.01s/page | base              |
+  | OCR     | RapidOCR (PaddleOCR)   | 0.5-2s/pg  | pdfmux[ocr]       |
+  | Tables  | Docling                | 0.3-3s/pg  | pdfmux[tables]    |
+  | Heavy   | Surya OCR              | 1-5s/pg    | pdfmux[ocr-heavy] |
+  | LLM     | Gemini 2.5 Flash       | 2-5s/pg    | pdfmux[llm]       |
+
+HOW IT WORKS (3-pass pipeline):
+  Pass 1: Fast extract + audit — PyMuPDF on every page, classify good/bad/empty
+  Pass 2: Selective OCR — only on bad/empty pages (RapidOCR → Surya → Gemini)
+  Pass 3: Merge + score — combine pages, clean text, compute confidence
+
+  All pages good? Zero OCR overhead. You only pay for what's broken.
+
+CONFIDENCE SCORING (per page, 5 quality checks):
+  95-100%: clean digital text, fully extractable
+  80-95%:  good extraction, minor OCR noise
+  50-80%:  partial extraction, some pages unrecoverable
+  <50%:    significant content missing
+
+ROUTING LOGIC:
+  quality=fast     → PyMuPDF only (instant)
+  quality=standard → has tables? Docling. Otherwise multi-pass pipeline.
+  quality=high     → Gemini Flash → OCR → PyMuPDF
+
+INTEGRATIONS:
+  LangChain: from pdfmux.integrations.langchain import PDFMuxLoader
+  LlamaIndex: from pdfmux.integrations.llamaindex import PDFMuxReader
+  MCP Server: {"mcpServers": {"pdfmux": {"command": "pdfmux", "args": ["serve"]}}}
+
+POSITIONING:
+  pdfmux doesn't compete with Docling, Marker, or PyMuPDF — it uses them.
+  No single extractor wins everywhere. pdfmux routes each page to the best one.
+  The 90/10 insight: 90% of PDFs extract in <10ms. Only 10% need special tools.
+
+AUTHOR: Nameet Potnis | LICENSE: MIT | REPO: github.com/NameetP/pdfmux
+
+URL WHITELIST (only these URLs may appear in blog posts):
+  https://github.com/NameetP/pdfmux
+  https://pypi.org/project/pdfmux/
+  https://pdfmux.com
+  https://pdfmux.com/blog/

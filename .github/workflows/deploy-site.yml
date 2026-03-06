@@ -3,7 +3,7 @@ name: Deploy website
 on:
   push:
     branches: [main]
-    paths: [site/**, blog/**]
+    paths: [site/**, blog/content/**, blog/layouts/**, blog/hugo.toml]
   workflow_dispatch:
 
 permissions:

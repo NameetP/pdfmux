@@ -1,0 +1,39 @@
+name: Weekly keyword analysis
+
+on:
+  schedule:
+    - cron: "0 8 * * 0"  # Sunday 8am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: blog-content
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r blog/scripts/requirements.txt
+
+      - name: Run keyword analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python blog/scripts/keyword-analysis.py
+
+      - name: Upload analysis report
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyword-analysis-report
+          path: blog/analysis-reports/
+          retention-days: 30

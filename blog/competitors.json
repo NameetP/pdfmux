@@ -1,0 +1,74 @@
+{
+  "competitors": [
+    {
+      "name": "Unstructured",
+      "slug": "unstructured",
+      "repo": "Unstructured-IO/unstructured",
+      "description": "Open-source document processing platform",
+      "strengths": ["Wide format support", "Enterprise features", "Partitioning API"],
+      "weaknesses": ["Heavy install (~2GB)", "No per-page confidence scoring", "Complex config"],
+      "pdfmux_uses_it": false,
+      "meta_tool_angle": "pdfmux is lighter and faster for PDF-only pipelines. Use Unstructured when you need 20+ format support."
+    },
+    {
+      "name": "LlamaParse",
+      "slug": "llamaparse",
+      "repo": null,
+      "description": "Cloud-based document parsing by LlamaIndex",
+      "strengths": ["High accuracy on complex layouts", "Managed service"],
+      "weaknesses": ["Cloud-only (no local)", "Costs money per page", "Vendor lock-in"],
+      "pdfmux_uses_it": false,
+      "meta_tool_angle": "pdfmux runs locally with no API keys. Use LlamaParse for complex layouts if you're already in the LlamaIndex ecosystem."
+    },
+    {
+      "name": "Docling",
+      "slug": "docling",
+      "repo": "DS4SD/docling",
+      "description": "IBM Research document understanding library",
+      "strengths": ["97.9% table accuracy", "Academic backing", "Structure preservation"],
+      "weaknesses": ["Slow on non-table documents", "~500MB install", "Overkill for simple text"],
+      "pdfmux_uses_it": true,
+      "meta_tool_angle": "pdfmux routes table-heavy pages to Docling automatically. You get Docling's accuracy without paying its speed cost on every page."
+    },
+    {
+      "name": "Marker",
+      "slug": "marker",
+      "repo": "VikParuchuri/marker",
+      "description": "ML-powered PDF to markdown converter",
+      "strengths": ["High accuracy", "Good layout understanding", "Active development"],
+      "weaknesses": ["Needs GPU for speed", "Overkill for digital PDFs", "No confidence scoring"],
+      "pdfmux_uses_it": false,
+      "meta_tool_angle": "Marker is great with a GPU. pdfmux handles 90% of PDFs without ML and only calls heavy extractors when needed."
+    },
+    {
+      "name": "PyMuPDF",
+      "slug": "pymupdf",
+      "repo": "pymupdf/PyMuPDF",
+      "description": "Fast PDF processing library",
+      "strengths": ["Blazing fast (0.01s/page)", "Lightweight", "Well-maintained"],
+      "weaknesses": ["Can't handle scanned PDFs", "No table preservation", "No quality checks"],
+      "pdfmux_uses_it": true,
+      "meta_tool_angle": "pdfmux uses PyMuPDF as its fast path for digital PDFs. You get PyMuPDF speed plus automatic OCR fallback when PyMuPDF can't handle a page."
+    },
+    {
+      "name": "pdfplumber",
+      "slug": "pdfplumber",
+      "repo": "jsvine/pdfplumber",
+      "description": "Detailed PDF text and table extraction",
+      "strengths": ["Fine-grained control", "Good table extraction", "Pure Python"],
+      "weaknesses": ["Slow on large documents", "No OCR", "No LLM-ready output"],
+      "pdfmux_uses_it": false,
+      "meta_tool_angle": "pdfplumber gives fine-grained control. pdfmux gives pipeline-ready output with automatic quality checks."
+    },
+    {
+      "name": "Kreuzberg",
+      "slug": "kreuzberg",
+      "repo": null,
+      "description": "Async document extraction library",
+      "strengths": ["Async-first", "Multiple backend support"],
+      "weaknesses": ["Newer, smaller community", "No confidence scoring"],
+      "pdfmux_uses_it": false,
+      "meta_tool_angle": "Both route between extractors. pdfmux adds per-page confidence scoring and self-healing re-extraction."
+    }
+  ]
+}
