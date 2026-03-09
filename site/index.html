@@ -192,12 +192,53 @@
     .mcp-block .key { color: var(--purple); }
     .mcp-block .val { color: var(--green); }
 
+    /* --- SCROLL ANIMATIONS --- */
+    .fade-section { opacity: 0; transform: translateY(20px); transition: opacity 0.15s ease, transform 0.15s ease; }
+    .fade-section.visible { opacity: 1; transform: translateY(0); }
+
+    /* --- FEATURE CARDS --- */
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .feature-card { border: 1px solid var(--border); border-radius: 10px; padding: 20px; background: var(--code-bg); transition: border-color 0.15s, box-shadow 0.15s; }
+    .feature-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+    .feature-card .card-icon { font-size: 20px; margin-bottom: 8px; display: block; }
+    .feature-card .card-title { font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 4px; }
+    .feature-card .card-desc { font-size: 13px; color: var(--dim); line-height: 1.5; }
+    .feature-grid .feature-card { opacity: 0; transform: translateY(20px); transition: opacity 0.15s ease, transform 0.15s ease, border-color 0.15s, box-shadow 0.15s; }
+    .feature-grid.visible .feature-card:nth-child(1) { transition-delay: 0s; }
+    .feature-grid.visible .feature-card:nth-child(2) { transition-delay: 0.06s; }
+    .feature-grid.visible .feature-card:nth-child(3) { transition-delay: 0.12s; }
+    .feature-grid.visible .feature-card:nth-child(4) { transition-delay: 0.18s; }
+    .feature-grid.visible .feature-card:nth-child(5) { transition-delay: 0.24s; }
+    .feature-grid.visible .feature-card:nth-child(6) { transition-delay: 0.30s; }
+    .feature-grid.visible .feature-card { opacity: 1; transform: translateY(0); }
+
+    /* --- FAQ --- */
+    .faq-list { list-style: none; padding: 0; }
+    .faq-item { border-bottom: 1px solid var(--border); }
+    .faq-item:last-child { border-bottom: none; }
+    .faq-item summary { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; cursor: pointer; font-size: 15px; font-weight: 500; color: var(--fg); list-style: none; transition: color 0.15s; }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item summary::after { content: "+"; font-size: 18px; font-weight: 300; color: var(--muted); transition: transform 0.15s ease; flex-shrink: 0; margin-left: 16px; }
+    .faq-item[open] summary::after { content: "\2212"; }
+    .faq-item .faq-answer { padding: 0 0 16px; font-size: 14px; color: var(--dim); line-height: 1.7; }
+    .faq-item summary:hover { color: var(--accent); }
+
+    /* --- NOT SECTION --- */
+    .not-list { list-style: none; padding: 0; }
+    .not-list li { padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--dim); line-height: 1.6; }
+    .not-list li:last-child { border-bottom: none; }
+    .not-list .not-label { font-weight: 600; color: var(--fg); }
+
     /* --- FOOTER --- */
-    footer { max-width: 720px; margin: 0 auto; padding: 24px 28px 48px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); }
-    footer a { color: var(--dim); text-decoration: none; transition: color 0.15s; }
-    footer a:hover,
-    footer a:focus-visible { color: var(--fg); }
-    footer .footer-links { display: flex; gap: 20px; }
+    footer { max-width: 720px; margin: 0 auto; padding: 48px 28px; border-top: 1px solid var(--border); }
+    .footer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-bottom: 32px; }
+    .footer-col h4 { font-size: 12px; font-weight: 600; color: var(--fg); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .footer-col a { display: block; font-size: 14px; color: var(--dim); text-decoration: none; padding: 4px 0; transition: color 0.15s; }
+    .footer-col a:hover, .footer-col a:focus-visible { color: var(--fg); }
+    .footer-bottom { display: flex; justify-content: space-between; align-items: center; padding-top: 24px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+    .footer-bottom a { color: var(--dim); text-decoration: none; transition: color 0.15s; }
+    .footer-bottom a:hover, .footer-bottom a:focus-visible { color: var(--fg); }
+    .footer-bottom-links { display: flex; gap: 16px; }
 
     /* --- RESPONSIVE --- */
     @media (max-width: 560px) {
@@ -206,7 +247,9 @@
       .hero .subtitle { font-size: 16px; }
       .hero-ctas { flex-direction: column; align-items: flex-start; }
       .comparison { grid-template-columns: 1fr; }
-      footer { flex-direction: column; gap: 16px; align-items: flex-start; }
+      .footer-grid { grid-template-columns: 1fr; gap: 24px; }
+      .footer-bottom { flex-direction: column; gap: 12px; align-items: flex-start; }
+      .feature-grid { grid-template-columns: 1fr; }
       nav { padding: 20px 20px; }
       nav .nav-links { gap: 12px; }
       .container { padding: 0 20px 60px; }
@@ -240,7 +283,7 @@
   <div class="container">
 
     <!-- HERO -->
-    <div class="hero">
+    <div class="hero fade-section">
       <h1>Reliable document ingestion <br>for LLM pipelines</h1>
       <p class="subtitle">Extract, audit, repair, and structure PDFs automatically so your AI systems always receive clean data.</p>
       <ul class="hero-features">
@@ -257,13 +300,13 @@
     </div>
 
     <!-- INSTALL -->
-    <div class="install-box" onclick="copyInstall()" id="installBox" tabindex="0" role="button" aria-label="Copy install command">
+    <div class="install-box fade-section" onclick="copyInstall()" id="installBox" tabindex="0" role="button" aria-label="Copy install command">
       <code>pip install pdfmux</code>
       <span class="copy-hint" id="copyHint">copy</span>
     </div>
 
     <!-- THE PROBLEM — BEFORE / AFTER -->
-    <section>
+    <section class="fade-section">
       <h2 data-label="The problem">Most RAG pipelines fail before they reach the model</h2>
       <p>The problem is not the LLM. The problem is <strong>document ingestion</strong>. Broken column ordering, missing pages, OCR failures, tables flattened, slide decks returning empty text. Most tools extract once and hope for the best.</p>
       <div class="comparison">
@@ -293,7 +336,7 @@ Page 5: <span class="good">good</span> <span class="c">0.97</span>
     </section>
 
     <!-- HOW IT WORKS -->
-    <section>
+    <section id="pipeline" class="fade-section">
       <h2 data-label="Pipeline">How it works</h2>
       <p>pdfmux doesn't extract once and hope. It runs a self-healing pipeline that audits every page, detects failures, and re-extracts them automatically.</p>
       <div class="pipeline">
@@ -307,7 +350,7 @@ Page 5: <span class="good">good</span> <span class="c">0.97</span>
     </section>
 
     <!-- PYTHON API -->
-    <section>
+    <section class="fade-section">
       <h2 data-label="API">Three lines of Python</h2>
       <div class="code-block">
         <div class="code-header">
@@ -329,7 +372,7 @@ chunks = pdfmux.<span class="f">load_llm_context</span>(<span class="s">"report.
     </section>
 
     <!-- BUILT FOR LLM PIPELINES -->
-    <section>
+    <section class="fade-section">
       <h2 data-label="Output">Built for LLM pipelines</h2>
       <p>pdfmux outputs structured content designed for RAG pipelines, vector databases, agent workflows, and knowledge retrieval systems.</p>
       <ul class="output-list">
@@ -341,7 +384,7 @@ chunks = pdfmux.<span class="f">load_llm_context</span>(<span class="s">"report.
     </section>
 
     <!-- CLI -->
-    <section>
+    <section class="fade-section">
       <h2 data-label="CLI">Command line</h2>
       <div class="code-block">
         <div class="code-header">
@@ -371,7 +414,7 @@ $ pdfmux serve</pre>
     </section>
 
     <!-- EXTRACTORS -->
-    <section>
+    <section class="fade-section">
       <h2 data-label="Backends">Extractors</h2>
       <p>pdfmux picks the best extractor per page automatically. You can also choose manually.</p>
       <div class="table-wrap">
@@ -390,7 +433,7 @@ $ pdfmux serve</pre>
     </section>
 
     <!-- ACCURACY -->
-    <section>
+    <section id="accuracy" class="fade-section">
       <h2 data-label="Accuracy">Expected accuracy across document types</h2>
       <p>For ingestion systems like pdfmux, what matters most is <strong>semantic chunk accuracy</strong> &mdash; correct text in the right order with reliable boundaries for RAG.</p>
       <div class="table-wrap">
@@ -426,18 +469,45 @@ $ pdfmux serve</pre>
       </div>
     </section>
 
-    <!-- ALSO -->
-    <section>
-      <h2 data-label="Details">Also</h2>
-      <ul class="also-list">
-        <li><span class="label">Stable API</span> Frozen dataclasses, structured error codes, locked JSON schema. API frozen for 1.x &mdash; your code won't break on updates.</li>
-        <li><span class="label">Confidence scoring</span> 5 quality checks per page: character density, alphabetic ratio, word structure, whitespace, mojibake. Know which pages to trust.</li>
-        <li><span class="label">Security hardened</span> File size limits, page count caps, configurable timeouts. Safe for processing untrusted PDFs.</li>
-      </ul>
+    <!-- FEATURES -->
+    <section id="features" class="fade-section">
+      <h2 data-label="Features">Built-in</h2>
+      <div class="feature-grid fade-section">
+        <div class="feature-card">
+          <span class="card-icon">&#x1F504;</span>
+          <div class="card-title">Self-healing pipeline</div>
+          <div class="card-desc">Bad pages detected and re-extracted automatically. Zero manual intervention.</div>
+        </div>
+        <div class="feature-card">
+          <span class="card-icon">&#x1F4CA;</span>
+          <div class="card-title">Confidence scoring</div>
+          <div class="card-desc">5 quality checks per page. Know exactly which pages to trust.</div>
+        </div>
+        <div class="feature-card">
+          <span class="card-icon">&#x2699;&#xFE0F;</span>
+          <div class="card-title">5 extraction backends</div>
+          <div class="card-desc">PyMuPDF, RapidOCR, Docling, Gemini Flash. Best extractor per page.</div>
+        </div>
+        <div class="feature-card">
+          <span class="card-icon">&#x1F9ED;</span>
+          <div class="card-title">Per-page routing</div>
+          <div class="card-desc">Each page gets the right extractor based on content type and quality.</div>
+        </div>
+        <div class="feature-card">
+          <span class="card-icon">&#x1F916;</span>
+          <div class="card-title">MCP server</div>
+          <div class="card-desc">Give AI agents PDF reading ability. Three tools, one command to start.</div>
+        </div>
+        <div class="feature-card">
+          <span class="card-icon">&#x1F513;</span>
+          <div class="card-title">MIT licensed</div>
+          <div class="card-desc">Open source with a frozen API. Your code won't break on updates.</div>
+        </div>
+      </div>
     </section>
 
     <!-- MCP -->
-    <section>
+    <section class="fade-section">
       <h2 data-label="AI agents">MCP server</h2>
       <p>Give your AI agent the ability to read PDFs. Three tools: <code>convert_pdf</code> for extraction, <code>analyze_pdf</code> for quick triage, <code>batch_convert</code> for directories.</p>
       <div class="mcp-block">
@@ -453,7 +523,7 @@ $ pdfmux serve</pre>
     </section>
 
     <!-- INTEGRATIONS -->
-    <section>
+    <section class="fade-section">
       <h2 data-label="Frameworks">LangChain &amp; LlamaIndex</h2>
       <div class="code-block">
         <div class="code-header">
@@ -475,7 +545,7 @@ docs = reader.<span class="f">load_data</span>(<span class="s">"report.pdf"</spa
     </section>
 
     <!-- EXTRAS -->
-    <section>
+    <section id="install" class="fade-section">
       <h2 data-label="Install">Optional extras</h2>
       <div class="code-block">
         <div class="code-header">
@@ -500,15 +570,78 @@ $ pip install <span class="s">"pdfmux[all]"</span></pre>
       </div>
     </section>
 
+    <!-- WHAT PDFMUX IS NOT -->
+    <section class="fade-section">
+      <h2 data-label="Scope">What pdfmux is not</h2>
+      <ul class="not-list">
+        <li><span class="not-label">Not a cloud service.</span> pdfmux is a local Python library. Your documents never leave your machine unless you opt into the Gemini Flash extractor.</li>
+        <li><span class="not-label">Not a GUI.</span> It's a CLI and Python API for developers. There's no web interface, upload form, or dashboard.</li>
+        <li><span class="not-label">Not a replacement for individual extractors.</span> pdfmux orchestrates PyMuPDF, RapidOCR, Docling, and Gemini Flash. It doesn't replace them &mdash; it makes them work together reliably.</li>
+      </ul>
+    </section>
+
+    <!-- FAQ -->
+    <section class="fade-section">
+      <h2 data-label="FAQ">Frequently asked questions</h2>
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>How is pdfmux different from just using PyMuPDF?</summary>
+          <div class="faq-answer">PyMuPDF is one of pdfmux's backends. pdfmux adds a quality audit on top: it scores every page, detects failures (blank output, mojibake, broken columns), and automatically re-extracts bad pages with a better extractor. PyMuPDF alone gives you text. pdfmux gives you <em>reliable</em> text.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Does it work offline?</summary>
+          <div class="faq-answer">Yes. The base install plus the OCR and tables extras all run locally with zero network calls. Only the Gemini Flash extractor requires an API key and internet. You can run a fully air-gapped pipeline with <code>pip install "pdfmux[ocr,tables]"</code>.</div>
+        </details>
+        <details class="faq-item">
+          <summary>What about GPU or cloud extractors?</summary>
+          <div class="faq-answer">pdfmux is CPU-only by default. RapidOCR uses ONNX Runtime (CPU). Docling runs locally on CPU. The only cloud extractor is Gemini Flash, which is optional and behind the <code>[llm]</code> extra. There's no GPU requirement.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Is it production ready?</summary>
+          <div class="faq-answer">v1.0 is stable with a frozen API. Dataclasses, error codes, and JSON schema are locked for the entire 1.x series. File size limits, page caps, and configurable timeouts make it safe for processing untrusted documents at scale.</div>
+        </details>
+        <details class="faq-item">
+          <summary>How do I add a new extractor?</summary>
+          <div class="faq-answer">Implement the <code>BaseExtractor</code> interface with an <code>extract()</code> method and register it. The router will include it in per-page quality comparisons automatically. See the docs for the full extractor development guide.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Can I use it with LangChain or LlamaIndex?</summary>
+          <div class="faq-answer">Built-in. Install <code>pdfmux[langchain]</code> or <code>pdfmux[llamaindex]</code> and use the native loader classes. They return standard <code>Document</code> objects with confidence metadata attached.</div>
+        </details>
+      </div>
+    </section>
+
   </div>
 
   <!-- FOOTER -->
-  <footer>
-    <div>MIT &middot; <a href="https://github.com/NameetP">Nameet Potnis</a> &middot; <a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a></div>
-    <div class="footer-links">
-      <a href="https://github.com/NameetP/pdfmux">github</a>
-      <a href="https://pypi.org/project/pdfmux/">pypi</a>
-      <a href="https://github.com/NameetP/pdfmux/issues">issues</a>
+  <footer class="fade-section">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="#pipeline">How it works</a>
+        <a href="#accuracy">Accuracy</a>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+      </div>
+      <div class="footer-col">
+        <h4>Developers</h4>
+        <a href="https://github.com/NameetP/pdfmux">GitHub</a>
+        <a href="https://github.com/NameetP/pdfmux">Docs</a>
+        <a href="https://pypi.org/project/pdfmux/">PyPI</a>
+        <a href="https://github.com/NameetP/pdfmux/issues">Issues</a>
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="/blog/">Blog</a>
+        <a href="https://github.com/NameetP/pdfmux/blob/main/CONTRIBUTING.md">Contribute</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div>MIT &middot; <a href="https://github.com/NameetP">Nameet Potnis</a> &middot; <a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a></div>
+      <div class="footer-bottom-links">
+        <a href="https://github.com/NameetP/pdfmux">github</a>
+        <a href="https://pypi.org/project/pdfmux/">pypi</a>
+      </div>
     </div>
   </footer>
 
@@ -567,6 +700,24 @@ $ pip install <span class="s">"pdfmux[all]"</span></pre>
       btn.textContent = 'copied!';
       setTimeout(function() { btn.textContent = 'copy'; }, 2000);
     }
+
+    // --- Scroll animations ---
+    (function() {
+      var targets = document.querySelectorAll('.fade-section');
+      if (!('IntersectionObserver' in window)) {
+        targets.forEach(function(t) { t.classList.add('visible'); });
+        return;
+      }
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+      targets.forEach(function(t) { observer.observe(t); });
+    })();
   </script>
 
 </body>
