@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 # OCR budget: cap at 30% of document pages in standard mode
 OCR_BUDGET_RATIO = float(os.environ.get("PDFMUX_OCR_BUDGET", "0.30"))
 
+# Dynamic OCR budget threshold: >50% graphical pages = OCR everything
+IMAGE_HEAVY_THRESHOLD = 0.50
+
 # --- Security limits ---
 MAX_FILE_SIZE_MB = int(os.environ.get("PDFMUX_MAX_FILE_SIZE_MB", "500"))
 MAX_PAGE_COUNT = int(os.environ.get("PDFMUX_MAX_PAGES", "10000"))
@@ -247,12 +250,15 @@ def _route_and_extract(
     Returns:
         (pages, extractor_name, ocr_page_numbers)
     """
-    # Fast mode: PyMuPDF only, skip audit
+    # Fast mode: PyMuPDF only, skip audit (with optional table enhancement)
     if quality == Quality.FAST:
         from pdfmux.extractors.fast import FastExtractor
 
         ext = FastExtractor()
-        pages = list(ext.extract(file_path))
+        pages = list(ext.extract(
+            file_path,
+            enhance_tables=classification.has_tables,
+        ))
         return pages, ext.name, []
 
     # High mode: LLM for everything
@@ -260,9 +266,9 @@ def _route_and_extract(
         pages, name = _try_llm_extractor(file_path)
         return pages, name, []
 
-    # Tables → Docling (unless also graphical)
+    # Tables → targeted Docling on table pages, fast for the rest
     if classification.has_tables and not classification.is_graphical:
-        pages, name = _try_table_extractor(file_path)
+        pages, name = _try_targeted_table_extraction(file_path, classification)
         return pages, name, []
 
     # Standard → multi-pass
@@ -320,9 +326,110 @@ def _try_llm_extractor(file_path: Path) -> tuple[list[PageResult], str]:
     return pages, ext.name
 
 
+def _try_targeted_table_extraction(
+    file_path: Path,
+    classification: PDFClassification,
+) -> tuple[list[PageResult], str]:
+    """Hybrid extraction: Docling for table pages, fast for the rest.
+
+    For documents with <50 total pages, uses full-document Docling.
+    For larger documents, identifies table-candidate pages and extracts
+    only those with Docling while using PyMuPDF for the rest.
+    """
+    if classification.page_count <= 50:
+        return _try_table_extractor(file_path)
+
+    try:
+        from pdfmux.extractors.tables import TableExtractor
+
+        ext = TableExtractor()
+        if not ext.available():
+            raise ImportError
+
+        table_pages = _identify_table_pages(file_path)
+
+        if not table_pages or len(table_pages) > 100:
+            return _try_table_extractor(file_path)
+
+        # Hybrid: fast for non-table pages, Docling for table pages
+        from pdfmux.extractors.fast import FastExtractor
+
+        fast = FastExtractor()
+        fast_pages = {p.page_num: p for p in fast.extract(file_path)}
+
+        docling_pages = {p.page_num: p for p in ext.extract_pages(file_path, table_pages)}
+
+        # Merge: prefer Docling results for table pages
+        merged = []
+        for page_num in sorted(fast_pages.keys()):
+            if page_num in docling_pages:
+                merged.append(docling_pages[page_num])
+            else:
+                merged.append(fast_pages[page_num])
+
+        n_docling = len(docling_pages)
+        return merged, f"pymupdf4llm + docling ({n_docling} table pages)"
+
+    except Exception:
+        logger.info("Targeted table extraction failed, falling back")
+        return _try_table_extractor(file_path)
+
+
+def _identify_table_pages(file_path: Path) -> list[int]:
+    """Identify pages likely to contain tables using lightweight heuristics."""
+    import fitz
+
+    doc = fitz.open(str(file_path))
+    table_pages = []
+
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        text = page.get_text("text")
+        lines = text.split("\n")
+
+        number_dense = 0
+        for line in lines:
+            stripped = line.strip()
+            if len(stripped) < 20:
+                continue
+            non_space = stripped.replace(" ", "")
+            if not non_space:
+                continue
+            numeric = sum(1 for c in non_space if c in "0123456789$,%.()-")
+            if numeric / len(non_space) >= 0.30:
+                number_dense += 1
+
+        if number_dense >= 3:
+            table_pages.append(page_num)
+
+    doc.close()
+    return table_pages
+
+
 # ---------------------------------------------------------------------------
 # Multi-pass pipeline
 # ---------------------------------------------------------------------------
+
+
+def _compute_ocr_budget(classification: PDFClassification) -> float:
+    """Compute OCR budget ratio based on document classification.
+
+    Rules:
+        - If >50% of pages are graphical: budget = 1.0 (OCR all)
+        - If >25% graphical: budget = graphical_ratio + 0.10 (generous)
+        - Otherwise: use default OCR_BUDGET_RATIO (0.30)
+    """
+    if classification.page_count == 0:
+        return OCR_BUDGET_RATIO
+
+    graphical_ratio = len(classification.graphical_pages) / classification.page_count
+
+    if graphical_ratio >= IMAGE_HEAVY_THRESHOLD:
+        return 1.0
+    elif graphical_ratio > 0.25:
+        return min(1.0, graphical_ratio + 0.10)
+    else:
+        return OCR_BUDGET_RATIO
 
 
 def _multipass_extract(
@@ -365,8 +472,9 @@ def _multipass_extract(
     ocr_name = ""
     budget_warnings: list[str] = []
 
-    # OCR budget: cap at budget ratio of document pages
-    max_ocr_pages = max(1, int(classification.page_count * OCR_BUDGET_RATIO))
+    # OCR budget: dynamic based on classification
+    effective_budget = _compute_ocr_budget(classification)
+    max_ocr_pages = max(1, int(classification.page_count * effective_budget))
     if len(all_pages_needing_ocr) > max_ocr_pages:
         # Prioritize "bad" pages (some text) over "empty" pages
         prioritized = sorted(
@@ -377,7 +485,7 @@ def _multipass_extract(
         skipped = len(all_pages_needing_ocr) - max_ocr_pages
         logger.warning(
             f"OCR budget: processing {max_ocr_pages} of {len(all_pages_needing_ocr)} "
-            f"pages (budget={OCR_BUDGET_RATIO:.0%} of {classification.page_count}). "
+            f"pages (budget={effective_budget:.0%} of {classification.page_count}). "
             f"Skipping {skipped} pages."
         )
         budget_warnings.append(

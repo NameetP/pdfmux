@@ -225,13 +225,25 @@ def compute_document_confidence(
             f"Install pdfmux[ocr] for better results."
         )
 
-    # Sparse page detection
-    sparse = sum(1 for p in pages if p.char_count < 100)
-    empty = sum(1 for p in pages if p.char_count < 20)
-    if empty > 0 and empty / len(pages) > 0.15:
-        warnings.append(f"{empty} pages appear to have no extractable text")
-    elif sparse > 0 and sparse / len(pages) > 0.25:
-        warnings.append(f"{sparse} pages have very little text")
+    # Empty page detection — always warn with page numbers
+    empty_pages = [p for p in pages if p.char_count < 20]
+    if empty_pages:
+        if len(empty_pages) <= 5:
+            page_nums = ", ".join(str(p.page_num + 1) for p in empty_pages)
+            warnings.append(
+                f"{len(empty_pages)} empty page(s) detected (pages: {page_nums})"
+            )
+        else:
+            first_five = ", ".join(str(p.page_num + 1) for p in empty_pages[:5])
+            warnings.append(
+                f"{len(empty_pages)} empty pages detected "
+                f"(first 5: {first_five}, ...)"
+            )
+
+    # Sparse page detection (non-empty but low text)
+    sparse = [p for p in pages if 20 <= p.char_count < 100]
+    if sparse and len(sparse) / len(pages) > 0.25:
+        warnings.append(f"{len(sparse)} pages have very little text")
 
     # Structure bonus — if any page has markdown headings
     has_structure = any(re.search(r"^#+\s", p.text, re.MULTILINE) for p in pages)
