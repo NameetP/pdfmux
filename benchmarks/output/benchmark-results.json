@@ -1,0 +1,266 @@
+[
+  {
+    "file": "airbnb-pitch-deck.pdf",
+    "pages": 12,
+    "size_kb": 842,
+    "has_tables": true,
+    "is_scanned": false,
+    "graphical_pages": 6,
+    "pymupdf_raw": {
+      "time_s": 0.02,
+      "chars": 2738,
+      "empty_pages": 0
+    },
+    "pymupdf4llm": {
+      "time_s": 0.33,
+      "chars": 0
+    },
+    "pdfmux": {
+      "time_s": 0.24,
+      "chars": 2766,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "apple-10k.pdf",
+    "pages": 121,
+    "size_kb": 1068,
+    "has_tables": false,
+    "is_scanned": false,
+    "graphical_pages": 1,
+    "pymupdf_raw": {
+      "time_s": 0.25,
+      "chars": 411158,
+      "empty_pages": 0
+    },
+    "pymupdf4llm": {
+      "time_s": 16.88,
+      "chars": 445323
+    },
+    "pdfmux": {
+      "time_s": 15.32,
+      "chars": 445683,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "attention-is-all-you-need.pdf",
+    "pages": 15,
+    "size_kb": 2163,
+    "has_tables": false,
+    "is_scanned": false,
+    "graphical_pages": 0,
+    "pymupdf_raw": {
+      "time_s": 0.07,
+      "chars": 39498,
+      "empty_pages": 0
+    },
+    "pymupdf4llm": {
+      "time_s": 2.0,
+      "chars": 40498
+    },
+    "pdfmux": {
+      "time_s": 2.09,
+      "chars": 41326,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "berkshire-2024-ar.pdf",
+    "pages": 150,
+    "size_kb": 1809,
+    "has_tables": false,
+    "is_scanned": false,
+    "graphical_pages": 0,
+    "pymupdf_raw": {
+      "time_s": 0.41,
+      "chars": 551187,
+      "empty_pages": 3
+    },
+    "pymupdf4llm": {
+      "time_s": 24.29,
+      "chars": 498793
+    },
+    "pdfmux": {
+      "time_s": 23.38,
+      "chars": 498986,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "bert-paper.pdf",
+    "pages": 16,
+    "size_kb": 757,
+    "has_tables": true,
+    "is_scanned": false,
+    "graphical_pages": 0,
+    "pymupdf_raw": {
+      "time_s": 0.05,
+      "chars": 64117,
+      "empty_pages": 0
+    },
+    "pymupdf4llm": {
+      "time_s": 3.65,
+      "chars": 66230
+    },
+    "pdfmux": {
+      "time_s": 4.24,
+      "chars": 66200,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "ey-10k-guide.pdf",
+    "pages": 154,
+    "size_kb": 2592,
+    "has_tables": false,
+    "is_scanned": false,
+    "graphical_pages": 2,
+    "pymupdf_raw": {
+      "time_s": 0.56,
+      "chars": 537415,
+      "empty_pages": 0
+    },
+    "pymupdf4llm": {
+      "time_s": 22.89,
+      "chars": 528984
+    },
+    "pdfmux": {
+      "time_s": 22.02,
+      "chars": 529390,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "fda-new-drug-therapy-2025.pdf",
+    "pages": 34,
+    "size_kb": 10232,
+    "has_tables": true,
+    "is_scanned": false,
+    "graphical_pages": 1,
+    "pymupdf_raw": {
+      "time_s": 0.06,
+      "chars": 64757,
+      "empty_pages": 0
+    },
+    "pymupdf4llm": {
+      "time_s": 5.81,
+      "chars": 65669
+    },
+    "pdfmux": {
+      "time_s": 5.87,
+      "chars": 65591,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "fda-pdufa-performance.pdf",
+    "pages": 135,
+    "size_kb": 1420,
+    "has_tables": false,
+    "is_scanned": false,
+    "graphical_pages": 1,
+    "pymupdf_raw": {
+      "time_s": 0.23,
+      "chars": 225797,
+      "empty_pages": 0
+    },
+    "pymupdf4llm": {
+      "time_s": 47.2,
+      "chars": 238245
+    },
+    "pdfmux": {
+      "time_s": 38.91,
+      "chars": 237877,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "supreme-court-23-939.pdf",
+    "pages": 119,
+    "size_kb": 519,
+    "has_tables": false,
+    "is_scanned": false,
+    "graphical_pages": 0,
+    "pymupdf_raw": {
+      "time_s": 0.14,
+      "chars": 252907,
+      "empty_pages": 0
+    },
+    "pymupdf4llm": {
+      "time_s": 6.13,
+      "chars": 248104
+    },
+    "pdfmux": {
+      "time_s": 6.45,
+      "chars": 248690,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "tesla-10k-2024.pdf",
+    "pages": 144,
+    "size_kb": 1680,
+    "has_tables": false,
+    "is_scanned": false,
+    "graphical_pages": 1,
+    "pymupdf_raw": {
+      "time_s": 0.31,
+      "chars": 475331,
+      "empty_pages": 2
+    },
+    "pymupdf4llm": {
+      "time_s": 21.93,
+      "chars": 485141
+    },
+    "pdfmux": {
+      "time_s": 22.22,
+      "chars": 485534,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  },
+  {
+    "file": "uber-s1-2019.pdf",
+    "pages": 522,
+    "size_kb": 5529,
+    "has_tables": true,
+    "is_scanned": false,
+    "graphical_pages": 15,
+    "pymupdf_raw": {
+      "time_s": 1.06,
+      "chars": 1748601,
+      "empty_pages": 1
+    },
+    "pymupdf4llm": {
+      "time_s": 72.61,
+      "chars": 1713729
+    },
+    "pdfmux": {
+      "time_s": 68.16,
+      "chars": 1746341,
+      "confidence": 100,
+      "extractor": "pymupdf4llm",
+      "ocr_pages": 0
+    }
+  }
+]
