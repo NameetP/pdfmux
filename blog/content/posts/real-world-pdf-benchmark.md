@@ -5,6 +5,7 @@ title = 'We ran pdfmux on Tesla 10-Ks, Uber S-1s, and Supreme Court opinions. He
 description = 'Real-world benchmark of pdfmux vs PyMuPDF and pymupdf4llm across 11 public documents — 1,422 pages of SEC filings, academic papers, legal opinions, and government reports. Full results with every number.'
 tags = ['benchmark', 'pdf-extraction', 'python', 'rag', 'llm', 'real-world', 'pymupdf4llm', 'sec-filings']
 slug = 'real-world-pdf-benchmark'
+og_image = '/og/benchmark.png'
 +++
 
 **TL;DR**: We ran pdfmux across 11 real-world public documents — SEC filings, academic papers, Supreme Court opinions, and government reports — totaling 1,422 pages. pdfmux processed them at **6.8 pages/sec**, was 7% faster than pymupdf4llm overall, extracted more content on 8 out of 11 documents, hit 100% confidence on every single one, and recovered content where pymupdf4llm crashed entirely. Zero cloud calls. Zero cost. Every number is below.
