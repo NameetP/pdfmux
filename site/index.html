@@ -210,6 +210,9 @@
     .feature-grid.visible .feature-card:nth-child(4) { transition-delay: 0.18s; }
     .feature-grid.visible .feature-card:nth-child(5) { transition-delay: 0.24s; }
     .feature-grid.visible .feature-card:nth-child(6) { transition-delay: 0.30s; }
+    .feature-grid.visible .feature-card:nth-child(7) { transition-delay: 0.36s; }
+    .feature-grid.visible .feature-card:nth-child(8) { transition-delay: 0.42s; }
+    .feature-grid.visible .feature-card:nth-child(9) { transition-delay: 0.48s; }
     .feature-grid.visible .feature-card { opacity: 1; transform: translateY(0); }
 
     /* --- FAQ --- */
@@ -295,7 +298,7 @@
       </ul>
       <div class="hero-ctas">
         <a class="btn-primary" href="https://github.com/NameetP/pdfmux">get started &rarr;</a>
-        <span class="hero-meta">MIT licensed &middot; v1.0 stable <span class="version-badge">new</span></span>
+        <span class="hero-meta">MIT licensed &middot; v1.1.0 <span class="version-badge">new</span></span>
       </div>
     </div>
 
@@ -344,8 +347,9 @@ Page 5: <span class="good">good</span> <span class="c">0.97</span>
         <span class="step">2. Audit</span> <span class="detail">&mdash; 5 quality checks per page:</span> <span class="good">good</span> / <span class="fix">bad</span> / empty<br>
         <span class="step">3. Region OCR</span> <span class="detail">&mdash; surgical OCR on image regions in</span> <span class="fix">bad</span> <span class="detail">pages</span><br>
         <span class="step">4. Full OCR</span> <span class="detail">&mdash; re-extract remaining</span> empty <span class="detail">pages completely</span><br>
-        <span class="step">5. Merge</span> <span class="detail">&mdash; combine</span> <span class="good">good</span> <span class="detail">+ fixed pages in order</span>
-        <div class="note">All pages good? Zero OCR overhead. You only pay for what's broken. Parallel OCR with budget controls keeps costs predictable.</div>
+        <span class="step">5. Merge</span> <span class="detail">&mdash; combine</span> <span class="good">good</span> <span class="detail">+ fixed pages in order</span><br>
+        <span class="step">6. Structure</span> <span class="detail">&mdash; extract tables, key-values, normalize dates &amp; amounts (JSON output)</span>
+        <div class="note">All pages good? Zero OCR overhead. You only pay for what's broken. Structured extraction runs automatically on JSON output &mdash; pure rule-based, zero LLM cost.</div>
       </div>
     </section>
 
@@ -379,8 +383,54 @@ chunks = pdfmux.<span class="f">load_llm_context</span>(<span class="s">"report.
         <li>Section boundaries with page references</li>
         <li>Per-page confidence scoring</li>
         <li>Structured chunks with token estimates</li>
+        <li>Table and key-value extraction with normalized values</li>
+        <li>Schema-guided mapping via fuzzy matching</li>
         <li>Locked JSON schema (API frozen for 1.x)</li>
       </ul>
+    </section>
+
+    <!-- STRUCTURED EXTRACTION (v1.1.0) -->
+    <section id="structured" class="fade-section">
+      <h2 data-label="New in v1.1.0">Structured extraction</h2>
+      <p>Extract tables, key-value pairs, and map them to your own JSON schema &mdash; all rule-based, zero LLM cost. Dates, currencies, and rates are normalized automatically.</p>
+      <div class="code-block" style="margin-bottom: 20px;">
+        <div class="code-header">
+          <span class="code-lang">bash</span>
+          <button class="code-copy" onclick="copyCode(this)">copy</button>
+        </div>
+        <pre><span class="c"># structured json with tables + key-values</span>
+$ pdfmux convert <span class="s">invoice.pdf</span> --format json --stdout
+<span class="c"># outputs:</span>
+{
+  <span class="k">"schema_version"</span>: <span class="s">"1.1.0"</span>,
+  <span class="k">"tables"</span>: [{
+    <span class="k">"headers"</span>: [<span class="s">"Description"</span>, <span class="s">"Amount"</span>],
+    <span class="k">"rows"</span>: [[<span class="s">"Consulting"</span>, <span class="s">"$450.00"</span>],
+             [<span class="s">"Setup fee"</span>, <span class="s">"$1,200.00"</span>]]
+  }],
+  <span class="k">"key_values"</span>: [
+    {<span class="k">"key"</span>: <span class="s">"Invoice Date"</span>, <span class="k">"value"</span>: <span class="s">"2026-02-28"</span>},
+    {<span class="k">"key"</span>: <span class="s">"Total Due"</span>, <span class="k">"value"</span>: {<span class="k">"amount"</span>: <span class="o">1650.00</span>, <span class="k">"currency"</span>: <span class="s">"USD"</span>}}
+  ]
+}</pre>
+      </div>
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-lang">bash</span>
+          <button class="code-copy" onclick="copyCode(this)">copy</button>
+        </div>
+        <pre><span class="c"># schema-guided &mdash; map to your own JSON schema</span>
+$ pdfmux convert <span class="s">statement.pdf</span> --format json --schema <span class="s">bank.schema.json</span>
+<span class="c"># outputs data mapped to your schema fields via fuzzy matching:</span>
+{
+  <span class="k">"account_number"</span>: <span class="s">"1234-5678-9012"</span>,
+  <span class="k">"statement_date"</span>: <span class="s">"2026-02-28"</span>,
+  <span class="k">"closing_balance"</span>: {<span class="k">"amount"</span>: <span class="o">12450.75</span>, <span class="k">"currency"</span>: <span class="s">"AED"</span>},
+  <span class="k">"transactions"</span>: [
+    {<span class="k">"date"</span>: <span class="s">"2026-02-01"</span>, <span class="k">"description"</span>: <span class="s">"ADNOC Fuel"</span>, <span class="k">"amount"</span>: <span class="o">185.50</span>}
+  ]
+}</pre>
+      </div>
     </section>
 
     <!-- CLI -->
@@ -499,6 +549,16 @@ $ pdfmux serve</pre>
           <div class="card-desc">Give AI agents PDF reading ability. Three tools, one command to start.</div>
         </div>
         <div class="feature-card">
+          <span class="card-icon">&#x1F4CB;</span>
+          <div class="card-title">Structured extraction</div>
+          <div class="card-desc">Tables, key-values, and schema mapping. Zero LLM cost &mdash; pure rule-based.</div>
+        </div>
+        <div class="feature-card">
+          <span class="card-icon">&#x1F50D;</span>
+          <div class="card-title">Value normalization</div>
+          <div class="card-desc">Dates, currencies, and rates parsed automatically. "28 Feb 2026" &rarr; 2026-02-28.</div>
+        </div>
+        <div class="feature-card">
           <span class="card-icon">&#x1F513;</span>
           <div class="card-title">MIT licensed</div>
           <div class="card-desc">Open source with a frozen API. Your code won't break on updates.</div>
@@ -598,7 +658,7 @@ $ pip install <span class="s">"pdfmux[all]"</span></pre>
         </details>
         <details class="faq-item">
           <summary>Is it production ready?</summary>
-          <div class="faq-answer">v1.0 is stable with a frozen API. Dataclasses, error codes, and JSON schema are locked for the entire 1.x series. File size limits, page caps, and configurable timeouts make it safe for processing untrusted documents at scale.</div>
+          <div class="faq-answer">v1.1.0 is stable with a frozen API. Dataclasses, error codes, and JSON schema are locked for the entire 1.x series. File size limits, page caps, and configurable timeouts make it safe for processing untrusted documents at scale.</div>
         </details>
         <details class="faq-item">
           <summary>How do I add a new extractor?</summary>
@@ -619,6 +679,7 @@ $ pip install <span class="s">"pdfmux[all]"</span></pre>
       <div class="footer-col">
         <h4>Product</h4>
         <a href="#pipeline">How it works</a>
+        <a href="#structured">Structured extraction</a>
         <a href="#accuracy">Accuracy</a>
         <a href="#features">Features</a>
         <a href="#install">Install</a>
