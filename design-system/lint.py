@@ -332,6 +332,9 @@ def check_external_deps(lines: list[str], file_path: str) -> list[Violation]:
                 snippet=line,
             ))
         if EXTERNAL_JS_PATTERN.search(line):
+            # Allow self-hosted analytics (Umami)
+            if "analytics.pdfmux.com" in line:
+                continue
             violations.append(Violation(
                 file=file_path,
                 line=i + 1,
