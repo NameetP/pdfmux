@@ -76,6 +76,7 @@ def process(
     output_format: str = "markdown",
     quality: str = "standard",
     show_confidence: bool = False,
+    schema: str | None = None,
 ) -> ConversionResult:
     """Process a PDF through the tiered extraction pipeline.
 
@@ -87,6 +88,9 @@ def process(
         output_format: "markdown" | "json" | "csv" | "llm".
         quality: "fast" | "standard" | "high".
         show_confidence: Whether to include confidence in markdown output.
+        schema: Optional JSON schema file path or preset name for
+            structured extraction. When provided, output includes
+            tables, key-values, and schema-mapped structured data.
 
     Returns:
         ConversionResult with extracted text and metadata.
@@ -171,7 +175,17 @@ def process(
 
     cleaned = clean_text(merged_text)
 
-    # Step 6: Format output
+    # Step 6: Structured extraction (tables, key-values, schema mapping)
+    structured_tables = None
+    structured_kvs = None
+    structured_output = None
+
+    if fmt == OutputFormat.JSON or schema:
+        structured_tables, structured_kvs, structured_output = _extract_structured(
+            pages, schema
+        )
+
+    # Step 7: Format output
     formatted = _format_output(
         text=cleaned,
         output_format=fmt,
@@ -183,6 +197,9 @@ def process(
         warnings=warnings,
         classification=classification,
         ocr_pages=ocr_pages,
+        tables=structured_tables,
+        key_values=structured_kvs,
+        structured=structured_output,
     )
 
     return ConversionResult(
@@ -648,6 +665,89 @@ def _multipass_extract(
 # ---------------------------------------------------------------------------
 
 
+def _extract_structured(
+    pages: list[PageResult],
+    schema_path: str | None = None,
+) -> tuple[list[dict] | None, list[dict] | None, dict | None]:
+    """Extract structured data (tables, key-values) from pages.
+
+    Args:
+        pages: Extracted page results.
+        schema_path: Optional schema file for schema-guided mapping.
+
+    Returns:
+        (tables_list, kv_list, schema_mapped_output)
+    """
+    from pdfmux.kv_extract import extract_key_values
+    from pdfmux.normalize import auto_normalize
+    from pdfmux.types import ExtractedTable
+
+    # Collect all tables from pages
+    all_tables: list[ExtractedTable] = []
+    for page in pages:
+        all_tables.extend(page.tables)
+
+    # Serialize tables for JSON output
+    tables_json = None
+    if all_tables:
+        tables_json = [
+            {
+                "page": t.page_num + 1,  # 1-indexed for user-facing
+                "headers": list(t.headers),
+                "rows": [list(row) for row in t.rows],
+                **({"label": t.label} if t.label else {}),
+            }
+            for t in all_tables
+        ]
+
+    # Extract key-value pairs from all pages
+    all_kvs = []
+    for page in pages:
+        kvs = extract_key_values(page.text, page_num=page.page_num)
+        all_kvs.extend(kvs)
+
+    # Deduplicate by key (keep first occurrence)
+    seen_keys: set[str] = set()
+    deduped_kvs = []
+    for kv in all_kvs:
+        norm = kv.key.lower()
+        if norm not in seen_keys:
+            deduped_kvs.append(kv)
+            seen_keys.add(norm)
+
+    # Serialize key-values with normalization
+    kvs_json = None
+    if deduped_kvs:
+        kvs_json = []
+        for kv in deduped_kvs:
+            normalized = auto_normalize(kv.key, kv.value)
+            entry: dict = {
+                "key": kv.key,
+                "value": kv.value,
+                "page": kv.page_num + 1,
+            }
+            if normalized != kv.value:
+                entry["normalized"] = normalized
+            kvs_json.append(entry)
+
+    # Schema-guided mapping
+    structured_output = None
+    if schema_path:
+        try:
+            from pdfmux.schema import load_schema, map_to_schema
+
+            schema = load_schema(schema_path)
+            structured_output = map_to_schema(
+                list(all_tables), deduped_kvs, schema
+            )
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).warning(f"Schema mapping failed: {e}")
+
+    return tables_json, kvs_json, structured_output
+
+
 def _format_output(
     text: str,
     output_format: OutputFormat,
@@ -660,6 +760,9 @@ def _format_output(
     classification: PDFClassification,
     *,
     ocr_pages: list[int] | None = None,
+    tables: list[dict] | None = None,
+    key_values: list[dict] | None = None,
+    structured: dict | None = None,
 ) -> str:
     """Format the processed text into the requested output format."""
     if output_format == OutputFormat.MARKDOWN:
@@ -686,6 +789,9 @@ def _format_output(
             extractor=extractor,
             warnings=warnings,
             ocr_pages=ocr_pages,
+            tables=tables,
+            key_values=key_values,
+            structured=structured,
         )
 
     if output_format == OutputFormat.LLM:

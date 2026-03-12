@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -51,6 +52,34 @@ class PageQuality(Enum):
 
 
 @dataclass(frozen=True)
+class ExtractedTable:
+    """A structured table extracted from a PDF page.
+
+    Holds raw row/column data alongside the markdown representation.
+    """
+
+    page_num: int  # 0-indexed
+    headers: tuple[str, ...]
+    rows: tuple[tuple[str, ...], ...]
+    bbox: tuple[float, float, float, float] | None = None  # (x0, y0, x1, y1)
+    label: str = ""  # inferred from nearby headings or positional
+
+
+@dataclass(frozen=True)
+class KeyValuePair:
+    """A key-value pair extracted from non-table regions.
+
+    Captures scattered label: value patterns common in statements,
+    forms, and reports.
+    """
+
+    key: str
+    value: str
+    page_num: int  # 0-indexed
+    normalized: Any = None  # post-normalization value (float, date string, etc.)
+
+
+@dataclass(frozen=True)
 class PageResult:
     """Extraction result for a single page.
 
@@ -65,6 +94,8 @@ class PageResult:
     extractor: str  # name of the extractor that produced this
     image_count: int = 0
     ocr_applied: bool = False
+    tables: tuple[ExtractedTable, ...] = ()
+    key_values: tuple[KeyValuePair, ...] = ()
 
     @property
     def char_count(self) -> int:
