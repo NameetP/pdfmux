@@ -7,6 +7,10 @@ per-page chunks, or when you need extraction metadata alongside text.
 from __future__ import annotations
 
 import json
+import re
+
+# Strip control characters except \n, \r, \t — these break JSON parsers
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def format_json(
@@ -41,6 +45,9 @@ def format_json(
     Returns:
         JSON string with text and metadata.
     """
+    # Sanitize control characters that break JSON parsers
+    text = _CONTROL_CHAR_RE.sub("", text)
+
     # Split into pages if page separators exist
     ocr_set = set(ocr_pages or [])
     page_separator = "\n\n---\n\n"
