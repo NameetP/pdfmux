@@ -53,7 +53,7 @@ class TestJSONSchemaStability:
     def test_json_schema_version(self, digital_pdf: Path) -> None:
         """Schema version should be 1.0.0."""
         data = pdfmux.extract_json(digital_pdf)
-        assert data["schema_version"] == "1.0.0"
+        assert data["schema_version"] == "1.1.0"
 
     def test_json_required_fields(self, digital_pdf: Path) -> None:
         """All v1.0 schema fields must be present."""

@@ -16,24 +16,34 @@ import fitz
 import pymupdf4llm
 
 from pdfmux.extractors import register
-from pdfmux.types import PageQuality, PageResult
+from pdfmux.types import ExtractedTable, PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
 
 
-def _enhance_tables_fast(page: fitz.Page, text: str) -> str:
-    """Enhance table formatting using PyMuPDF's built-in table finder.
+def _extract_tables_fast(
+    page: fitz.Page,
+    page_num: int,
+    text: str,
+) -> tuple[str, list[ExtractedTable]]:
+    """Extract structured tables using PyMuPDF's built-in table finder.
 
-    Uses find_tables() (PyMuPDF 1.23.0+, no ML deps) to detect and
-    format table regions as proper markdown tables appended to the text.
+    Uses find_tables() (PyMuPDF 1.23.0+, no ML deps) to detect table
+    regions. Returns both enhanced text (markdown tables appended) and
+    structured ExtractedTable objects with raw row/column data.
+
+    Returns:
+        (enhanced_text, list_of_extracted_tables)
     """
+    structured_tables: list[ExtractedTable] = []
+
     try:
         tables = page.find_tables()
     except (AttributeError, Exception):
-        return text
+        return text, structured_tables
 
     if not tables.tables:
-        return text
+        return text, structured_tables
 
     table_markdowns = []
     for table in tables.tables:
@@ -42,27 +52,45 @@ def _enhance_tables_fast(page: fitz.Page, text: str) -> str:
             if not cells or len(cells) < 2 or len(cells[0]) < 2:
                 continue
 
+            headers = tuple(str(c).strip() if c else "" for c in cells[0])
+            rows = tuple(
+                tuple(str(c).strip() if c else "" for c in row)
+                for row in cells[1:]
+            )
+
+            # Get bounding box if available
+            bbox = None
+            if hasattr(table, "bbox"):
+                bbox = tuple(table.bbox)
+
+            structured_tables.append(
+                ExtractedTable(
+                    page_num=page_num,
+                    headers=headers,
+                    rows=rows,
+                    bbox=bbox,
+                )
+            )
+
+            # Also build markdown for text output
             md_lines = []
-            headers = [str(c).strip() if c else "" for c in cells[0]]
             md_lines.append("| " + " | ".join(headers) + " |")
             md_lines.append("| " + " | ".join("---" for _ in headers) + " |")
-
-            for row in cells[1:]:
-                row_cells = [str(c).strip() if c else "" for c in row]
-                md_lines.append("| " + " | ".join(row_cells) + " |")
-
+            for row in rows:
+                md_lines.append("| " + " | ".join(row) + " |")
             table_markdowns.append("\n".join(md_lines))
+
         except Exception:
             continue
 
     if not table_markdowns:
-        return text
+        return text, structured_tables
 
     enhanced = text.rstrip()
     for table_md in table_markdowns:
         enhanced += "\n\n" + table_md
 
-    return enhanced
+    return enhanced, structured_tables
 
 
 @register(name="fast", priority=10)
@@ -120,8 +148,10 @@ class FastExtractor:
                     text = raw
 
             # Table enhancement (fast mode, no ML deps)
+            page_tables: tuple[ExtractedTable, ...] = ()
             if enhance_tables and doc and i < len(doc):
-                text = _enhance_tables_fast(doc[i], text)
+                text, extracted = _extract_tables_fast(doc[i], i, text)
+                page_tables = tuple(extracted)
 
             yield PageResult(
                 page_num=i,
@@ -130,6 +160,7 @@ class FastExtractor:
                 quality=PageQuality.GOOD,  # audit will reassess
                 extractor=self.name,
                 image_count=image_count,
+                tables=page_tables,
             )
 
         if doc:

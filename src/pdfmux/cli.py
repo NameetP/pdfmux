@@ -89,6 +89,13 @@ def convert(
         "--confidence",
         help="Show confidence score in output.",
     ),
+    schema: str | None = typer.Option(
+        None,
+        "--schema",
+        "-s",
+        help="JSON schema file or preset for structured extraction. "
+        "Extracts tables as JSON, key-value pairs, and maps to schema fields.",
+    ),
     stdout: bool = typer.Option(
         False,
         "--stdout",
@@ -100,10 +107,16 @@ def convert(
 ) -> None:
     """Convert a PDF (or directory of PDFs) to Markdown."""
     _configure_logging(verbose=verbose, debug=debug, quiet=quiet)
+
+    # Auto-switch to JSON format when schema is provided
+    effective_format = format
+    if schema and format == "markdown":
+        effective_format = "json"
+
     if input_path.is_dir():
-        _convert_directory(input_path, output, format, quality, confidence)
+        _convert_directory(input_path, output, effective_format, quality, confidence)
     else:
-        _convert_file(input_path, output, format, quality, confidence, stdout)
+        _convert_file(input_path, output, effective_format, quality, confidence, stdout, schema=schema)
 
 
 def _version_callback(value: bool) -> None:
@@ -440,6 +453,8 @@ def _convert_file(
     quality: str,
     confidence: bool,
     to_stdout: bool,
+    *,
+    schema: str | None = None,
 ) -> None:
     """Convert a single PDF file."""
     if output is None:
@@ -458,6 +473,7 @@ def _convert_file(
             output_format=fmt,
             quality=quality,
             show_confidence=confidence,
+            schema=schema,
         )
 
     if to_stdout:

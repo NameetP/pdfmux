@@ -19,6 +19,9 @@ def format_json(
     ocr_pages: list[int] | None = None,
     *,
     error_code: str | None = None,
+    tables: list | None = None,
+    key_values: list | None = None,
+    structured: dict | None = None,
 ) -> str:
     """Format extracted text as structured JSON with locked schema.
 
@@ -31,6 +34,9 @@ def format_json(
         warnings: List of warning messages.
         ocr_pages: List of 0-indexed page numbers re-extracted with OCR.
         error_code: Structured error code (null on success).
+        tables: Structured table data (list of dicts with headers/rows).
+        key_values: Key-value pairs extracted from non-table regions.
+        structured: Schema-mapped structured output (if schema was provided).
 
     Returns:
         JSON string with text and metadata.
@@ -43,8 +49,8 @@ def format_json(
     else:
         pages = [text]
 
-    output = {
-        "schema_version": "1.0.0",
+    output: dict = {
+        "schema_version": "1.1.0",
         "source": source,
         "converter": "pdfmux",
         "extractor": extractor,
@@ -58,6 +64,14 @@ def format_json(
             {"page": i + 1, "text": page, "ocr": i in ocr_set} for i, page in enumerate(pages)
         ],
     }
+
+    # Include structured data when available
+    if tables:
+        output["tables"] = tables
+    if key_values:
+        output["key_values"] = key_values
+    if structured:
+        output["structured"] = structured
 
     return json.dumps(output, indent=2, ensure_ascii=False)
 
