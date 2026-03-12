@@ -477,7 +477,10 @@ def _convert_file(
         )
 
     if to_stdout:
-        console.print(result.text)
+        import sys
+
+        sys.stdout.write(result.text)
+        sys.stdout.write("\n")
     else:
         output.write_text(result.text, encoding="utf-8")
 
