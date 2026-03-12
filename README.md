@@ -9,12 +9,13 @@
 PDF extraction that checks its own work. Built for LLM pipelines.
 
 ```
-PDF ──→ pdfmux ──→ Markdown
+PDF ──→ pdfmux ──→ Markdown / JSON
          │
          ├─ fast extract every page
          ├─ audit each page (good / bad / empty)
          ├─ re-extract bad pages with OCR
-         └─ merge → clean → confidence score
+         ├─ merge → clean → confidence score
+         └─ extract tables, key-values, normalize dates/amounts
 ```
 
 Most PDF extractors run once and hope for the best. pdfmux extracts, audits every page, and re-extracts the ones that came out wrong — automatically.
@@ -332,6 +333,7 @@ pdfmux report.pdf --stdout
 | `--output` | `-o` | Same dir, `.md` ext | Output file or directory |
 | `--format` | `-f` | `markdown` | Output format: `markdown`, `json`, `csv`, `llm` |
 | `--quality` | `-q` | `standard` | Quality: `fast`, `standard`, `high` |
+| `--schema` | `-s` | `none` | JSON schema file or preset for structured extraction |
 | `--confidence` | | `false` | Include confidence score in output |
 | `--stdout` | | `false` | Print to stdout instead of writing file |
 
@@ -415,9 +417,90 @@ Profit,$3.1M,$2.4M
 
 Raises an error if no tables are found.
 
+## Structured Extraction
+
+*New in v1.1.0.* Extract structured data from invoices, bank statements, and forms — no LLM, no cloud, no cost.
+
+pdfmux auto-detects key-value pairs (colon-separated, whitespace-aligned, dot-leader patterns), extracts tables as typed JSON, and normalizes dates, amounts, and rates into clean values.
+
+### CLI
+
+```bash
+# JSON output with auto-detected structure
+pdfmux statement.pdf -f json
+
+# Schema-guided extraction — map to your own fields
+pdfmux invoice.pdf --schema invoice.schema.json
+
+# Use a built-in preset
+pdfmux statement.pdf --schema bank-statement
+```
+
+When `--schema` is provided, the format auto-switches to JSON. Fields are matched using fuzzy string similarity — no exact key names required.
+
+### Python API
+
+```python
+import pdfmux
+
+data = pdfmux.extract_json("statement.pdf")
+# data["pages"][0]["key_values"]  → extracted label: value pairs
+# data["pages"][0]["tables"]      → headers + rows as structured JSON
+```
+
+### What gets extracted
+
+**Key-value pairs** — detected from `Label: Value`, `Label    Value` (whitespace-aligned), and `Label.......Value` (dot-leader) patterns:
+
+```json
+{"key": "Statement Date", "value": "2026-02-28", "page_num": 0}
+```
+
+**Tables** — headers and rows as typed arrays:
+
+```json
+{
+  "headers": ["Date", "Description", "Amount"],
+  "rows": [["2026-02-01", "Payment received", "1,234.50"]]
+}
+```
+
+**Normalized values** — dates become ISO 8601, amounts get parsed with currency and direction, rates get period detection:
+
+```json
+{
+  "amount": 1234.50,
+  "direction": "debit",
+  "currency": "AED"
+}
+```
+
+### Schema-guided mapping
+
+Pass a JSON Schema and pdfmux maps extracted data to your fields using fuzzy matching + type coercion. Array fields map from tables, scalar fields map from key-value pairs. No LLM required.
+
+```json
+{
+  "properties": {
+    "invoice_date": {"type": "string", "format": "date"},
+    "total_amount": {"type": "number"},
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string"},
+          "amount": {"type": "number"}
+        }
+      }
+    }
+  }
+}
+```
+
 ## MCP Server
 
-pdfmux includes a built-in MCP (Model Context Protocol) server so AI agents can read PDFs natively. When extraction is limited, agents receive confidence scores and warnings alongside the text.
+pdfmux includes a built-in MCP (Model Context Protocol) server so AI agents can read PDFs natively. Agents receive confidence scores, warnings, and structured extraction data (key-value pairs, tables, normalized values) alongside the text.
 
 ```bash
 pdfmux serve
@@ -506,6 +589,9 @@ src/pdfmux/
 ├── regions.py          # Region OCR — surgical image extraction for bad pages
 ├── parallel.py         # Parallel OCR dispatch with thread pool
 ├── chunking.py         # Section-aware splitting + token estimation
+├── kv_extract.py       # Key-value pair extraction (colon, whitespace, dot-leader)
+├── normalize.py        # Date/amount/rate normalization (pure Python)
+├── schema.py           # Schema-guided extraction (fuzzy matching, type coercion)
 ├── postprocess.py      # Text cleanup
 ├── mcp_server.py       # MCP server (stdio JSON-RPC) with path restrictions
 ├── cli.py              # Typer CLI (convert, analyze, serve, doctor, bench, version)
