@@ -282,6 +282,8 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
     doc.close()
 
     # Process in windows to bound memory on large documents
+    from pdfmux.headings import inject_headings
+
     page_audits: list[PageAudit] = []
 
     for start in range(0, total_pages, PAGE_WINDOW):
@@ -290,9 +292,17 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
 
         chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True, pages=page_range)
 
+        # Open doc for heading detection in this window
+        fitz_doc = fitz.open(str(file_path))
+
         for i, chunk in enumerate(chunks):
             page_num = start + i
             text = chunk.get("text", "")
+
+            # Inject heading markers via font-size analysis
+            if page_num < len(fitz_doc):
+                text = inject_headings(text, fitz_doc[page_num])
+
             text_len = len(text.strip())
             image_count = len(chunk.get("images", []))
 
@@ -308,6 +318,8 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
                     reason=reason,
                 )
             )
+
+        fitz_doc.close()
 
     audit = DocumentAudit(pages=page_audits, total_pages=total_pages)
 

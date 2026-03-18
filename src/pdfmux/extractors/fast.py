@@ -16,6 +16,8 @@ import fitz
 import pymupdf4llm
 
 from pdfmux.extractors import register
+from pdfmux.headings import inject_headings
+from pdfmux.table_fallback import detect_text_tables
 from pdfmux.types import ExtractedTable, PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
@@ -43,6 +45,18 @@ def _extract_tables_fast(
         return text, structured_tables
 
     if not tables.tables:
+        # Fallback: try text-based detection for borderless tables
+        fallback = detect_text_tables(page, page_num)
+        if fallback:
+            enhanced = text.rstrip()
+            for ft in fallback:
+                md_lines = []
+                md_lines.append("| " + " | ".join(ft.headers) + " |")
+                md_lines.append("| " + " | ".join("---" for _ in ft.headers) + " |")
+                for row in ft.rows:
+                    md_lines.append("| " + " | ".join(row) + " |")
+                enhanced += "\n\n" + "\n".join(md_lines)
+            return enhanced, fallback
         return text, structured_tables
 
     table_markdowns = []
@@ -128,10 +142,8 @@ class FastExtractor:
 
         chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True)
 
-        # Open doc only if table enhancement requested
-        doc = None
-        if enhance_tables:
-            doc = fitz.open(str(file_path))
+        # Always open doc for heading detection + optional table enhancement
+        doc = fitz.open(str(file_path))
 
         for i, chunk in enumerate(chunks):
             if pages is not None and i not in pages:
@@ -139,6 +151,10 @@ class FastExtractor:
 
             text = chunk.get("text", "")
             image_count = len(chunk.get("images", []))
+
+            # Heading detection via font-size analysis
+            if i < len(doc):
+                text = inject_headings(text, doc[i])
 
             # Fallback: if pymupdf4llm returned near-empty for this page,
             # try raw fitz extraction
@@ -163,8 +179,7 @@ class FastExtractor:
                 tables=page_tables,
             )
 
-        if doc:
-            doc.close()
+        doc.close()
 
     @staticmethod
     def _extract_raw_page(file_path: Path, page_num: int) -> str:
