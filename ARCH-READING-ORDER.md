@@ -264,3 +264,55 @@ For the 40 wrong-order docs, visually compare output vs GT for 5 representative 
 - TEDS: no regression (stay >= 0.887)
 - Zero new dependencies
 - < 2ms overhead per page
+
+---
+
+## Experiment Results (2026-03-21)
+
+### What was tested
+
+Three approaches were tested against the 200-doc benchmark:
+
+#### Attempt 1: Raw fitz block replacement (50pt gap)
+- Detected 148/200 docs as multi-column (way too many)
+- Replaced pymupdf4llm text with raw fitz blocks in column order
+- **Result: 0.878 overall (DOWN from 0.900), 45 regressions**
+- Root cause: 50pt gap threshold detected single-column docs with indented text as multi-column. Raw fitz blocks lost all markdown formatting (bold, headings, lists), crashing MHS from 0.844 to 0.772.
+
+#### Attempt 2: Raw fitz block replacement (200pt gap)
+- Detected 46/200 docs as multi-column (more reasonable)
+- Same raw block replacement approach
+- **Result: 0.894 overall (DOWN from 0.900), 11 regressions**
+- Root cause: Even at 200pt, some docs were being replaced with raw text unnecessarily. MHS still dropped to 0.822.
+
+#### Attempt 3: Paragraph reordering (200pt gap)
+- Keep pymupdf4llm text, match paragraphs to fitz blocks by text overlap, reorder paragraphs
+- **Result: 0.895 overall (DOWN from 0.900), 18 regressions**
+- Root cause: Paragraph-to-block matching was too imprecise (first-50-chars overlap). Docs where pymupdf4llm already had correct order were being scrambled. Major regressions on docs 069 (-0.132 NID), 097 (-0.135 NID), 153 (-0.559 MHS).
+
+### Key findings
+
+1. **pymupdf4llm handles many multi-column docs correctly already.** Blindly reordering everything multi-column causes more harm than good.
+
+2. **Column detection false positives are deadly.** Even at 200pt gap threshold, docs with wide margins, centered text, or indented code blocks get falsely detected as multi-column.
+
+3. **Text replacement destroys formatting.** Any approach that replaces pymupdf4llm text with raw fitz blocks loses heading markers, bold, lists, and table formatting — crashing MHS.
+
+4. **Paragraph matching is fragile.** pymupdf4llm splits text differently than fitz blocks. Character-overlap matching at 50 chars is not reliable enough for correct reordering.
+
+### What must change for v2
+
+The approach needs to be fundamentally different:
+
+1. **Only reorder when provably wrong.** Need a heuristic to detect when pymupdf4llm's order is actually incorrect (e.g., compare consecutive paragraphs — if a paragraph's y-position jumps UP, the order is likely wrong).
+
+2. **Never replace text.** Reorder pymupdf4llm's existing paragraphs, don't substitute with raw fitz text. This preserves all formatting.
+
+3. **Better paragraph-to-block matching.** Use `fuzz.partial_ratio` or longest-common-subsequence instead of first-50-chars overlap. Or use the y-position of each paragraph's first line (available from `page.get_text("dict")`) to establish correspondence.
+
+4. **Conservative column detection.** The gap threshold alone isn't enough. Also require:
+   - At least 3 blocks per column (not just 2 x-positions far apart)
+   - Blocks in different columns must have comparable y-ranges (actual interleaving)
+   - Page must have enough text to warrant reordering (>200 chars per column)
+
+5. **A/B comparison.** Run both orderings, compute a self-consistency score (e.g., do consecutive sentences flow logically?), pick the better one. This makes the feature safe — worst case, it's a no-op.
