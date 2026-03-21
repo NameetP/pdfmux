@@ -162,16 +162,17 @@ class FastExtractor:
             text = chunk.get("text", "")
             image_count = len(chunk.get("images", []))
 
-            # Heading detection via font-size analysis
-            if i < len(doc):
-                text = inject_headings(text, doc[i])
-
             # Fallback: if pymupdf4llm returned near-empty for this page,
             # try raw fitz extraction
             if len(text.strip()) < 50:
                 raw = self._extract_raw_page(file_path, i)
                 if len(raw.strip()) > len(text.strip()):
                     text = raw
+
+            # Heading detection via font-size analysis (after fallback
+            # so headings are injected into the fullest text available)
+            if i < len(doc):
+                text = inject_headings(text, doc[i])
 
             # Table enhancement (fast mode, no ML deps)
             page_tables: tuple[ExtractedTable, ...] = ()

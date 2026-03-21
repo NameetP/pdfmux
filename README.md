@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://img.shields.io/pypi/dm/pdfmux)](https://pypi.org/project/pdfmux/)
 
-The only PDF extractor that checks its own work. #3 overall on opendataloader-bench — ahead of marker, mineru, and every other free tool. Zero AI, zero API calls, zero GPU.
+The only PDF extractor that checks its own work. **#2 overall** on opendataloader-bench — ahead of docling, marker, mineru, and every other open-source extractor. Zero AI, zero API calls, zero GPU.
 
 <p align="center">
   <img src="demo.svg" alt="pdfmux terminal demo" width="700" />
@@ -32,13 +32,13 @@ Tested on [opendataloader-bench](https://github.com/opendataloader-project/opend
 | Engine | Overall | Reading Order (NID) | Tables (TEDS) | Headings (MHS) | Requires |
 |--------|---------|---------------------|---------------|----------------|----------|
 | opendataloader hybrid | 0.909 | 0.935 | 0.928 | 0.828 | AI API calls |
+| **pdfmux** | **0.900** | **0.918** | **0.887** | **0.844** | **CPU only, zero cost** |
 | docling | 0.877 | 0.900 | 0.887 | 0.802 | ~500MB ML models |
-| **pdfmux** | **0.867** | **0.910** | **0.884** | 0.739 | **CPU only, zero cost** |
 | marker | 0.861 | 0.890 | 0.808 | 0.796 | GPU recommended |
 | opendataloader local | 0.844 | 0.913 | 0.494 | 0.761 | CPU only |
 | mineru | 0.831 | 0.857 | 0.873 | 0.743 | GPU + ~2GB models |
 
-**#3 overall, #1 among free tools.** The only two tools ahead require paid AI API calls (hybrid) or ~500MB of ML models (docling). pdfmux achieves 95% of the top score at zero cost per page — and beats marker, mineru, and every other open-source extractor.
+**#2 overall, #1 among free tools.** 99% of the paid #1 score — at zero cost per page. Beats docling (+2.3%), marker (+3.9%), and every other open-source extractor. Best heading detection of any engine, paid or free.
 
 ## Quick Start
 

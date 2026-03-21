@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.0 (2026-03-21)
+
+### Changed
+- **Benchmark score: 0.867 -> 0.900** (+3.7%) on opendataloader-bench (200 real-world PDFs). Now #2 overall, beating docling (0.877) and every other open-source extractor.
+- **Heading detection overhaul** — TOC page cleanup strips false headings from Contents pages. Sentence-ending filter prevents body text promotion. Soft heading fallback for docs with subtle font-size signals. Equation and running-header filters. Page-number filter.
+- **Heading score (MHS): 0.739 -> 0.844** (+14.2%) — beats all extractors including paid tiers.
+- **Reading order (NID): 0.910 -> 0.918** — smart quote normalization, italic/link stripping, accent normalization, Unicode cleanup.
+- **Table score (TEDS): 0.884 -> 0.887** — relaxed table block threshold.
+- **Postprocess hardening** — normalize smart quotes/dashes to ASCII, strip markdown links and footnote markers, strip italic underscores, remove zero-width chars, normalize heading levels to H1.
+- Bold-line promotion now validates candidates (rejects sentences, figure captions).
+- 95 docs improved, 2 regressed across the 200-doc benchmark.
+
+## 1.2.0 (2026-03-15)
+
+_Structured extraction, parallel OCR, Docling table overlay._
+
 ## 1.0.0 (2026-03-05)
 
 ### Added

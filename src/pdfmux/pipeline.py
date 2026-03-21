@@ -168,7 +168,7 @@ def process(
     )
 
     # Step 4: Build the merged text
-    merged_text = "\n\n---\n\n".join(p.text for p in pages if p.text.strip())
+    merged_text = "\n\n".join(p.text for p in pages if p.text.strip())
 
     # Step 5: Post-process
     from pdfmux.postprocess import clean_text
@@ -447,11 +447,11 @@ def _extract_table_blocks(text: str) -> list[str]:
         if stripped.startswith("|") and stripped.endswith("|"):
             current.append(stripped)
         else:
-            if len(current) >= 3:  # header + separator + data row
+            if len(current) >= 2:  # header + separator (or data row)
                 blocks.append("\n".join(current))
             current = []
 
-    if len(current) >= 3:
+    if len(current) >= 2:
         blocks.append("\n".join(current))
 
     return blocks
@@ -775,9 +775,17 @@ def _multipass_extract(
     merged_pages: list[PageResult] = []
     ocr_page_list: list[int] = sorted(ocr_results.keys())
 
+    # Re-inject headings into OCR-replaced pages (OCR strips heading markers)
+    import fitz as _fitz
+    from pdfmux.headings import inject_headings as _inject_headings
+
+    _fitz_doc = _fitz.open(str(file_path))
+
     for fp in fast_pages:
         if fp.page_num in ocr_results:
             ocr_text = ocr_results[fp.page_num]
+            if fp.page_num < len(_fitz_doc):
+                ocr_text = _inject_headings(ocr_text, _fitz_doc[fp.page_num])
             merged_pages.append(
                 PageResult(
                     page_num=fp.page_num,
@@ -791,6 +799,8 @@ def _multipass_extract(
             )
         else:
             merged_pages.append(fp)
+
+    _fitz_doc.close()
 
     # Build extractor name
     n_ocr = len(ocr_page_list)
