@@ -282,6 +282,7 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
     doc.close()
 
     # Process in windows to bound memory on large documents
+    from pdfmux.column_reorder import reorder_text_ab
     from pdfmux.headings import inject_headings
 
     page_audits: list[PageAudit] = []
@@ -298,6 +299,10 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
         for i, chunk in enumerate(chunks):
             page_num = start + i
             text = chunk.get("text", "")
+
+            # Column-aware reading order (A/B comparison — safe, no-op if uncertain)
+            if page_num < len(fitz_doc):
+                text = reorder_text_ab(text, fitz_doc[page_num])
 
             # Inject heading markers via font-size analysis
             if page_num < len(fitz_doc):

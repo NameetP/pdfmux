@@ -15,6 +15,7 @@ from pathlib import Path
 import fitz
 import pymupdf4llm
 
+from pdfmux.column_reorder import reorder_text_ab
 from pdfmux.extractors import register
 from pdfmux.headings import inject_headings
 from pdfmux.table_fallback import detect_text_tables
@@ -168,6 +169,10 @@ class FastExtractor:
                 raw = self._extract_raw_page(file_path, i)
                 if len(raw.strip()) > len(text.strip()):
                     text = raw
+
+            # Column-aware reading order (A/B comparison — safe, no-op if uncertain)
+            if i < len(doc):
+                text = reorder_text_ab(text, doc[i])
 
             # Heading detection via font-size analysis (after fallback
             # so headings are injected into the fullest text available)
