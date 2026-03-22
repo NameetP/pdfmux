@@ -57,6 +57,9 @@ No config, no flags, no API keys needed.
 # core — handles digital PDFs instantly (the vast majority)
 pip install pdfmux
 
+# add OpenDataLoader for best-in-class accuracy (Java 11+ required)
+pip install "pdfmux[opendataloader]"
+
 # add OCR for scanned/image-heavy pages (~200MB, CPU-only)
 pip install "pdfmux[ocr]"
 

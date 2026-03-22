@@ -10,6 +10,7 @@ from pdfmux.errors import ExtractorNotAvailable
 from pdfmux.extractors.fast import FastExtractor
 from pdfmux.extractors.llm import LLMExtractor
 from pdfmux.extractors.ocr import OCRExtractor
+from pdfmux.extractors.opendataloader import OpenDataLoaderExtractor
 from pdfmux.extractors.tables import TableExtractor
 
 
@@ -73,6 +74,31 @@ class TestOCRExtractor:
     def test_extractor_name(self) -> None:
         ext = OCRExtractor()
         assert ext.name == "surya"
+
+
+class TestOpenDataLoaderExtractor:
+    """Tests for the OpenDataLoader extractor (requires opendataloader-pdf optional dep)."""
+
+    def test_requires_opendataloader(self, digital_pdf: Path) -> None:
+        """Should raise ExtractorNotAvailable when opendataloader-pdf is not installed."""
+        ext = OpenDataLoaderExtractor()
+        if ext.available():
+            pytest.skip("OpenDataLoader is installed")
+        with pytest.raises(ExtractorNotAvailable, match="OpenDataLoader-PDF is not installed"):
+            list(ext.extract(digital_pdf))
+
+    def test_extractor_name(self) -> None:
+        ext = OpenDataLoaderExtractor()
+        assert ext.name == "opendataloader"
+
+    def test_registry_priority(self) -> None:
+        """OpenDataLoader should be registered at priority 15 (between fast and rapidocr)."""
+        from pdfmux.extractors import _REGISTRY
+
+        odl_entry = [(p, n) for p, n, _ in _REGISTRY if n == "opendataloader"]
+        assert odl_entry, "opendataloader not found in registry"
+        priority = odl_entry[0][0]
+        assert priority == 15, f"Expected priority 15, got {priority}"
 
 
 class TestLLMExtractor:

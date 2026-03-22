@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0 (2026-03-23)
+
+### Added
+- **OpenDataLoader extractor** — integrate OpenDataLoader-PDF (by Hancom) as a backend extractor. Best-in-class reading order (0.94 NID) and table accuracy (0.93 TEDS). Auto-selected in standard mode when installed. Install with `pip install pdfmux[opendataloader]`. Requires Java 11+.
+- New `pdfmux doctor` check for OpenDataLoader availability.
+- New `pdfmux bench` row for OpenDataLoader comparison.
+- pdfmux now acts as an **orchestrator** — automatically routes to the best available extractor per document type rather than being a single extraction engine.
+
 ## 1.3.0 (2026-03-21)
 
 ### Changed

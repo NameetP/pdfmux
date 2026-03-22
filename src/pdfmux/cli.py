@@ -172,6 +172,7 @@ def doctor() -> None:
     checks = [
         ("pymupdf", "fitz", "PyMuPDF", "Base (always available)"),
         ("pymupdf4llm", "pymupdf4llm", "pymupdf4llm", "Base (always available)"),
+        ("opendataloader-pdf", "opendataloader_pdf", "OpenDataLoader", r"pip install pdfmux\[opendataloader]"),
         ("docling", "docling.document_converter", "Docling", r"pip install pdfmux\[tables]"),
         ("rapidocr", "rapidocr", "RapidOCR", r"pip install pdfmux\[ocr]"),
         ("surya-ocr", "surya.recognition", "Surya OCR", r"pip install pdfmux\[ocr-heavy]"),
@@ -238,6 +239,7 @@ def bench(
     extractors_list = [
         "PyMuPDF",
         "Multi-pass",
+        "OpenDataLoader",
         "Docling",
         "RapidOCR",
         "Surya OCR",
@@ -286,6 +288,19 @@ def bench(
                     if n_ocr > 0
                     else "[green]✓[/green] all pages good"
                 )
+
+            elif name == "OpenDataLoader":
+                from pdfmux.extractors.opendataloader import OpenDataLoaderExtractor
+
+                ext_o = OpenDataLoaderExtractor()
+                if not ext_o.available():
+                    raise ImportError("Not installed")
+                raw = "\n\n---\n\n".join(p.text for p in ext_o.extract(input_path))
+                elapsed = time.perf_counter() - start
+                processed = clean_and_score(raw, classification.page_count)
+                chars = len(raw)
+                conf = processed.confidence
+                status = "[green]✓[/green]"
 
             elif name == "Docling":
                 from pdfmux.extractors.tables import TableExtractor

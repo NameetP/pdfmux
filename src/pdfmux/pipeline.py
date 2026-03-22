@@ -283,6 +283,19 @@ def _route_and_extract(
         pages, name = _try_llm_extractor(file_path)
         return pages, name, []
 
+    # OpenDataLoader → use when available (best reading order + tables)
+    try:
+        from pdfmux.extractors.opendataloader import OpenDataLoaderExtractor
+
+        odl = OpenDataLoaderExtractor()
+        if odl.available():
+            pages = list(odl.extract(file_path))
+            if pages and any(len(p.text.strip()) > 10 for p in pages):
+                logger.info("Using OpenDataLoader for extraction")
+                return pages, odl.name, []
+    except Exception:
+        pass
+
     # Tables → targeted Docling on table pages, fast for the rest
     if classification.has_tables and not classification.is_graphical:
         pages, name = _try_targeted_table_extraction(file_path, classification)
