@@ -15,6 +15,7 @@ Tools:
     analyze_pdf        — quick triage: classify + audit without full extraction
     batch_convert      — convert all PDFs in a directory
     extract_structured — tables, key-values, schema mapping
+    get_pdf_metadata   — page count, file size, type detection (instant, no extraction)
 """
 
 from __future__ import annotations
@@ -74,6 +75,56 @@ mcp = FastMCP(
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_pdf_metadata(file_path: str) -> str:
+    """Get PDF metadata instantly — page count, file size, document type, and whether it has tables. No extraction performed. Use this first to decide which tool to call next: convert_pdf for full text, analyze_pdf for quality audit, or extract_structured for tables."""
+    p = _check_path(file_path)
+
+    if not p.exists():
+        raise ValueError(f"File not found: {file_path}")
+
+    from pdfmux.detect import classify
+
+    classification = classify(str(p))
+    file_size = p.stat().st_size
+
+    types = []
+    if classification.is_digital:
+        types.append("digital")
+    if classification.is_scanned:
+        types.append("scanned")
+    if classification.is_mixed:
+        types.append("mixed")
+    if classification.is_graphical:
+        types.append("graphical")
+    if classification.has_tables:
+        types.append("has_tables")
+
+    metadata = {
+        "file": str(file_path),
+        "file_size_bytes": file_size,
+        "file_size_human": (
+            f"{file_size / 1024 / 1024:.1f} MB"
+            if file_size > 1024 * 1024
+            else f"{file_size / 1024:.0f} KB"
+        ),
+        "page_count": classification.page_count,
+        "detected_types": types,
+        "has_tables": classification.has_tables,
+        "is_scanned": classification.is_scanned,
+        "recommended_quality": (
+            "high" if classification.is_scanned
+            else "standard"
+        ),
+        "recommended_tool": (
+            "extract_structured" if classification.has_tables
+            else "convert_pdf"
+        ),
+    }
+
+    return json.dumps(metadata, indent=2)
 
 
 @mcp.tool()

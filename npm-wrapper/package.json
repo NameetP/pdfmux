@@ -1,0 +1,34 @@
+{
+  "name": "pdfmux-mcp",
+  "version": "1.4.0",
+  "description": "MCP server for pdfmux — give AI agents reliable PDF reading. #2 on opendataloader-bench.",
+  "keywords": [
+    "mcp",
+    "pdf",
+    "extraction",
+    "ai",
+    "llm",
+    "claude",
+    "cursor",
+    "markdown",
+    "ocr",
+    "model-context-protocol"
+  ],
+  "homepage": "https://pdfmux.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NameetP/pdfmux"
+  },
+  "license": "MIT",
+  "author": "Nameet Potnis",
+  "bin": {
+    "pdfmux-mcp": "index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
