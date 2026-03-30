@@ -96,6 +96,8 @@ class PageResult:
     ocr_applied: bool = False
     tables: tuple[ExtractedTable, ...] = ()
     key_values: tuple[KeyValuePair, ...] = ()
+    cost_usd: float = 0.0
+    tokens_used: int = 0
 
     @property
     def char_count(self) -> int:
@@ -119,6 +121,8 @@ class DocumentResult:
     text: str  # the formatted output (markdown, JSON string, CSV, etc.)
     warnings: tuple[str, ...] = field(default_factory=tuple)
     ocr_pages: tuple[int, ...] = field(default_factory=tuple)  # 0-indexed
+    total_cost_usd: float = 0.0
+    total_tokens: int = 0
 
     @property
     def page_count(self) -> int:

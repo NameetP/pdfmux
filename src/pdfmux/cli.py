@@ -102,6 +102,17 @@ def convert(
         "--stdout",
         help="Print output to stdout instead of writing to file.",
     ),
+    mode: str | None = typer.Option(
+        None,
+        "--mode",
+        "-m",
+        help="Routing strategy: economy (cheapest), balanced (default), premium (best quality).",
+    ),
+    budget: float | None = typer.Option(
+        None,
+        "--budget",
+        help="Maximum cost in USD for LLM extraction (e.g. 0.50).",
+    ),
     llm_provider: str | None = typer.Option(
         None,
         "--llm-provider",
@@ -124,6 +135,10 @@ def convert(
         os.environ["PDFMUX_LLM_PROVIDER"] = llm_provider
     if llm_model:
         os.environ["PDFMUX_LLM_MODEL"] = llm_model
+    if mode:
+        os.environ["PDFMUX_MODE"] = mode
+    if budget is not None:
+        os.environ["PDFMUX_BUDGET"] = str(budget)
 
     # Auto-switch to JSON format when schema is provided
     effective_format = format
