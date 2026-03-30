@@ -262,6 +262,88 @@ def doctor() -> None:
 
 
 @app.command()
+def benchmark(
+    dataset: Path | None = typer.Option(
+        None,
+        "--dataset",
+        "-d",
+        help="Directory containing benchmark PDFs + ground truth (.gt.md). Default: built-in dataset.",
+    ),
+    extractor: str | None = typer.Option(
+        None,
+        "--extractor",
+        "-e",
+        help="Benchmark a specific extractor only (e.g. pymupdf, docling, llm).",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Save results JSON to this path. Default: ~/.config/pdfmux/eval_results.json",
+    ),
+) -> None:
+    """Benchmark all available extractors against ground truth PDFs."""
+    from pdfmux.eval.runner import BenchmarkRunner
+
+    runner = BenchmarkRunner(dataset_dir=dataset)
+
+    datasets = runner.discover_datasets()
+    if not datasets:
+        console.print("[red]No benchmark datasets found.[/red]")
+        console.print(
+            "Place PDFs with .gt.md ground truth files in eval/datasets/ or use --dataset."
+        )
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold]pdfmux benchmark[/bold] — {len(datasets)} documents\n")
+
+    extractors_list = [extractor] if extractor else None
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Running benchmarks...", total=None)
+        results = runner.run_all(extractors=extractors_list)
+        progress.update(task, completed=True)
+
+    # Display summary
+    summary = results.summary_by_type()
+    for page_type, extractors_data in summary.items():
+        console.print(f"\n[bold]{page_type}[/bold]")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Extractor", min_width=14)
+        table.add_column("Overall", min_width=10, justify="right")
+        table.add_column("Text Acc", min_width=10, justify="right")
+        table.add_column("Structure", min_width=10, justify="right")
+        table.add_column("Table F1", min_width=10, justify="right")
+        table.add_column("Halluc", min_width=10, justify="right")
+        table.add_column("Latency", min_width=10, justify="right")
+        table.add_column("N", min_width=5, justify="right")
+
+        # Sort by overall score
+        sorted_ext = sorted(extractors_data.items(), key=lambda x: x[1]["overall"], reverse=True)
+        for ext_name, metrics in sorted_ext:
+            table.add_row(
+                ext_name,
+                f"{metrics['overall']:.2%}",
+                f"{metrics['text_accuracy']:.2%}",
+                f"{metrics['structure_preservation']:.2%}",
+                f"{metrics['table_f1']:.2%}" if metrics["table_f1"] > 0 else "—",
+                f"{metrics['hallucination_rate']:.2%}",
+                f"{metrics['avg_latency_ms']:.0f}ms",
+                str(int(metrics["n_documents"])),
+            )
+        console.print(table)
+
+    # Save results
+    saved_path = runner.save_results(results, output)
+    console.print(f"\n[dim]Results saved to {saved_path}[/dim]")
+    console.print()
+
+
+@app.command()
 def bench(
     input_path: Path = typer.Argument(
         ...,
