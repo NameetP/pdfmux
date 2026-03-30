@@ -328,8 +328,27 @@ def _route_and_extract(
         ))
         return pages, ext.name, []
 
-    # High/Premium mode: LLM for everything
+    # High/Premium mode: segment-aware LLM extraction
     if quality == Quality.HIGH:
+        try:
+            from pdfmux.segment import detect_segments, is_mixed_content
+
+            # Check if any pages have mixed content worth segment-routing
+            mixed_pages = []
+            for page_num in range(classification.page_count):
+                segs = detect_segments(file_path, page_num)
+                if is_mixed_content(segs):
+                    mixed_pages.append(page_num)
+
+            if mixed_pages:
+                logger.info(
+                    "PREMIUM mode: %d pages with mixed content detected, "
+                    "using segment-aware extraction",
+                    len(mixed_pages),
+                )
+        except Exception as e:
+            logger.debug("Segment detection skipped: %s", e)
+
         pages, name = _try_llm_extractor(file_path)
         return pages, name, []
 

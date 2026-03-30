@@ -227,14 +227,34 @@ def load_schema(schema_path: str) -> dict:
         with open(schema_path) as f:
             return json.load(f)
 
-    # Check for built-in presets
+    # Check built-in presets from schema_validator
+    try:
+        from pdfmux.schema_validator import PRESETS
+
+        if schema_path in PRESETS:
+            return PRESETS[schema_path]
+    except ImportError:
+        pass
+
+    # Legacy: check schemas/ directory
     presets_dir = os.path.join(os.path.dirname(__file__), "schemas")
     preset_path = os.path.join(presets_dir, f"{schema_path}.json")
     if os.path.isfile(preset_path):
         with open(preset_path) as f:
             return json.load(f)
 
-    raise FileNotFoundError(
-        f"Schema not found: {schema_path}. "
-        "Provide a file path or a built-in preset name."
-    )
+    # List available presets in error message
+    try:
+        from pdfmux.schema_validator import get_preset_names
+
+        preset_names = ", ".join(get_preset_names())
+        raise FileNotFoundError(
+            f"Schema not found: {schema_path}. "
+            f"Available presets: {preset_names}. "
+            "Or provide a path to a JSON schema file."
+        )
+    except ImportError:
+        raise FileNotFoundError(
+            f"Schema not found: {schema_path}. "
+            "Provide a file path or a built-in preset name."
+        )

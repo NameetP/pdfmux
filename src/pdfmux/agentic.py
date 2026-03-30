@@ -55,6 +55,7 @@ def agentic_improve(
         if p.confidence < confidence_threshold
         and p.quality != PageQuality.EMPTY
         and len(p.text.strip()) > 5
+        and not p.ocr_applied  # skip pages already re-extracted by multipass
     ]
 
     if not low_confidence_pages:
