@@ -258,6 +258,93 @@ def doctor() -> None:
         llm_table.add_row("(error loading providers)", "", "", "", "")
 
     console.print(llm_table)
+
+    # --- Coverage by document type ---
+    console.print()
+    console.print("[bold]Coverage by Document Type[/bold]")
+
+    from pdfmux.router.engine import QUALITY_ESTIMATES, RouterEngine
+
+    engine = RouterEngine()
+    available = engine._get_available_extractors()
+
+    page_types = [
+        ("digital", "Digital text"),
+        ("scanned", "Scanned docs"),
+        ("tables", "Tables"),
+        ("graphical", "Image-heavy"),
+        ("mixed", "Mixed content"),
+        ("handwritten", "Handwriting"),
+        ("forms", "Forms"),
+    ]
+
+    # Best possible score per type (across ALL extractors including unavailable)
+    best_possible: dict[str, tuple[float, str]] = {}
+    best_available: dict[str, tuple[float, str]] = {}
+    for pt, _ in page_types:
+        best_p = (0.0, "none")
+        best_a = (0.0, "none")
+        for (ext, ptype), quality in QUALITY_ESTIMATES.items():
+            if ptype == pt:
+                if quality > best_p[0]:
+                    best_p = (quality, ext)
+                if ext in available and quality > best_a[0]:
+                    best_a = (quality, ext)
+        best_possible[pt] = best_p
+        best_available[pt] = best_a
+
+    for pt, display_name in page_types:
+        avail_score, avail_ext = best_available.get(pt, (0.0, "none"))
+        best_score, best_ext = best_possible.get(pt, (0.0, "none"))
+
+        # Build bar
+        bar_width = 20
+        filled = int(avail_score * bar_width)
+        bar = "[green]" + "█" * filled + "[/green]" + "[dim]" + "░" * (bar_width - filled) + "[/dim]"
+
+        pct = f"{avail_score:.0%}"
+        info = f"({avail_ext})"
+
+        if best_score > avail_score + 0.05 and best_ext != avail_ext:
+            gap = f" [yellow]→ add {best_ext} for {best_score:.0%}[/yellow]"
+        else:
+            gap = ""
+
+        console.print(f"  {display_name:<15} {bar} {pct:>4}  [dim]{info}[/dim]{gap}")
+
+    # --- Recommendations ---
+    recommendations = []
+    for pt, display_name in page_types:
+        avail_score, avail_ext = best_available.get(pt, (0.0, "none"))
+        best_score, best_ext = best_possible.get(pt, (0.0, "none"))
+        improvement = best_score - avail_score
+        if improvement > 0.05 and best_ext not in available:
+            recommendations.append((improvement, pt, display_name, best_ext, best_score))
+
+    if recommendations:
+        recommendations.sort(reverse=True)
+        console.print()
+        console.print("[bold]Recommendations[/bold]")
+        for improvement, pt, display_name, ext, score in recommendations[:3]:
+            hint = install_hints.get(ext, f"pip install pdfmux[{ext}]")
+            console.print(
+                f"  [yellow]⚡[/yellow] Add [bold]{ext}[/bold] "
+                f"for +{improvement:.0%} better {display_name.lower()} extraction"
+            )
+            console.print(f"     [dim]{hint}[/dim]")
+
+    # --- Readiness score ---
+    if best_available:
+        avg_coverage = sum(s for s, _ in best_available.values()) / len(best_available)
+        readiness = int(avg_coverage * 100)
+        color = "green" if readiness >= 80 else "yellow" if readiness >= 60 else "red"
+        console.print()
+        console.print(
+            f"[bold]Overall readiness: [{color}]{readiness}%[/{color}][/bold]"
+        )
+        if readiness < 80:
+            console.print("[dim]Add 1 more provider for better coverage[/dim]")
+
     console.print()
 
 
