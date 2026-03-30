@@ -137,6 +137,172 @@ def _chunks_from_sections(
     return chunks
 
 
+def chunk_for_rag(
+    text: str,
+    confidence: float = 1.0,
+    *,
+    max_tokens: int = 500,
+    overlap_tokens: int = 50,
+    extractor: str = "",
+    ocr_applied: bool = False,
+) -> list[Chunk]:
+    """RAG-optimized chunking with token bounds and overlap.
+
+    Strategy:
+    1. Split at heading boundaries (layout-aware)
+    2. If a chunk exceeds max_tokens, sub-split at paragraph boundaries
+    3. Apply overlap: repeat last N tokens at start of next chunk
+    4. Attach metadata: page range, confidence, extractor
+
+    Args:
+        text: Post-processed Markdown text (with page separators).
+        confidence: Document-level confidence score.
+        max_tokens: Maximum tokens per chunk.
+        overlap_tokens: Tokens to repeat between adjacent chunks.
+        extractor: Extractor name for metadata.
+        ocr_applied: Whether OCR was used.
+
+    Returns:
+        List of Chunk objects, token-bounded with overlap.
+    """
+    if not text or not text.strip():
+        return []
+
+    # Step 1: Get section-based chunks (existing logic)
+    raw_chunks = chunk_by_sections(
+        text, confidence, extractor=extractor, ocr_applied=ocr_applied
+    )
+
+    if not raw_chunks:
+        return []
+
+    # Step 2: Split oversized chunks at paragraph boundaries
+    bounded_chunks: list[Chunk] = []
+    for chunk in raw_chunks:
+        if chunk.tokens <= max_tokens:
+            bounded_chunks.append(chunk)
+        else:
+            sub_chunks = _split_chunk(chunk, max_tokens)
+            bounded_chunks.extend(sub_chunks)
+
+    # Step 3: Apply overlap
+    if overlap_tokens > 0 and len(bounded_chunks) > 1:
+        bounded_chunks = _apply_overlap(bounded_chunks, overlap_tokens)
+
+    # Step 4: Build result
+    result = []
+    for i, chunk in enumerate(bounded_chunks):
+        result.append(
+            Chunk(
+                title=chunk.title,
+                text=chunk.text,
+                page_start=chunk.page_start,
+                page_end=chunk.page_end,
+                tokens=estimate_tokens(chunk.text),
+                confidence=chunk.confidence,
+                extractor=chunk.extractor,
+                ocr_applied=chunk.ocr_applied,
+            )
+        )
+
+    return result
+
+
+def _split_chunk(chunk: Chunk, max_tokens: int) -> list[Chunk]:
+    """Split an oversized chunk at paragraph or sentence boundaries."""
+    paragraphs = re.split(r"\n\n+", chunk.text)
+
+    # Further split any paragraph that still exceeds max_tokens at sentence boundaries
+    expanded = []
+    for para in paragraphs:
+        if estimate_tokens(para) > max_tokens:
+            sentences = re.split(r"(?<=[.!?])\s+", para)
+            if len(sentences) > 1:
+                expanded.extend(sentences)
+            else:
+                expanded.append(para)
+        else:
+            expanded.append(para)
+    paragraphs = expanded
+
+    sub_chunks = []
+    current_text = ""
+    current_tokens = 0
+
+    for para in paragraphs:
+        para_tokens = estimate_tokens(para)
+
+        if current_tokens + para_tokens > max_tokens and current_text:
+            # Emit current chunk
+            sub_chunks.append(
+                Chunk(
+                    title=chunk.title,
+                    text=current_text.strip(),
+                    page_start=chunk.page_start,
+                    page_end=chunk.page_end,
+                    tokens=estimate_tokens(current_text),
+                    confidence=chunk.confidence,
+                    extractor=chunk.extractor,
+                    ocr_applied=chunk.ocr_applied,
+                )
+            )
+            current_text = para + "\n\n"
+            current_tokens = para_tokens
+        else:
+            current_text += para + "\n\n"
+            current_tokens += para_tokens
+
+    # Don't forget the last chunk
+    if current_text.strip():
+        sub_chunks.append(
+            Chunk(
+                title=chunk.title,
+                text=current_text.strip(),
+                page_start=chunk.page_start,
+                page_end=chunk.page_end,
+                tokens=estimate_tokens(current_text),
+                confidence=chunk.confidence,
+                extractor=chunk.extractor,
+                ocr_applied=chunk.ocr_applied,
+            )
+        )
+
+    return sub_chunks if sub_chunks else [chunk]
+
+
+def _apply_overlap(chunks: list[Chunk], overlap_tokens: int) -> list[Chunk]:
+    """Add overlap text from previous chunk to start of next chunk."""
+    result = [chunks[0]]
+
+    for i in range(1, len(chunks)):
+        prev_text = chunks[i - 1].text
+        prev_words = prev_text.split()
+
+        # Take last N words as overlap (tokens ≈ words for English)
+        overlap_words = prev_words[-overlap_tokens:] if len(prev_words) > overlap_tokens else []
+        overlap_text = " ".join(overlap_words)
+
+        if overlap_text:
+            new_text = f"...{overlap_text}\n\n{chunks[i].text}"
+        else:
+            new_text = chunks[i].text
+
+        result.append(
+            Chunk(
+                title=chunks[i].title,
+                text=new_text,
+                page_start=chunks[i].page_start,
+                page_end=chunks[i].page_end,
+                tokens=estimate_tokens(new_text),
+                confidence=chunks[i].confidence,
+                extractor=chunks[i].extractor,
+                ocr_applied=chunks[i].ocr_applied,
+            )
+        )
+
+    return result
+
+
 def _chunks_from_pages(
     text: str,
     page_offsets: list[tuple[int, int]],

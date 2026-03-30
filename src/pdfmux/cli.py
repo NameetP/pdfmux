@@ -97,6 +97,21 @@ def convert(
         help="JSON schema file or preset for structured extraction. "
         "Extracts tables as JSON, key-value pairs, and maps to schema fields.",
     ),
+    chunk: bool = typer.Option(
+        False,
+        "--chunk",
+        help="Output RAG-ready chunks instead of a single document. Layout-aware splitting.",
+    ),
+    max_tokens: int = typer.Option(
+        500,
+        "--max-tokens",
+        help="Maximum tokens per chunk (only with --chunk).",
+    ),
+    overlap: int = typer.Option(
+        50,
+        "--overlap",
+        help="Token overlap between adjacent chunks (only with --chunk).",
+    ),
     stdout: bool = typer.Option(
         False,
         "--stdout",
@@ -148,7 +163,10 @@ def convert(
     if input_path.is_dir():
         _convert_directory(input_path, output, effective_format, quality, confidence)
     else:
-        _convert_file(input_path, output, effective_format, quality, confidence, stdout, schema=schema)
+        _convert_file(
+            input_path, output, effective_format, quality, confidence, stdout,
+            schema=schema, chunk_mode=chunk, max_tokens=max_tokens, overlap_tokens=overlap,
+        )
 
 
 def _version_callback(value: bool) -> None:
@@ -693,10 +711,18 @@ def _convert_file(
     to_stdout: bool,
     *,
     schema: str | None = None,
+    chunk_mode: bool = False,
+    max_tokens: int = 500,
+    overlap_tokens: int = 50,
 ) -> None:
     """Convert a single PDF file."""
     if output is None:
-        ext = {"markdown": ".md", "json": ".json", "csv": ".csv", "llm": ".json"}.get(fmt, ".md")
+        if chunk_mode:
+            ext = ".chunks.json"
+        else:
+            ext = {"markdown": ".md", "json": ".json", "csv": ".csv", "llm": ".json"}.get(
+                fmt, ".md"
+            )
         output = input_path.with_suffix(ext)
 
     with Progress(
@@ -713,6 +739,55 @@ def _convert_file(
             show_confidence=confidence,
             schema=schema,
         )
+
+    # RAG chunking mode
+    if chunk_mode:
+        import json
+
+        from pdfmux.chunking import chunk_for_rag
+
+        chunks = chunk_for_rag(
+            result.text,
+            confidence=result.confidence,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+            extractor=result.extractor_used,
+        )
+
+        chunk_output = {
+            "source": str(input_path),
+            "total_chunks": len(chunks),
+            "total_tokens": sum(c.tokens for c in chunks),
+            "confidence": result.confidence,
+            "chunks": [
+                {
+                    "index": i,
+                    "title": c.title,
+                    "text": c.text,
+                    "page_start": c.page_start,
+                    "page_end": c.page_end,
+                    "tokens": c.tokens,
+                    "confidence": c.confidence,
+                }
+                for i, c in enumerate(chunks)
+            ],
+        }
+
+        output_text = json.dumps(chunk_output, indent=2, ensure_ascii=False)
+
+        if to_stdout:
+            import sys
+
+            sys.stdout.write(output_text)
+            sys.stdout.write("\n")
+        else:
+            output.write_text(output_text, encoding="utf-8")
+            console.print(
+                f"[green]✓[/green] {input_path.name} → {output.name} "
+                f"({len(chunks)} chunks, ~{sum(c.tokens for c in chunks)} tokens, "
+                f"max {max_tokens} tok/chunk, {overlap_tokens} overlap)"
+            )
+        return
 
     if to_stdout:
         import sys

@@ -36,6 +36,7 @@ __all__ = [
     "extract_text",
     "extract_json",
     "load_llm_context",
+    "chunk",
     # Types
     "Quality",
     "OutputFormat",
@@ -178,3 +179,60 @@ def load_llm_context(
     result = process(file_path=path, output_format="llm", quality=quality)
     data = json.loads(result.text)
     return data["chunks"]
+
+
+def chunk(
+    path: str | Path,
+    *,
+    quality: str = "standard",
+    max_tokens: int = 500,
+    overlap: int = 50,
+) -> list[dict]:
+    """Extract and chunk a PDF for RAG pipelines.
+
+    Layout-aware chunking that respects document structure.
+    Splits at heading boundaries, enforces token limits,
+    and adds overlap between adjacent chunks.
+
+    Args:
+        path: Path to the PDF file.
+        quality: "fast", "standard" (default), or "high".
+        max_tokens: Maximum tokens per chunk.
+        overlap: Token overlap between adjacent chunks.
+
+    Returns:
+        List of chunk dicts, each with: index, title, text,
+        page_start, page_end, tokens, confidence.
+
+    Example::
+
+        import pdfmux
+        chunks = pdfmux.chunk("report.pdf", max_tokens=500)
+        for c in chunks:
+            print(f"[{c['tokens']} tok] {c['title']}")
+    """
+    from pdfmux.chunking import chunk_for_rag
+    from pdfmux.pipeline import process
+
+    result = process(file_path=path, output_format="markdown", quality=quality)
+
+    chunks = chunk_for_rag(
+        result.text,
+        confidence=result.confidence,
+        max_tokens=max_tokens,
+        overlap_tokens=overlap,
+        extractor=result.extractor_used,
+    )
+
+    return [
+        {
+            "index": i,
+            "title": c.title,
+            "text": c.text,
+            "page_start": c.page_start,
+            "page_end": c.page_end,
+            "tokens": c.tokens,
+            "confidence": c.confidence,
+        }
+        for i, c in enumerate(chunks)
+    ]
