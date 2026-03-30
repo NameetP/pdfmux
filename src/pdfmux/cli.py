@@ -192,12 +192,36 @@ def main(
 
 
 @app.command()
-def serve() -> None:
-    """Start the MCP server for AI agent integration."""
+def serve(
+    http: bool = typer.Option(
+        False,
+        "--http",
+        help="Use Streamable HTTP transport instead of stdio. Required for Smithery deployment.",
+    ),
+    port: int = typer.Option(
+        8000,
+        "--port",
+        "-p",
+        help="Port for HTTP transport (default: 8000). Only used with --http.",
+    ),
+    host: str = typer.Option(
+        "0.0.0.0",
+        "--host",
+        help="Host to bind HTTP server to (default: 0.0.0.0). Only used with --http.",
+    ),
+) -> None:
+    """Start the MCP server for AI agent integration.
+
+    Default: stdio transport (for Claude Desktop, Cursor, etc.)
+    With --http: Streamable HTTP transport (for Smithery, remote deployment)
+    """
     import sys
 
+    # Also support TRANSPORT env var for Docker/Smithery
+    use_http = http or os.environ.get("TRANSPORT", "").lower() == "http"
+
     try:
-        from pdfmux.mcp_server import run_server
+        from pdfmux.mcp_server import run_http_server, run_server
     except ImportError:
         console.print(
             '[red]MCP server requires the "mcp" package.[/red]\n'
@@ -205,9 +229,13 @@ def serve() -> None:
         )
         raise typer.Exit(1)
 
-    # Print to stderr — stdout is reserved for MCP JSON-RPC protocol
-    sys.stderr.write("Starting pdfmux MCP server...\n")
-    run_server()
+    if use_http:
+        sys.stderr.write(f"Starting pdfmux MCP server (HTTP) on {host}:{port}...\n")
+        run_http_server(host=host, port=port)
+    else:
+        # Print to stderr — stdout is reserved for MCP JSON-RPC protocol
+        sys.stderr.write("Starting pdfmux MCP server (stdio)...\n")
+        run_server()
 
 
 @app.command()

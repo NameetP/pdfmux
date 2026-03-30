@@ -1,0 +1,19 @@
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    properties:
+      allowedDirs:
+        type: string
+        description: "Colon-separated list of directories the server can access (default: /tmp)"
+        default: "/tmp"
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: "pdfmux",
+      args: ["serve", "--http", "--port", "8000"],
+      env: {
+        PDFMUX_ALLOWED_DIRS: config.allowedDirs || "/tmp",
+        TRANSPORT: "http"
+      }
+    })

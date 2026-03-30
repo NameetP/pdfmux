@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-serve = ["mcp>=1.0.0"]
+serve = ["mcp>=1.0.0", "uvicorn>=0.30.0"]
 tables = ["docling>=2.0.0"]
 opendataloader = ["opendataloader-pdf>=2.0.0"]
 ocr = ["rapidocr>=3.0.0", "onnxruntime>=1.19.0"]
