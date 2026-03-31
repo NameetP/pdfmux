@@ -58,6 +58,10 @@ def classify(file_path: str | Path) -> PDFClassification:
         raise FileError(f"Not a PDF file: {file_path}")
 
     try:
+        from pdfmux.pdf_cache import get_doc
+
+        doc = get_doc(file_path)
+    except ImportError:
         doc = fitz.open(str(file_path))
     except Exception as e:
         raise FileError(f"Cannot open PDF: {file_path} — {e}") from e
@@ -98,7 +102,6 @@ def classify(file_path: str | Path) -> PDFClassification:
     total = len(doc)
     if total == 0:
         result.confidence = 0.0
-        doc.close()
         return result
 
     # Exclude empty pages from digital/scanned ratio calculation
@@ -107,7 +110,6 @@ def classify(file_path: str | Path) -> PDFClassification:
         # All pages empty — classify as digital
         result.is_digital = True
         result.confidence = 0.5
-        doc.close()
         return result
 
     digital_ratio = len(digital_pages) / non_empty_total
@@ -128,7 +130,6 @@ def classify(file_path: str | Path) -> PDFClassification:
 
     result.has_tables = _detect_tables(doc, page_count=len(doc))
 
-    doc.close()
     return result
 
 

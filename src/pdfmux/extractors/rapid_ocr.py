@@ -84,7 +84,12 @@ class RapidOCRExtractor:
             self._init_engine()
 
         file_path = Path(file_path)
-        doc = fitz.open(str(file_path))
+        try:
+            from pdfmux.pdf_cache import get_doc
+
+            doc = get_doc(file_path)
+        except ImportError:
+            doc = fitz.open(str(file_path))
 
         page_range = pages if pages is not None else list(range(len(doc)))
 
@@ -102,17 +107,19 @@ class RapidOCRExtractor:
                 ocr_applied=True,
             )
 
-        doc.close()
-
     def extract_page(self, file_path: str | Path, page_num: int) -> str:
         """Extract text from a single page — used by multi-pass merge."""
         if self._engine is None:
             self._init_engine()
 
         file_path = Path(file_path)
-        doc = fitz.open(str(file_path))
+        try:
+            from pdfmux.pdf_cache import get_doc
+
+            doc = get_doc(file_path)
+        except ImportError:
+            doc = fitz.open(str(file_path))
         text = self._ocr_page(doc, page_num)
-        doc.close()
         return text
 
     def _ocr_page(self, doc: fitz.Document, page_num: int) -> str:

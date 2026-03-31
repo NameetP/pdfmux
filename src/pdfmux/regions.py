@@ -40,9 +40,13 @@ def detect_weak_regions(
     Returns:
         List of WeakRegion objects for images needing OCR.
     """
-    doc = fitz.open(str(file_path))
+    try:
+        from pdfmux.pdf_cache import get_doc
+
+        doc = get_doc(file_path)
+    except ImportError:
+        doc = fitz.open(str(file_path))
     if page_num >= len(doc):
-        doc.close()
         return []
 
     page = doc[page_num]
@@ -51,7 +55,6 @@ def detect_weak_regions(
     # Get image bboxes
     image_bboxes = _get_image_bboxes(page)
     if not image_bboxes:
-        doc.close()
         return []
 
     # Get text block bboxes
@@ -70,7 +73,6 @@ def detect_weak_regions(
                 )
             )
 
-    doc.close()
     logger.debug(
         f"Page {page_num}: found {len(regions)} weak regions out of {len(image_bboxes)} images"
     )
@@ -101,9 +103,13 @@ def ocr_region(
         logger.debug("RapidOCR not available for region OCR")
         return ""
 
-    doc = fitz.open(str(file_path))
+    try:
+        from pdfmux.pdf_cache import get_doc
+
+        doc = get_doc(file_path)
+    except ImportError:
+        doc = fitz.open(str(file_path))
     if region.page_num >= len(doc):
-        doc.close()
         return ""
 
     page = doc[region.page_num]
@@ -116,7 +122,6 @@ def ocr_region(
 
     # Convert to bytes for OCR
     img_bytes = pix.tobytes("png")
-    doc.close()
 
     # Run OCR on the cropped image
     try:

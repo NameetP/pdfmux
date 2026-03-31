@@ -233,11 +233,15 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
     file_path = Path(file_path)
 
     # Determine total page count
-    import fitz
+    try:
+        from pdfmux.pdf_cache import get_doc
 
-    doc = fitz.open(str(file_path))
+        doc = get_doc(file_path)
+    except ImportError:
+        import fitz
+
+        doc = fitz.open(str(file_path))
     total_pages = len(doc)
-    doc.close()
 
     # Process in windows to bound memory on large documents
     from pdfmux.column_reorder import reorder_text_ab
@@ -251,8 +255,13 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
 
         chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True, pages=page_range)
 
-        # Open doc for heading detection in this window
-        fitz_doc = fitz.open(str(file_path))
+        # Reuse cached doc for heading detection
+        try:
+            from pdfmux.pdf_cache import get_doc
+
+            fitz_doc = get_doc(file_path)
+        except ImportError:
+            fitz_doc = fitz.open(str(file_path))
 
         for i, chunk in enumerate(chunks):
             page_num = start + i
@@ -282,7 +291,6 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
                 )
             )
 
-        fitz_doc.close()
 
     audit = DocumentAudit(pages=page_audits, total_pages=total_pages)
 

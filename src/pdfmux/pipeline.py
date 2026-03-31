@@ -239,6 +239,14 @@ def process(
         structured=structured_output,
     )
 
+    # Cleanup: close cached PDF handles
+    try:
+        from pdfmux.pdf_cache import close_doc
+
+        close_doc(file_path)
+    except Exception:
+        pass
+
     return ConversionResult(
         text=formatted,
         format=output_format,
@@ -565,9 +573,14 @@ def _try_targeted_table_extraction(
 
 def _identify_table_pages(file_path: Path) -> list[int]:
     """Identify pages likely to contain tables using lightweight heuristics."""
-    import fitz
+    try:
+        from pdfmux.pdf_cache import get_doc
 
-    doc = fitz.open(str(file_path))
+        doc = get_doc(file_path)
+    except ImportError:
+        import fitz
+
+        doc = fitz.open(str(file_path))
     table_pages = []
 
     for page_num in range(len(doc)):
@@ -590,7 +603,6 @@ def _identify_table_pages(file_path: Path) -> list[int]:
         if number_dense >= 3:
             table_pages.append(page_num)
 
-    doc.close()
     return table_pages
 
 
@@ -939,10 +951,16 @@ def _multipass_extract(
     ocr_page_list: list[int] = sorted(ocr_results.keys())
 
     # Re-inject headings into OCR-replaced pages (OCR strips heading markers)
-    import fitz as _fitz
     from pdfmux.headings import inject_headings as _inject_headings
 
-    _fitz_doc = _fitz.open(str(file_path))
+    try:
+        from pdfmux.pdf_cache import get_doc as _get_doc
+
+        _fitz_doc = _get_doc(file_path)
+    except ImportError:
+        import fitz as _fitz
+
+        _fitz_doc = _fitz.open(str(file_path))
 
     for fp in fast_pages:
         if fp.page_num in ocr_results:
@@ -963,7 +981,6 @@ def _multipass_extract(
         else:
             merged_pages.append(fp)
 
-    _fitz_doc.close()
 
     # Build extractor name
     n_ocr = len(ocr_page_list)

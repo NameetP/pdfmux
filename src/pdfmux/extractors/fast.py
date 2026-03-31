@@ -153,8 +153,13 @@ class FastExtractor:
 
         chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True)
 
-        # Always open doc for heading detection + optional table enhancement
-        doc = fitz.open(str(file_path))
+        # Use cached doc for heading detection + optional table enhancement
+        try:
+            from pdfmux.pdf_cache import get_doc
+
+            doc = get_doc(file_path)
+        except ImportError:
+            doc = fitz.open(str(file_path))
 
         for i, chunk in enumerate(chunks):
             if pages is not None and i not in pages:
@@ -195,18 +200,21 @@ class FastExtractor:
                 tables=page_tables,
             )
 
-        doc.close()
+        # doc closed by pdf_cache.close_all() at end of pipeline
 
     @staticmethod
     def _extract_raw_page(file_path: Path, page_num: int) -> str:
         """Fallback: extract plain text via fitz for a single page."""
-        doc = fitz.open(str(file_path))
+        try:
+            from pdfmux.pdf_cache import get_doc
+
+            doc = get_doc(file_path)
+        except ImportError:
+            doc = fitz.open(str(file_path))
         if page_num >= len(doc):
-            doc.close()
             return ""
         page = doc[page_num]
         text = page.get_text("text").strip()
-        doc.close()
         return text
 
     def extract_text(
