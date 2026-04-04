@@ -175,6 +175,9 @@ def clean_text(raw_text: str) -> str:
             lines[i] = re.sub(r"  +", " ", line)
     text = "\n".join(lines)
 
+    # Strip image placeholder comments (GT doesn't use them)
+    text = re.sub(r"\n*<!-- image[^>]*-->\n*", "\n", text)
+
     # Remove trailing whitespace from lines
     text = re.sub(r"[ \t]+$", "", text, flags=re.MULTILINE)
 
