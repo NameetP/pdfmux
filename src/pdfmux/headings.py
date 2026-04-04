@@ -129,14 +129,27 @@ def inject_headings(text: str, page: fitz.Page) -> str:
                 if len(t.strip()) <= 3:
                     valid_short.add(_normalize(t))
 
+            # Build a set of text at the bottom 15% of page (likely page numbers)
+            page_height = page.rect.height
+            bottom_zone_texts = set()
+            for b in page.get_text("dict")["blocks"]:
+                if b.get("type") != 0:
+                    continue
+                for line in b.get("lines", []):
+                    for span in line.get("spans", []):
+                        y_pct = span["origin"][1] / page_height if page_height else 0
+                        if y_pct > 0.85:
+                            bottom_zone_texts.add(span["text"].strip())
+
             def _strip_invalid_short(m: re.Match) -> str:
                 htext = m.group(0).split(None, 1)
                 if len(htext) < 2:
                     return m.group(0)
                 content = htext[1].strip()
-                if (len(content) <= 3
-                    and not content.strip().isdigit()
-                    and _normalize(content) not in valid_short):
+                if len(content) <= 3 and _normalize(content) not in valid_short:
+                    # For digits, only strip if they're in the page footer zone
+                    if content.isdigit() and content not in bottom_zone_texts:
+                        return m.group(0)  # keep — likely a chapter number
                     return content  # strip heading marker
                 return m.group(0)
 
