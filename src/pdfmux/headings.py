@@ -119,6 +119,9 @@ def inject_headings(text: str, page: fitz.Page) -> str:
     # Early exit: pymupdf4llm already detected headings
     existing = len(re.findall(r"^#{1,6}\s", text, re.MULTILINE))
     if existing >= 2:
+        # Strip bold from headings first, then validate short headings
+        text = _clean_heading_bold(text)
+
         # Validate short headings (≤3 chars) against font analysis to catch
         # false positives like "# 6" (page number) while keeping "# 2" (chapter)
         body_size, cands = _build_font_census(page)
@@ -155,7 +158,7 @@ def inject_headings(text: str, page: fitz.Page) -> str:
 
             text = re.sub(r"^#{1,6}\s+.{1,3}$", _strip_invalid_short, text, flags=re.MULTILINE)
 
-        return _finalize(text)
+        return _clean_false_headings(text)  # bold already stripped above
 
     body_size, candidates = _build_font_census(page)
     if body_size <= 0 or not candidates:
