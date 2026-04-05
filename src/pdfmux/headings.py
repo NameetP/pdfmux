@@ -175,7 +175,7 @@ def inject_headings(text: str, page: fitz.Page) -> str:
         # ML fallback: use classifier if heuristics found nothing
         try:
             from pdfmux.ml_headings import classify_headings
-            heading_map = classify_headings(candidates, body_size, page, threshold=0.75)
+            heading_map = classify_headings(candidates, body_size, page, threshold=0.65)
         except Exception:
             pass
     if not heading_map:
