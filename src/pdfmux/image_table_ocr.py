@@ -146,7 +146,7 @@ def ocr_image_to_table(
                     numeric_data_cells += 1
         if total_data_cells > 0:
             numeric_pct = numeric_data_cells / total_data_cells
-            if numeric_pct < 0.7:  # < 70% numeric = probably not a data table
+            if numeric_pct < 0.9:  # < 90% numeric = probably not a data table
                 return None
 
         return "\n".join(lines)
