@@ -4,6 +4,7 @@ Text cleanup only. Confidence scoring has moved to audit.py
 (per-page scoring with 5 concrete checks + content-weighted averaging).
 
 The clean_text() function handles:
+    - BiDi reordering for RTL scripts (Arabic, Hebrew)
     - Control character removal
     - Whitespace normalization
     - Broken hyphenation repair
@@ -13,7 +14,91 @@ The clean_text() function handles:
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
+
+
+# ---------------------------------------------------------------------------
+# Arabic / RTL detection and BiDi reordering
+# ---------------------------------------------------------------------------
+
+# Arabic Unicode blocks
+_ARABIC_RANGES = (
+    (0x0600, 0x06FF),   # Arabic
+    (0x0750, 0x077F),   # Arabic Supplement
+    (0x08A0, 0x08FF),   # Arabic Extended-A
+    (0xFB50, 0xFDFF),   # Arabic Presentation Forms-A
+    (0xFE70, 0xFEFF),   # Arabic Presentation Forms-B
+)
+
+# Hebrew Unicode block
+_HEBREW_RANGE = (0x0590, 0x05FF)
+
+
+def _has_rtl_chars(text: str) -> bool:
+    """Check if text contains Arabic or Hebrew characters."""
+    for ch in text:
+        cp = ord(ch)
+        if _HEBREW_RANGE[0] <= cp <= _HEBREW_RANGE[1]:
+            return True
+        for lo, hi in _ARABIC_RANGES:
+            if lo <= cp <= hi:
+                return True
+    return False
+
+
+def _is_arabic_char(cp: int) -> bool:
+    """Check if a codepoint is in any Arabic Unicode block."""
+    for lo, hi in _ARABIC_RANGES:
+        if lo <= cp <= hi:
+            return True
+    return False
+
+
+def fix_bidi(text: str) -> str:
+    """Apply Unicode BiDi algorithm to fix RTL text ordering.
+
+    PyMuPDF extracts Arabic text in glyph storage order (LTR),
+    which reverses the reading order. This function applies the
+    Unicode BiDi algorithm line-by-line to restore correct order.
+
+    Only processes lines that contain RTL characters to avoid
+    disturbing English-only content.
+    """
+    try:
+        from bidi.algorithm import get_display
+    except ImportError:
+        return text  # graceful fallback if python-bidi not installed
+
+    lines = text.split("\n")
+    fixed = []
+    for line in lines:
+        if _has_rtl_chars(line):
+            stripped = line.strip()
+            # Markdown table rows — apply BiDi per-cell, preserve pipe structure
+            if stripped.startswith("|") and stripped.endswith("|"):
+                cells = stripped.split("|")
+                # cells[0] and cells[-1] are empty (before first | and after last |)
+                fixed_cells = []
+                for cell in cells:
+                    if _has_rtl_chars(cell):
+                        fixed_cells.append(get_display(cell.strip()))
+                    else:
+                        fixed_cells.append(cell)
+                fixed.append("|".join(fixed_cells))
+                continue
+            # Markdown headings — preserve # prefix
+            if stripped.startswith("#"):
+                prefix_match = re.match(r"^(#+\s*)", stripped)
+                if prefix_match:
+                    prefix = prefix_match.group(1)
+                    rest = stripped[len(prefix):]
+                    fixed.append(prefix + get_display(rest))
+                    continue
+            fixed.append(get_display(line))
+        else:
+            fixed.append(line)
+    return "\n".join(fixed)
 
 # ---------------------------------------------------------------------------
 # Legacy ProcessedResult — kept for backward compat
@@ -99,6 +184,13 @@ def clean_text(raw_text: str) -> str:
 
     text = raw_text
 
+    # Step 0: Apply BiDi reordering for RTL scripts (Arabic, Hebrew)
+    # Must happen BEFORE any text normalization that might alter character order
+    text = fix_bidi(text)
+
+    # Detect if text contains Arabic/RTL content (affects later processing)
+    has_rtl = _has_rtl_chars(text)
+
     # Unicode normalization (NFKC: compatibility decomposition + canonical composition)
     text = unicodedata.normalize("NFKC", text)
 
@@ -112,24 +204,29 @@ def clean_text(raw_text: str) -> str:
     text = text.replace("\u2212", "-")                         # − minus sign → -
     text = text.replace("\u2217", "*")                         # ∗ asterisk operator → *
     text = text.replace("\ufffd", "")                          # � replacement char → remove
-    text = text.replace("\u00fe", "+")                         # þ (thorn) → + (common OCR misread)
     text = text.replace("\u2032", "'")                         # ′ prime → apostrophe
-    text = text.replace("\u0421", "C")                         # С Cyrillic → C Latin
-    text = text.replace("\u00de", "TH")                        # Þ Thorn → TH
-    # Remove combining diacritical marks
-    text = re.sub(r"[\u0300-\u036f]", "", text)
 
-    # Strip accents from Latin chars: é→e, á→a, etc.
-    import unicodedata as _ud
-    result_chars = []
-    for ch in text:
-        if ord(ch) > 127:
-            decomposed = _ud.normalize("NFD", ch)
-            ascii_part = "".join(c for c in decomposed if _ud.category(c) != "Mn")
-            result_chars.append(ascii_part if ascii_part else ch)
-        else:
-            result_chars.append(ch)
-    text = "".join(result_chars)
+    # Latin-specific normalizations — skip if text contains Arabic
+    if not has_rtl:
+        text = text.replace("\u00fe", "+")                     # þ (thorn) → + (common OCR misread)
+        text = text.replace("\u0421", "C")                     # С Cyrillic → C Latin
+        text = text.replace("\u00de", "TH")                    # Þ Thorn → TH
+        # Remove combining diacritical marks (Latin only — U+0300-036F)
+        text = re.sub(r"[\u0300-\u036f]", "", text)
+
+        # Strip accents from Latin chars: é→e, á→a, etc.
+        result_chars = []
+        for ch in text:
+            if ord(ch) > 127:
+                decomposed = unicodedata.normalize("NFD", ch)
+                ascii_part = "".join(
+                    c for c in decomposed if unicodedata.category(c) != "Mn"
+                )
+                result_chars.append(ascii_part if ascii_part else ch)
+            else:
+                result_chars.append(ch)
+        text = "".join(result_chars)
+
     text = text.replace("\u25cf", "-")                         # ● black circle → bullet dash
     text = text.replace("\u25cb", "-")                         # ○ white circle → bullet dash
     text = text.replace("\u25e6", "-")                         # ◦ white bullet → bullet dash
@@ -137,13 +234,16 @@ def clean_text(raw_text: str) -> str:
     text = text.replace("\u2717", "x")                         # ✗ ballot x → x
     text = text.replace("\u2713", "v")                         # ✓ check mark → v
 
-    # Remove control characters and zero-width chars
+    # Remove control characters
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
     text = text.replace("\u200b", "")  # zero-width space
-    text = text.replace("\u200c", "")  # zero-width non-joiner
-    text = text.replace("\u200d", "")  # zero-width joiner
     text = text.replace("\ufeff", "")  # BOM / zero-width no-break space
     text = text.replace("\u00a0", " ") # non-breaking space → regular space
+
+    # Preserve zero-width joiners in Arabic text (needed for correct shaping)
+    if not has_rtl:
+        text = text.replace("\u200c", "")  # zero-width non-joiner
+        text = text.replace("\u200d", "")  # zero-width joiner
 
     # Collapse 3+ consecutive blank lines into 2
     text = re.sub(r"\n{4,}", "\n\n\n", text)
