@@ -13,6 +13,7 @@ import pytest
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_pdf(tmp_path):
     """Create a minimal valid PDF for testing."""
@@ -51,6 +52,7 @@ def allow_tmp_dirs(tmp_path):
         # Re-import to pick up new ALLOWED_DIRS
         import importlib
         import pdfmux.mcp_server as mod
+
         mod.ALLOWED_DIRS = [tmp_path.resolve()]
         yield
 
@@ -59,25 +61,30 @@ def allow_tmp_dirs(tmp_path):
 # Path security tests
 # ---------------------------------------------------------------------------
 
+
 class TestPathSecurity:
     def test_allowed_path(self, tmp_path):
         from pdfmux.mcp_server import _is_path_allowed, ALLOWED_DIRS
+
         test_file = tmp_path / "test.pdf"
         test_file.touch()
         assert _is_path_allowed(test_file)
 
     def test_disallowed_path(self, tmp_path):
         from pdfmux.mcp_server import _check_path
+
         with pytest.raises(ValueError, match="Access denied"):
             _check_path("/etc/passwd")
 
     def test_empty_path_raises(self):
         from pdfmux.mcp_server import _check_path
+
         with pytest.raises(ValueError, match="required"):
             _check_path("")
 
     def test_path_traversal_blocked(self, tmp_path):
         from pdfmux.mcp_server import _check_path
+
         with pytest.raises(ValueError, match="Access denied"):
             _check_path(str(tmp_path / ".." / ".." / "etc" / "passwd"))
 
@@ -86,9 +93,11 @@ class TestPathSecurity:
 # get_pdf_metadata tests
 # ---------------------------------------------------------------------------
 
+
 class TestGetPdfMetadata:
     def test_basic_metadata(self, sample_pdf):
         from pdfmux.mcp_server import get_pdf_metadata
+
         result = json.loads(get_pdf_metadata(str(sample_pdf)))
 
         assert result["page_count"] == 1
@@ -101,11 +110,13 @@ class TestGetPdfMetadata:
 
     def test_file_not_found(self, tmp_path):
         from pdfmux.mcp_server import get_pdf_metadata
+
         with pytest.raises(ValueError, match="File not found"):
             get_pdf_metadata(str(tmp_path / "nonexistent.pdf"))
 
     def test_access_denied(self):
         from pdfmux.mcp_server import get_pdf_metadata
+
         with pytest.raises(ValueError, match="Access denied"):
             get_pdf_metadata("/etc/passwd")
 
@@ -114,9 +125,11 @@ class TestGetPdfMetadata:
 # convert_pdf tests
 # ---------------------------------------------------------------------------
 
+
 class TestConvertPdf:
     def test_basic_conversion(self, sample_pdf):
         from pdfmux.mcp_server import convert_pdf
+
         result = convert_pdf(str(sample_pdf))
 
         assert "Hello" in result
@@ -125,17 +138,20 @@ class TestConvertPdf:
 
     def test_json_format(self, sample_pdf):
         from pdfmux.mcp_server import extract_structured
+
         result = extract_structured(str(sample_pdf))
         data = json.loads(result)
         assert isinstance(data, dict)
 
     def test_quality_fast(self, sample_pdf):
         from pdfmux.mcp_server import convert_pdf
+
         result = convert_pdf(str(sample_pdf), quality="fast")
         assert "Hello" in result
 
     def test_access_denied(self):
         from pdfmux.mcp_server import convert_pdf
+
         with pytest.raises(ValueError, match="Access denied"):
             convert_pdf("/etc/passwd")
 
@@ -144,9 +160,11 @@ class TestConvertPdf:
 # analyze_pdf tests
 # ---------------------------------------------------------------------------
 
+
 class TestAnalyzePdf:
     def test_basic_analysis(self, sample_pdf):
         from pdfmux.mcp_server import analyze_pdf
+
         result = json.loads(analyze_pdf(str(sample_pdf)))
 
         assert result["page_count"] == 1
@@ -158,6 +176,7 @@ class TestAnalyzePdf:
 
     def test_access_denied(self):
         from pdfmux.mcp_server import analyze_pdf
+
         with pytest.raises(ValueError, match="Access denied"):
             analyze_pdf("/etc/passwd")
 
@@ -166,9 +185,11 @@ class TestAnalyzePdf:
 # batch_convert tests
 # ---------------------------------------------------------------------------
 
+
 class TestBatchConvert:
     def test_batch_directory(self, sample_pdf, tmp_path):
         from pdfmux.mcp_server import batch_convert
+
         result = json.loads(batch_convert(str(tmp_path)))
 
         assert result["total_files"] >= 1
@@ -177,16 +198,19 @@ class TestBatchConvert:
 
     def test_empty_directory(self, tmp_path):
         from pdfmux.mcp_server import batch_convert
+
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
         # Need to allow this path
         import pdfmux.mcp_server as mod
+
         mod.ALLOWED_DIRS.append(empty_dir.resolve())
         result = batch_convert(str(empty_dir))
         assert "No PDF files found" in result
 
     def test_not_a_directory(self, sample_pdf):
         from pdfmux.mcp_server import batch_convert
+
         with pytest.raises(ValueError, match="Not a directory"):
             batch_convert(str(sample_pdf))
 
@@ -195,15 +219,18 @@ class TestBatchConvert:
 # extract_structured tests
 # ---------------------------------------------------------------------------
 
+
 class TestExtractStructured:
     def test_basic_structured(self, sample_pdf):
         from pdfmux.mcp_server import extract_structured
+
         result = extract_structured(str(sample_pdf))
         data = json.loads(result)
         assert isinstance(data, dict)
 
     def test_access_denied(self):
         from pdfmux.mcp_server import extract_structured
+
         with pytest.raises(ValueError, match="Access denied"):
             extract_structured("/etc/passwd")
 
@@ -212,14 +239,17 @@ class TestExtractStructured:
 # Server setup tests
 # ---------------------------------------------------------------------------
 
+
 class TestServerSetup:
     def test_mcp_instance_exists(self):
         from pdfmux.mcp_server import mcp
+
         assert mcp is not None
         assert mcp.name == "pdfmux"
 
     def test_tools_registered(self):
         from pdfmux.mcp_server import mcp
+
         # The FastMCP instance should have our tools
         tool_names = {name for name in mcp._tool_manager._tools}
         assert "convert_pdf" in tool_names

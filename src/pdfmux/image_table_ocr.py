@@ -93,9 +93,7 @@ def ocr_image_to_table(
             return None
 
         # Build column centers
-        col_centers = sorted(
-            sum(x_values[i] for i in group) / len(group) for group in col_groups
-        )
+        col_centers = sorted(sum(x_values[i] for i in group) / len(group) for group in col_groups)
 
         # Assign cells to (row, col)
         rows: dict[int, dict[int, str]] = {}
@@ -104,8 +102,7 @@ def ocr_image_to_table(
             row_idx = min(
                 range(n_rows),
                 key=lambda r: abs(
-                    cell["y"]
-                    - sum(y_values[i] for i in row_groups[r]) / len(row_groups[r])
+                    cell["y"] - sum(y_values[i] for i in row_groups[r]) / len(row_groups[r])
                 ),
             )
             rows.setdefault(row_idx, {})[col_idx] = cell["text"]
@@ -134,6 +131,7 @@ def ocr_image_to_table(
         # Validate: data rows must have substantial numeric content
         # AND most cells must be non-empty (chart axis OCR produces sparse rows)
         import re
+
         total_data_cells = 0
         filled_data_cells = 0
         numeric_data_cells = 0

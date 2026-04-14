@@ -8,16 +8,16 @@ whitespace structure. Pure heuristic — no ML, no extra dependencies.
 from __future__ import annotations
 
 import re
-from typing import Sequence
+from collections.abc import Sequence
 
 import fitz
 
 from pdfmux.types import ExtractedTable
 
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def detect_text_tables(page: fitz.Page, page_num: int) -> list[ExtractedTable]:
     """Detect borderless tables via whitespace column analysis.
@@ -119,6 +119,7 @@ def _count_internal_gaps(line: str) -> int:
 # Column detection
 # ---------------------------------------------------------------------------
 
+
 def _find_column_positions(lines: list[str]) -> list[int]:
     """Find character positions where columns are separated.
 
@@ -168,7 +169,9 @@ def _find_column_positions(lines: list[str]) -> list[int]:
         if gap_counts[pos] >= threshold:
             # Must have chars on both sides (within 3 positions)
             has_left = any(char_counts[p] > threshold * 0.5 for p in range(max(0, pos - 3), pos))
-            has_right = any(char_counts[p] > threshold * 0.5 for p in range(pos + 1, min(max_len, pos + 4)))
+            has_right = any(  # noqa: E501
+                char_counts[p] > threshold * 0.5 for p in range(pos + 1, min(max_len, pos + 4))
+            )
             if has_left and has_right:
                 candidates.append(pos)
 
@@ -195,6 +198,7 @@ def _find_column_positions(lines: list[str]) -> list[int]:
 # ---------------------------------------------------------------------------
 # Column splitting
 # ---------------------------------------------------------------------------
+
 
 def _split_into_columns(
     lines: list[str],

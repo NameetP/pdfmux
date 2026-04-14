@@ -47,9 +47,7 @@ class LLMProvider(ABC):
         ...
 
     @abstractmethod
-    def extract_page(
-        self, image_bytes: bytes, prompt: str, model: str | None = None
-    ) -> str:
+    def extract_page(self, image_bytes: bytes, prompt: str, model: str | None = None) -> str:
         """Send a page image to the LLM and return extracted text."""
         ...
 
@@ -67,9 +65,7 @@ class LLMProvider(ABC):
             return [ModelInfo(id=self.default_model)]
         return []
 
-    def estimate_cost(
-        self, image_bytes_count: int, prompt_tokens: int = 200
-    ) -> CostEstimate:
+    def estimate_cost(self, image_bytes_count: int, prompt_tokens: int = 200) -> CostEstimate:
         """Estimate cost for extracting one page. Override for accuracy."""
         return CostEstimate()
 

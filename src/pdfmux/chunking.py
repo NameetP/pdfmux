@@ -169,9 +169,7 @@ def chunk_for_rag(
         return []
 
     # Step 1: Get section-based chunks (existing logic)
-    raw_chunks = chunk_by_sections(
-        text, confidence, extractor=extractor, ocr_applied=ocr_applied
-    )
+    raw_chunks = chunk_by_sections(text, confidence, extractor=extractor, ocr_applied=ocr_applied)
 
     if not raw_chunks:
         return []

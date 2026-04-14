@@ -18,7 +18,6 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from pdfmux.errors import FileError
-from pdfmux.types import PageLayout
 
 
 @dataclass
@@ -271,8 +270,7 @@ def _score_whitespace_patterns(page: fitz.Page) -> int:
     text = page.get_text("text")
     lines = text.split("\n")
     tab_lines = sum(
-        1 for line in lines
-        if len(line.strip()) > 20 and len(re.findall(r"  {3,}", line)) >= 3
+        1 for line in lines if len(line.strip()) > 20 and len(re.findall(r"  {3,}", line)) >= 3
     )
     return 1 if tab_lines >= 5 else 0
 
@@ -293,8 +291,5 @@ def _score_find_tables(page: fitz.Page) -> int:
     return 0
 
 
-
 # NOTE: Layout detection (detect_layout) moved to column_reorder.py
 # which handles multi-column reading order correction in production.
-
-

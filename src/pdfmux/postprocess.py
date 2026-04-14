@@ -17,18 +17,17 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-
 # ---------------------------------------------------------------------------
 # Arabic / RTL detection and BiDi reordering
 # ---------------------------------------------------------------------------
 
 # Arabic Unicode blocks
 _ARABIC_RANGES = (
-    (0x0600, 0x06FF),   # Arabic
-    (0x0750, 0x077F),   # Arabic Supplement
-    (0x08A0, 0x08FF),   # Arabic Extended-A
-    (0xFB50, 0xFDFF),   # Arabic Presentation Forms-A
-    (0xFE70, 0xFEFF),   # Arabic Presentation Forms-B
+    (0x0600, 0x06FF),  # Arabic
+    (0x0750, 0x077F),  # Arabic Supplement
+    (0x08A0, 0x08FF),  # Arabic Extended-A
+    (0xFB50, 0xFDFF),  # Arabic Presentation Forms-A
+    (0xFE70, 0xFEFF),  # Arabic Presentation Forms-B
 )
 
 # Hebrew Unicode block
@@ -92,13 +91,14 @@ def fix_bidi(text: str) -> str:
                 prefix_match = re.match(r"^(#+\s*)", stripped)
                 if prefix_match:
                     prefix = prefix_match.group(1)
-                    rest = stripped[len(prefix):]
+                    rest = stripped[len(prefix) :]
                     fixed.append(prefix + get_display(rest))
                     continue
             fixed.append(get_display(line))
         else:
             fixed.append(line)
     return "\n".join(fixed)
+
 
 # ---------------------------------------------------------------------------
 # Legacy ProcessedResult — kept for backward compat
@@ -180,7 +180,6 @@ def clean_text(raw_text: str) -> str:
     Returns:
         Cleaned text.
     """
-    import unicodedata
 
     text = raw_text
 
@@ -198,19 +197,19 @@ def clean_text(raw_text: str) -> str:
     text = text.replace("\u201c", '"').replace("\u201d", '"')  # "" → ""
     text = text.replace("\u2018", "'").replace("\u2019", "'")  # '' → ''
     text = text.replace("\u2013", "-").replace("\u2014", "-")  # – — → -
-    text = text.replace("\u00ad", "")                          # soft hyphen → remove
-    text = text.replace("\u2044", "/")                         # ⁄ fraction slash → /
-    text = text.replace("\u223c", "~")                         # ∼ tilde operator → ~
-    text = text.replace("\u2212", "-")                         # − minus sign → -
-    text = text.replace("\u2217", "*")                         # ∗ asterisk operator → *
-    text = text.replace("\ufffd", "")                          # � replacement char → remove
-    text = text.replace("\u2032", "'")                         # ′ prime → apostrophe
+    text = text.replace("\u00ad", "")  # soft hyphen → remove
+    text = text.replace("\u2044", "/")  # ⁄ fraction slash → /
+    text = text.replace("\u223c", "~")  # ∼ tilde operator → ~
+    text = text.replace("\u2212", "-")  # − minus sign → -
+    text = text.replace("\u2217", "*")  # ∗ asterisk operator → *
+    text = text.replace("\ufffd", "")  # � replacement char → remove
+    text = text.replace("\u2032", "'")  # ′ prime → apostrophe
 
     # Latin-specific normalizations — skip if text contains Arabic
     if not has_rtl:
-        text = text.replace("\u00fe", "+")                     # þ (thorn) → + (common OCR misread)
-        text = text.replace("\u0421", "C")                     # С Cyrillic → C Latin
-        text = text.replace("\u00de", "TH")                    # Þ Thorn → TH
+        text = text.replace("\u00fe", "+")  # þ (thorn) → + (common OCR misread)
+        text = text.replace("\u0421", "C")  # С Cyrillic → C Latin
+        text = text.replace("\u00de", "TH")  # Þ Thorn → TH
         # Remove combining diacritical marks (Latin only — U+0300-036F)
         text = re.sub(r"[\u0300-\u036f]", "", text)
 
@@ -219,26 +218,24 @@ def clean_text(raw_text: str) -> str:
         for ch in text:
             if ord(ch) > 127:
                 decomposed = unicodedata.normalize("NFD", ch)
-                ascii_part = "".join(
-                    c for c in decomposed if unicodedata.category(c) != "Mn"
-                )
+                ascii_part = "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
                 result_chars.append(ascii_part if ascii_part else ch)
             else:
                 result_chars.append(ch)
         text = "".join(result_chars)
 
-    text = text.replace("\u25cf", "-")                         # ● black circle → bullet dash
-    text = text.replace("\u25cb", "-")                         # ○ white circle → bullet dash
-    text = text.replace("\u25e6", "-")                         # ◦ white bullet → bullet dash
-    text = text.replace("\u2022", "-")                         # • bullet → dash
-    text = text.replace("\u2717", "x")                         # ✗ ballot x → x
-    text = text.replace("\u2713", "v")                         # ✓ check mark → v
+    text = text.replace("\u25cf", "-")  # ● black circle → bullet dash
+    text = text.replace("\u25cb", "-")  # ○ white circle → bullet dash
+    text = text.replace("\u25e6", "-")  # ◦ white bullet → bullet dash
+    text = text.replace("\u2022", "-")  # • bullet → dash
+    text = text.replace("\u2717", "x")  # ✗ ballot x → x
+    text = text.replace("\u2713", "v")  # ✓ check mark → v
 
     # Remove control characters
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
     text = text.replace("\u200b", "")  # zero-width space
     text = text.replace("\ufeff", "")  # BOM / zero-width no-break space
-    text = text.replace("\u00a0", " ") # non-breaking space → regular space
+    text = text.replace("\u00a0", " ")  # non-breaking space → regular space
 
     # Preserve zero-width joiners in Arabic text (needed for correct shaping)
     if not has_rtl:

@@ -30,7 +30,9 @@ def _make_page_with_text(
     if bold_entries:
         for text, size in bold_entries:
             page.insert_text(
-                (72, y), text, fontsize=size,
+                (72, y),
+                text,
+                fontsize=size,
                 fontname="helv",  # Helvetica
             )
             y += size * 1.5
@@ -59,11 +61,13 @@ class TestInjectHeadings:
 
     def test_detect_large_font_heading(self):
         """Text with a significantly larger font should get # marker."""
-        page = _make_page_with_text([
-            ("Introduction", 18),
-            ("This is the body text of the document.", 11),
-            ("More body text continues here with details.", 11),
-        ])
+        page = _make_page_with_text(
+            [
+                ("Introduction", 18),
+                ("This is the body text of the document.", 11),
+                ("More body text continues here with details.", 11),
+            ]
+        )
         text = "Introduction\n\nThis is the body text of the document.\n\nMore body text continues here with details."
         result = inject_headings(text, page)
         assert result.startswith("# Introduction")
@@ -71,13 +75,15 @@ class TestInjectHeadings:
 
     def test_multi_level_headings(self):
         """Three distinct font sizes should produce h1/h2/h3."""
-        page = _make_page_with_text([
-            ("Main Title", 24),
-            ("Chapter One", 18),
-            ("Section Details", 14),
-            ("Body text that goes on for a while.", 11),
-            ("More body text with additional content.", 11),
-        ])
+        page = _make_page_with_text(
+            [
+                ("Main Title", 24),
+                ("Chapter One", 18),
+                ("Section Details", 14),
+                ("Body text that goes on for a while.", 11),
+                ("More body text with additional content.", 11),
+            ]
+        )
         text = (
             "Main Title\n\n"
             "Chapter One\n\n"
@@ -93,11 +99,13 @@ class TestInjectHeadings:
 
     def test_no_false_positives_uniform_text(self):
         """Body text with uniform font size should not get heading markers."""
-        page = _make_page_with_text([
-            ("First paragraph of text here.", 11),
-            ("Second paragraph of text here.", 11),
-            ("Third paragraph of text here.", 11),
-        ])
+        page = _make_page_with_text(
+            [
+                ("First paragraph of text here.", 11),
+                ("Second paragraph of text here.", 11),
+                ("Third paragraph of text here.", 11),
+            ]
+        )
         text = (
             "First paragraph of text here.\n\n"
             "Second paragraph of text here.\n\n"
@@ -109,10 +117,12 @@ class TestInjectHeadings:
     def test_long_lines_not_marked_as_headings(self):
         """Lines >120 chars should never be heading candidates."""
         long_text = "A" * 130
-        page = _make_page_with_text([
-            (long_text, 18),
-            ("Body text.", 11),
-        ])
+        page = _make_page_with_text(
+            [
+                (long_text, 18),
+                ("Body text.", 11),
+            ]
+        )
         text = f"{long_text}\n\nBody text."
         result = inject_headings(text, page)
         assert "# " + long_text not in result
@@ -144,12 +154,14 @@ class TestBuildFontCensus:
     """Tests for font census extraction."""
 
     def test_returns_body_size(self):
-        page = _make_page_with_text([
-            ("Title", 20),
-            ("Body line one here with more text.", 11),
-            ("Body line two here with more text.", 11),
-            ("Body line three here with more text.", 11),
-        ])
+        page = _make_page_with_text(
+            [
+                ("Title", 20),
+                ("Body line one here with more text.", 11),
+                ("Body line two here with more text.", 11),
+                ("Body line three here with more text.", 11),
+            ]
+        )
         body_size, candidates = _build_font_census(page)
         assert body_size == 11.0
         assert len(candidates) >= 4

@@ -40,8 +40,11 @@ class TestAgenticImprove:
         pages = [
             _make_page(0, 0.95),
             PageResult(
-                page_num=1, text="", confidence=0.0,
-                quality=PageQuality.EMPTY, extractor="pymupdf",
+                page_num=1,
+                text="",
+                confidence=0.0,
+                quality=PageQuality.EMPTY,
+                extractor="pymupdf",
             ),
         ]
         improved, name, passes = agentic_improve(pages, Path("test.pdf"), "pymupdf")
@@ -53,11 +56,11 @@ class TestAgenticImprove:
 
         better_page = _make_page(1, 0.88, text="clean text", extractor="docling")
 
-        with patch("pdfmux.agentic._get_fallback_extractors", return_value=["docling"]), \
-             patch("pdfmux.agentic._extract_pages_with", return_value=[better_page]):
-            improved, name, passes = agentic_improve(
-                pages, Path("test.pdf"), "pymupdf"
-            )
+        with (
+            patch("pdfmux.agentic._get_fallback_extractors", return_value=["docling"]),
+            patch("pdfmux.agentic._extract_pages_with", return_value=[better_page]),
+        ):
+            improved, name, passes = agentic_improve(pages, Path("test.pdf"), "pymupdf")
 
         assert improved[1].confidence == 0.88
         assert improved[1].extractor == "docling"
@@ -69,11 +72,11 @@ class TestAgenticImprove:
 
         worse_page = _make_page(0, 0.30, text="worse", extractor="rapidocr")
 
-        with patch("pdfmux.agentic._get_fallback_extractors", return_value=["rapidocr"]), \
-             patch("pdfmux.agentic._extract_pages_with", return_value=[worse_page]):
-            improved, name, passes = agentic_improve(
-                pages, Path("test.pdf"), "pymupdf"
-            )
+        with (
+            patch("pdfmux.agentic._get_fallback_extractors", return_value=["rapidocr"]),
+            patch("pdfmux.agentic._extract_pages_with", return_value=[worse_page]),
+        ):
+            improved, name, passes = agentic_improve(pages, Path("test.pdf"), "pymupdf")
 
         assert improved[0].confidence == 0.60  # kept original
         assert improved[0].extractor == "pymupdf"
@@ -82,8 +85,10 @@ class TestAgenticImprove:
         """Should stop when budget is exhausted."""
         pages = [_make_page(0, 0.40), _make_page(1, 0.30)]
 
-        with patch("pdfmux.agentic._get_fallback_extractors", return_value=["llm"]), \
-             patch("pdfmux.agentic._estimate_cost", return_value=0.01):
+        with (
+            patch("pdfmux.agentic._get_fallback_extractors", return_value=["llm"]),
+            patch("pdfmux.agentic._estimate_cost", return_value=0.01),
+        ):
             improved, name, passes = agentic_improve(
                 pages, Path("test.pdf"), "pymupdf", budget=0.005
             )
@@ -95,8 +100,10 @@ class TestAgenticImprove:
         """Should not exceed max_passes."""
         pages = [_make_page(0, 0.40)]
 
-        with patch("pdfmux.agentic._get_fallback_extractors", return_value=["a", "b", "c", "d"]), \
-             patch("pdfmux.agentic._extract_pages_with", return_value=[_make_page(0, 0.45)]):
+        with (
+            patch("pdfmux.agentic._get_fallback_extractors", return_value=["a", "b", "c", "d"]),
+            patch("pdfmux.agentic._extract_pages_with", return_value=[_make_page(0, 0.45)]),
+        ):
             improved, name, passes = agentic_improve(
                 pages, Path("test.pdf"), "pymupdf", max_passes=2
             )
@@ -114,11 +121,11 @@ class TestAgenticImprove:
                 raise RuntimeError("Docling crashed")
             return [better]
 
-        with patch("pdfmux.agentic._get_fallback_extractors", return_value=["docling", "llm"]), \
-             patch("pdfmux.agentic._extract_pages_with", side_effect=mock_extract):
-            improved, name, passes = agentic_improve(
-                pages, Path("test.pdf"), "pymupdf"
-            )
+        with (
+            patch("pdfmux.agentic._get_fallback_extractors", return_value=["docling", "llm"]),
+            patch("pdfmux.agentic._extract_pages_with", side_effect=mock_extract),
+        ):
+            improved, name, passes = agentic_improve(pages, Path("test.pdf"), "pymupdf")
 
         assert improved[0].confidence == 0.90
         assert improved[0].extractor == "llm"
@@ -135,11 +142,11 @@ class TestAgenticImprove:
         def mock_extract(fp, ext_name, page_nums):
             return [_make_page(pn, 0.85, extractor="docling") for pn in page_nums]
 
-        with patch("pdfmux.agentic._get_fallback_extractors", return_value=["docling"]), \
-             patch("pdfmux.agentic._extract_pages_with", side_effect=mock_extract):
-            improved, name, passes = agentic_improve(
-                pages, Path("test.pdf"), "pymupdf"
-            )
+        with (
+            patch("pdfmux.agentic._get_fallback_extractors", return_value=["docling"]),
+            patch("pdfmux.agentic._extract_pages_with", side_effect=mock_extract),
+        ):
+            improved, name, passes = agentic_improve(pages, Path("test.pdf"), "pymupdf")
 
         # Pages 0 and 2 should be unchanged
         assert improved[0].confidence == 0.95
@@ -151,21 +158,27 @@ class TestAgenticImprove:
 
 class TestFallbackExtractors:
     def test_excludes_current(self):
-        with patch("pdfmux.extractors.available_extractors", return_value=[
-            ("fast", MagicMock()),
-            ("opendataloader", MagicMock()),
-            ("docling", MagicMock()),
-        ]):
+        with patch(
+            "pdfmux.extractors.available_extractors",
+            return_value=[
+                ("fast", MagicMock()),
+                ("opendataloader", MagicMock()),
+                ("docling", MagicMock()),
+            ],
+        ):
             fallbacks = _get_fallback_extractors("opendataloader")
             assert "opendataloader" not in fallbacks
             assert "fast" not in fallbacks
 
     def test_llm_comes_last(self):
-        with patch("pdfmux.extractors.available_extractors", return_value=[
-            ("fast", MagicMock()),
-            ("rapidocr", MagicMock()),
-            ("llm", MagicMock()),
-        ]):
+        with patch(
+            "pdfmux.extractors.available_extractors",
+            return_value=[
+                ("fast", MagicMock()),
+                ("rapidocr", MagicMock()),
+                ("llm", MagicMock()),
+            ],
+        ):
             fallbacks = _get_fallback_extractors("fast")
             if "llm" in fallbacks:
                 assert fallbacks[-1] == "llm"

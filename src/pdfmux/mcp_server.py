@@ -26,7 +26,6 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from pdfmux import __version__
 from pdfmux.pipeline import process
 
 # Security: restrict file access to allowed directories.
@@ -114,14 +113,8 @@ def get_pdf_metadata(file_path: str) -> str:
         "detected_types": types,
         "has_tables": classification.has_tables,
         "is_scanned": classification.is_scanned,
-        "recommended_quality": (
-            "high" if classification.is_scanned
-            else "standard"
-        ),
-        "recommended_tool": (
-            "extract_structured" if classification.has_tables
-            else "convert_pdf"
-        ),
+        "recommended_quality": ("high" if classification.is_scanned else "standard"),
+        "recommended_tool": ("extract_structured" if classification.has_tables else "convert_pdf"),
     }
 
     return json.dumps(metadata, indent=2)
@@ -233,9 +226,7 @@ def batch_convert(directory: str, quality: str = "standard") -> str:
     results = []
     for path, result_or_error in process_batch(pdfs, output_format="markdown", quality=quality):
         if isinstance(result_or_error, Exception):
-            results.append(
-                {"file": path.name, "status": "error", "error": str(result_or_error)}
-            )
+            results.append({"file": path.name, "status": "error", "error": str(result_or_error)})
         else:
             results.append(
                 {

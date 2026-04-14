@@ -271,7 +271,11 @@ class TestSchemaMapping:
 
         schema = {
             "properties": {
-                "statement_date": {"type": "string", "format": "date", "description": "Statement Date"},
+                "statement_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Statement Date",
+                },
                 "outstanding_balance": {"type": "number", "description": "Outstanding Balance"},
             }
         }
@@ -343,9 +347,7 @@ class TestJSONStructuredOutput:
         page = doc.new_page()
         page.insert_text(
             (72, 100),
-            "Statement Date: 15 Mar 2026\n"
-            "Account Number: 12345678\n"
-            "Balance: AED 5,000.00\n",
+            "Statement Date: 15 Mar 2026\nAccount Number: 12345678\nBalance: AED 5,000.00\n",
         )
         pdf_path = tmp_path / "statement.pdf"
         doc.save(str(pdf_path))

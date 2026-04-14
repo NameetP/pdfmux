@@ -38,6 +38,7 @@ _SPAN_WIDTH_RATIO = 0.60
 @dataclass(frozen=True)
 class _ColumnLayout:
     """Detected column layout for a page."""
+
     columns: int
     boundaries: list[tuple[float, float]]  # (x_min, x_max) per column
     block_order: list[int]  # block indices in column-aware reading order
@@ -95,10 +96,7 @@ def detect_columns(page: fitz.Page) -> _ColumnLayout | None:
             return None
 
         # Check text volume
-        total_chars = sum(
-            len(blocks[bidx][4].strip())
-            for bidx, _ in col_blocks
-        )
+        total_chars = sum(len(blocks[bidx][4].strip()) for bidx, _ in col_blocks)
         if total_chars < _MIN_CHARS_PER_COLUMN:
             return None
 
@@ -214,9 +212,7 @@ def _reorder_paragraphs(
     """
     blocks = page.get_text("blocks")
     block_texts = {
-        i: blocks[i][4].strip()
-        for i in layout.block_order
-        if i < len(blocks) and blocks[i][6] == 0
+        i: blocks[i][4].strip() for i in layout.block_order if i < len(blocks) and blocks[i][6] == 0
     }
 
     # Split pymupdf4llm text into paragraphs (double-newline separated)
@@ -288,10 +284,7 @@ def _score_reading_order(text: str, page: fitz.Page) -> float:
     Returns 0.0 to 1.0.
     """
     blocks = page.get_text("blocks")
-    text_blocks = [
-        (i, b) for i, b in enumerate(blocks)
-        if b[6] == 0 and b[4].strip()
-    ]
+    text_blocks = [(i, b) for i, b in enumerate(blocks) if b[6] == 0 and b[4].strip()]
 
     if len(text_blocks) < 3:
         return 0.5  # Can't score with too few blocks
@@ -373,8 +366,8 @@ def _overlap_score(a: str, b: str) -> float:
         shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
         return 1.0 if shorter in longer else 0.0
 
-    grams_a = set(a[i:i + n] for i in range(len(a) - n + 1))
-    grams_b = set(b[i:i + n] for i in range(len(b) - n + 1))
+    grams_a = set(a[i : i + n] for i in range(len(a) - n + 1))
+    grams_b = set(b[i : i + n] for i in range(len(b) - n + 1))
 
     if not grams_a or not grams_b:
         return 0.0
@@ -399,9 +392,7 @@ def _cluster_x0(positions: list[float]) -> list[list[float]]:
     return clusters
 
 
-def _build_boundaries(
-    clusters: list[list[float]], page_width: float
-) -> list[tuple[float, float]]:
+def _build_boundaries(clusters: list[list[float]], page_width: float) -> list[tuple[float, float]]:
     """Build (x_min, x_max) boundaries for each column cluster."""
     boundaries = []
     for i, cluster in enumerate(clusters):

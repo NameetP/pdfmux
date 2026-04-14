@@ -51,7 +51,8 @@ def agentic_improve(
         (improved_pages, updated_extractor_name, total_passes)
     """
     low_confidence_pages = [
-        (i, p) for i, p in enumerate(pages)
+        (i, p)
+        for i, p in enumerate(pages)
         if p.confidence < confidence_threshold
         and p.quality != PageQuality.EMPTY
         and len(p.text.strip()) > 5
@@ -147,8 +148,7 @@ def agentic_improve(
         name = extractor_name
 
     improved_count = sum(
-        1 for orig, imp in zip(pages, improved)
-        if imp.confidence > orig.confidence
+        1 for orig, imp in zip(pages, improved) if imp.confidence > orig.confidence
     )
     if improved_count > 0:
         logger.info(

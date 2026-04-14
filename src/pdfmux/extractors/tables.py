@@ -144,11 +144,7 @@ class TableExtractor:
             converter = _get_converter()
             result = converter.convert(str(tmp_path))
             markdown = result.document.export_to_markdown()
-            page_texts = (
-                markdown.split("\n\n---\n\n")
-                if "\n\n---\n\n" in markdown
-                else [markdown]
-            )
+            page_texts = markdown.split("\n\n---\n\n") if "\n\n---\n\n" in markdown else [markdown]
 
             sorted_pages = sorted(page_nums)
             for i, text in enumerate(page_texts):

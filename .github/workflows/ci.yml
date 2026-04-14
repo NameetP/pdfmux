@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,serve]" pyright
-      - run: pyright src/pdfmux --level basic
+      - run: pyright src/pdfmux
 
   test:
     runs-on: ubuntu-latest

@@ -184,9 +184,7 @@ class TestReRanker:
 
         test_rankings = {"digital": {"pymupdf": 0.95, "llm": 0.80}}
 
-        with patch(
-            "pdfmux.router.learning.RANKINGS_FILE", tmp_path / "rankings.json"
-        ):
+        with patch("pdfmux.router.learning.RANKINGS_FILE", tmp_path / "rankings.json"):
             saved_path = ranker.save_rankings(test_rankings)
             assert saved_path.is_file()
 
@@ -194,9 +192,7 @@ class TestReRanker:
             assert loaded["digital"]["pymupdf"] == 0.95
 
     def test_load_rankings_missing_file(self, tmp_path):
-        with patch(
-            "pdfmux.router.learning.RANKINGS_FILE", tmp_path / "missing.json"
-        ):
+        with patch("pdfmux.router.learning.RANKINGS_FILE", tmp_path / "missing.json"):
             ranker = ReRanker()
             rankings = ranker.load_rankings()
             assert rankings == {}
