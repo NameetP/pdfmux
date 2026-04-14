@@ -93,9 +93,7 @@ def ocr_image_to_table(
             return None
 
         # Build column centers
-        col_centers = sorted(
-            sum(x_values[i] for i in group) / len(group) for group in col_groups
-        )
+        col_centers = sorted(sum(x_values[i] for i in group) / len(group) for group in col_groups)
 
         # Assign cells to (row, col)
         rows: dict[int, dict[int, str]] = {}
@@ -104,8 +102,7 @@ def ocr_image_to_table(
             row_idx = min(
                 range(n_rows),
                 key=lambda r: abs(
-                    cell["y"]
-                    - sum(y_values[i] for i in row_groups[r]) / len(row_groups[r])
+                    cell["y"] - sum(y_values[i] for i in row_groups[r]) / len(row_groups[r])
                 ),
             )
             rows.setdefault(row_idx, {})[col_idx] = cell["text"]
@@ -127,18 +124,19 @@ def ocr_image_to_table(
         doc.close()
 
         # Final validation: consistent pipe count
-        pipe_counts = [l.count("|") for l in lines if "---" not in l]
+        pipe_counts = [line.count("|") for line in lines if "---" not in line]
         if len(set(pipe_counts)) > 2:
             return None
 
         # Validate: data rows must have substantial numeric content
         # AND most cells must be non-empty (chart axis OCR produces sparse rows)
         import re
+
         total_data_cells = 0
         filled_data_cells = 0
         numeric_data_cells = 0
-        for l in lines[2:]:  # skip header + separator
-            cells_in_row = [c.strip() for c in l.split("|")[1:-1]]  # exclude outer pipes
+        for line in lines[2:]:  # skip header + separator
+            cells_in_row = [c.strip() for c in line.split("|")[1:-1]]  # exclude outer pipes
             for cell in cells_in_row:
                 total_data_cells += 1
                 if cell:

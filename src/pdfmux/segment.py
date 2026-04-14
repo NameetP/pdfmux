@@ -77,12 +77,14 @@ def detect_segments(file_path: str | Path, page_num: int) -> list[Segment]:
 
         if block_type == 1:
             # Image block
-            segments.append(Segment(
-                segment_type=SegmentType.IMAGE,
-                bbox=bbox,
-                page_num=page_num,
-                area=area,
-            ))
+            segments.append(
+                Segment(
+                    segment_type=SegmentType.IMAGE,
+                    bbox=bbox,
+                    page_num=page_num,
+                    area=area,
+                )
+            )
             continue
 
         if not isinstance(text, str) or not text.strip():
@@ -92,13 +94,15 @@ def detect_segments(file_path: str | Path, page_num: int) -> list[Segment]:
 
         # Classify text block
         seg_type = _classify_block(text, bbox, page_height)
-        segments.append(Segment(
-            segment_type=seg_type,
-            bbox=bbox,
-            page_num=page_num,
-            text=text,
-            area=area,
-        ))
+        segments.append(
+            Segment(
+                segment_type=seg_type,
+                bbox=bbox,
+                page_num=page_num,
+                text=text,
+                area=area,
+            )
+        )
 
     # Detect tables from structured patterns
     table_segments = _detect_table_regions(page, page_num)
@@ -212,10 +216,7 @@ def _looks_like_table(text: str) -> bool:
         return True
 
     # Check for consistent column alignment (multiple number columns)
-    number_lines = sum(
-        1 for line in lines
-        if len(re.findall(r"\d+[.,]\d+|\$\d+|\d+%", line)) >= 2
-    )
+    number_lines = sum(1 for line in lines if len(re.findall(r"\d+[.,]\d+|\$\d+|\d+%", line)) >= 2)
     if number_lines >= 3 and number_lines / len(lines) > 0.5:
         return True
 
@@ -242,9 +243,7 @@ def _looks_like_formula(text: str) -> bool:
     return False
 
 
-def _detect_table_regions(
-    page: fitz.Page, page_num: int
-) -> list[Segment]:
+def _detect_table_regions(page: fitz.Page, page_num: int) -> list[Segment]:
     """Use PyMuPDF's table finder to detect table regions."""
     try:
         tables = page.find_tables()
@@ -259,20 +258,19 @@ def _detect_table_regions(
             # Extract table text
             try:
                 cells = table.extract()
-                text = "\n".join(
-                    " | ".join(str(c) if c else "" for c in row)
-                    for row in cells
-                )
+                text = "\n".join(" | ".join(str(c) if c else "" for c in row) for row in cells)
             except Exception:
                 text = ""
 
-            segments.append(Segment(
-                segment_type=SegmentType.TABLE,
-                bbox=bbox,
-                page_num=page_num,
-                text=text,
-                area=area,
-            ))
+            segments.append(
+                Segment(
+                    segment_type=SegmentType.TABLE,
+                    bbox=bbox,
+                    page_num=page_num,
+                    text=text,
+                    area=area,
+                )
+            )
 
         return segments
     except Exception:

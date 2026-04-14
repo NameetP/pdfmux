@@ -125,9 +125,7 @@ def process(
         qual = Quality(quality)
     except ValueError:
         valid = ", ".join(q.value for q in Quality)
-        raise FormatError(
-            f"Unknown quality preset: {quality}. Valid presets: {valid}"
-        )
+        raise FormatError(f"Unknown quality preset: {quality}. Valid presets: {valid}")
 
     # Step 1: Classify the PDF
     classification = classify(file_path)
@@ -208,14 +206,18 @@ def process(
     # Only fires when: page has images, NO pipe tables found by any method,
     # and the image is large enough to contain a table
     try:
-        from pdfmux.image_table_ocr import ocr_image_to_table
         import fitz as _fitz
+
+        from pdfmux.image_table_ocr import ocr_image_to_table
 
         _doc = _fitz.open(str(file_path))
         for i, p in enumerate(pages):
             # Skip if page already has pipe tables
-            pipe_count = sum(1 for line in p.text.split("\n")
-                             if line.strip().startswith("|") and line.strip().endswith("|"))
+            pipe_count = sum(
+                1
+                for line in p.text.split("\n")
+                if line.strip().startswith("|") and line.strip().endswith("|")
+            )
             if pipe_count >= 3:
                 continue
 
@@ -232,8 +234,7 @@ def process(
                 bw = bbox[2] - bbox[0]
                 bh = bbox[3] - bbox[1]
                 # Must be substantial but not full-page
-                if (bw > pw * 0.5 and bh > ph * 0.1
-                        and not (bw > pw * 0.95 and bh > ph * 0.8)):
+                if bw > pw * 0.5 and bh > ph * 0.1 and not (bw > pw * 0.95 and bh > ph * 0.8):
                     table_md = ocr_image_to_table(file_path, p.page_num, tuple(bbox))
                     if table_md:
                         pages[i] = PageResult(
@@ -267,9 +268,7 @@ def process(
     structured_output = None
 
     if fmt == OutputFormat.JSON or schema:
-        structured_tables, structured_kvs, structured_output = _extract_structured(
-            pages, schema
-        )
+        structured_tables, structured_kvs, structured_output = _extract_structured(pages, schema)
 
     # Step 7: Format output
     formatted = _format_output(
@@ -379,10 +378,12 @@ def _route_and_extract(
         from pdfmux.extractors.fast import FastExtractor
 
         ext = FastExtractor()
-        pages = list(ext.extract(
-            file_path,
-            enhance_tables=classification.has_tables,
-        ))
+        pages = list(
+            ext.extract(
+                file_path,
+                enhance_tables=classification.has_tables,
+            )
+        )
         return pages, ext.name, []
 
     # High/Premium mode: segment-aware LLM extraction
@@ -424,9 +425,7 @@ def _route_and_extract(
         logger.info("Router decision: %s (%s)", decision.extractor, decision.reason)
 
         # Execute the router's decision
-        pages, name, ocr_pages = _execute_route_decision(
-            file_path, classification, decision
-        )
+        pages, name, ocr_pages = _execute_route_decision(file_path, classification, decision)
         if pages:
             return pages, name, ocr_pages
 
@@ -690,7 +689,7 @@ def _is_toc_table(table_block: str) -> bool:
     import re
 
     lines = table_block.split("\n")
-    data_rows = [l for l in lines if not re.match(r"^\|[\s\-:|]+\|$", l.strip())]
+    data_rows = [line for line in lines if not re.match(r"^\|[\s\-:|]+\|$", line.strip())]
 
     # Short tables can't be TOCs — real TOCs have many chapters/sections
     if len(data_rows) < 8:
@@ -716,10 +715,7 @@ def _is_toc_table(table_block: str) -> bool:
         return False
 
     # Check if last column is predominantly page numbers
-    page_num_count = sum(
-        1 for v in last_col_values
-        if page_num_re.match(v.strip())
-    )
+    page_num_count = sum(1 for v in last_col_values if page_num_re.match(v.strip()))
     return page_num_count / len(last_col_values) > 0.6
 
 
@@ -1030,7 +1026,6 @@ def _multipass_extract(
         else:
             merged_pages.append(fp)
 
-
     # Build extractor name
     n_ocr = len(ocr_page_list)
     n_unrecovered = len(still_bad) - sum(1 for p in still_bad if p in ocr_results)
@@ -1131,9 +1126,7 @@ def _extract_structured(
             from pdfmux.schema import load_schema, map_to_schema
 
             schema = load_schema(schema_path)
-            structured_output = map_to_schema(
-                list(all_tables), deduped_kvs, schema
-            )
+            structured_output = map_to_schema(list(all_tables), deduped_kvs, schema)
         except Exception as e:
             import logging
 

@@ -74,6 +74,11 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests often contain long fixture strings, schema examples, and sample data.
+# Enforcing line length in tests reduces readability without improving correctness.
+"tests/**" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -85,8 +85,7 @@ class TestTextCoherence:
 
     def test_mojibake(self):
         text = (
-            "Hello \ufffd\ufffd\ufffd world \ufffd\ufffd\ufffd"
-            " more \ufffd\ufffd\ufffd text \ufffd"
+            "Hello \ufffd\ufffd\ufffd world \ufffd\ufffd\ufffd more \ufffd\ufffd\ufffd text \ufffd"
         )
         score = _text_coherence(text)
         assert score < 0.80

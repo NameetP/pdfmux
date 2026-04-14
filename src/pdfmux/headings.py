@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 import fitz
 
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -24,11 +23,11 @@ _FALSE_HEADING_RE = re.compile(
     r"("
     r"(Figure|Table|Fig\.)\s+\d"  # figure/table captions
     r"|"
-    r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d"  # dates
+    r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d"  # dates  # noqa: E501
     r"|"
     r"\d{2,5}\s*$"  # multi-digit page numbers (keep single digits like chapter "2")
     r"|"
-    r".*=\s*\d"      # equations/formulas (e.g. "magnification is 10 x 45 = 450x")
+    r".*=\s*\d"  # equations/formulas (e.g. "magnification is 10 x 45 = 450x")
     r"|"
     r"\d{2,5}\s+\S.{30,}"  # running headers: page number + long text (e.g. "76 Study on...")
     r")",
@@ -59,6 +58,7 @@ def _clean_toc_page_headings(text: str) -> str:
 
 def _clean_false_headings(text: str) -> str:
     """Remove heading markers from lines matching false-positive patterns."""
+
     def _demote(m: re.Match) -> str:
         return m.group(0).lstrip("#").lstrip()
 
@@ -79,9 +79,12 @@ def _merge_consecutive_headings(text: str) -> str:
     i = 0
     while i < len(lines):
         m = re.match(r"^(#{1,6})\s+(.*)", lines[i])
-        if (m and len(m.group(2)) <= 10
+        if (
+            m
+            and len(m.group(2)) <= 10
             and not re.match(r"^\d+$", m.group(2).strip())  # don't merge pure numbers
-            and i + 1 < len(lines)):
+            and i + 1 < len(lines)
+        ):
             m2 = re.match(r"^#{1,6}\s+(.*)", lines[i + 1])
             if m2:
                 result.append(m.group(1) + " " + m.group(2) + " " + m2.group(1))
@@ -94,6 +97,7 @@ def _merge_consecutive_headings(text: str) -> str:
 
 def _clean_heading_bold(text: str) -> str:
     """Strip bold markers from heading lines (``# **text**`` → ``# text``)."""
+
     def _strip_bold_heading(m: re.Match) -> str:
         prefix = m.group(1)  # e.g. "## "
         rest = m.group(2).replace("**", "").replace("__", "")
@@ -175,6 +179,7 @@ def inject_headings(text: str, page: fitz.Page) -> str:
         # ML fallback: use classifier if heuristics found nothing
         try:
             from pdfmux.ml_headings import classify_headings
+
             heading_map = classify_headings(candidates, body_size, page, threshold=0.75)
         except Exception:
             pass
@@ -190,6 +195,7 @@ def inject_headings(text: str, page: fitz.Page) -> str:
 # Internal types
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class _HeadingCandidate:
     text: str
@@ -201,6 +207,7 @@ class _HeadingCandidate:
 # ---------------------------------------------------------------------------
 # Font census
 # ---------------------------------------------------------------------------
+
 
 def _build_font_census(
     page: fitz.Page,
@@ -282,7 +289,7 @@ def _build_font_census(
 # Level assignment
 # ---------------------------------------------------------------------------
 
-_SIZE_RATIO = 1.2   # 20% larger than body → heading
+_SIZE_RATIO = 1.2  # 20% larger than body → heading
 _BOLD_RATIO = 1.05  # 5% larger + bold → heading
 _MAX_HEADING_CHARS = 75  # headings are short
 
@@ -309,29 +316,27 @@ def _assign_levels(
         # Skip figure/table captions and date-like text
         if re.match(r"^(Figure|Table|Fig\.)\s+\d", c.text, re.IGNORECASE):
             continue
-        if re.match(r"^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d", c.text):
+        if re.match(
+            r"^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d",
+            c.text,
+        ):
             continue
         # Skip sentences (text ending with period that isn't section numbering)
-        if (c.text.rstrip().endswith(".")
+        if (
+            c.text.rstrip().endswith(".")
             and not re.match(r"^[IVXLC]+\.$", c.text.strip())  # Roman numerals
-            and not re.match(r"^\d+\.\d*$", c.text.strip())    # Section numbers
-            and len(c.text) > 10):  # Short text like "III." is OK
+            and not re.match(r"^\d+\.\d*$", c.text.strip())  # Section numbers
+            and len(c.text) > 10
+        ):  # Short text like "III." is OK
             continue
 
         is_large = c.size >= body_size * _SIZE_RATIO
-        is_bold_large = (
-            c.size >= body_size * _BOLD_RATIO
-            and c.is_bold
-            and text_len < 80
-        )
+        is_bold_large = c.size >= body_size * _BOLD_RATIO and c.is_bold and text_len < 80
         # Bold at same size as body, short line — likely a heading
         # Exclude sentences (contain period followed by space + word)
         has_mid_period = bool(re.search(r"\.\s+[a-z]", c.text))
         is_bold_same_size = (
-            c.is_bold
-            and abs(c.size - body_size) < 1.5
-            and text_len < 80
-            and not has_mid_period
+            c.is_bold and abs(c.size - body_size) < 1.5 and text_len < 80 and not has_mid_period
         )
 
         if is_large or is_bold_large:
@@ -346,10 +351,7 @@ def _assign_levels(
     # If too many bold-same-size candidates on this page, they're
     # likely TOC entries — drop them and keep only size-based headings
     if len(bold_same_size_texts) > 3:
-        heading_candidates = [
-            c for c in heading_candidates
-            if c.text not in bold_same_size_texts
-        ]
+        heading_candidates = [c for c in heading_candidates if c.text not in bold_same_size_texts]
 
     if not heading_candidates:
         return {}
@@ -433,8 +435,7 @@ def _inject_markers(text: str, heading_map: dict[str, int]) -> str:
             # Exact or near-exact match (heading text is the whole line
             # or the line starts with the heading text)
             if norm_line == norm_key or (
-                norm_line.startswith(norm_key)
-                and len(norm_key) / max(len(norm_line), 1) > 0.8
+                norm_line.startswith(norm_key) and len(norm_key) / max(len(norm_line), 1) > 0.8
             ):
                 prefix = "#" * level + " "
                 # Remove bold/italic markers from heading lines
@@ -459,10 +460,7 @@ _BOLD_LINE_RE = re.compile(
 )
 
 # Split bold: **8** **Choosing between...** or **Chapter 1** **Introduction**
-_SPLIT_BOLD_RE = re.compile(
-    r"^(\*\*[^*]+\*\*\s*){2,}$"
-)
-
+_SPLIT_BOLD_RE = re.compile(r"^(\*\*[^*]+\*\*\s*){2,}$")
 
 
 def _promote_bold_lines(text: str) -> str:
@@ -485,10 +483,12 @@ def _promote_bold_lines(text: str) -> str:
             if re.match(r"^(Figure|Table|Fig\.)\s+\d", txt, re.IGNORECASE):
                 return False
             # Sentences end with period (except section numbers like "III.")
-            if (txt.rstrip().endswith(".")
+            if (
+                txt.rstrip().endswith(".")
                 and not re.match(r"^[IVXLC]+\.$", txt.strip())
                 and not re.match(r"^\d+\.\d*$", txt.strip())
-                and len(txt) > 10):
+                and len(txt) > 10
+            ):
                 return False
             return True
 
@@ -510,5 +510,3 @@ def _promote_bold_lines(text: str) -> str:
         result.append(line)
 
     return "\n".join(result)
-
-

@@ -164,8 +164,16 @@ def convert(
         _convert_directory(input_path, output, effective_format, quality, confidence)
     else:
         _convert_file(
-            input_path, output, effective_format, quality, confidence, stdout,
-            schema=schema, chunk_mode=chunk, max_tokens=max_tokens, overlap_tokens=overlap,
+            input_path,
+            output,
+            effective_format,
+            quality,
+            confidence,
+            stdout,
+            schema=schema,
+            chunk_mode=chunk,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap,
         )
 
 
@@ -250,7 +258,12 @@ def doctor() -> None:
     checks = [
         ("pymupdf", "fitz", "PyMuPDF", "Base (always available)"),
         ("pymupdf4llm", "pymupdf4llm", "pymupdf4llm", "Base (always available)"),
-        ("opendataloader-pdf", "opendataloader_pdf", "OpenDataLoader", r"pip install pdfmux\[opendataloader]"),
+        (
+            "opendataloader-pdf",
+            "opendataloader_pdf",
+            "OpenDataLoader",
+            r"pip install pdfmux\[opendataloader]",
+        ),
         ("docling", "docling.document_converter", "Docling", r"pip install pdfmux\[tables]"),
         ("rapidocr", "rapidocr", "RapidOCR", r"pip install pdfmux\[ocr]"),
         ("surya-ocr", "surya.recognition", "Surya OCR", r"pip install pdfmux\[ocr-heavy]"),
@@ -346,7 +359,9 @@ def doctor() -> None:
         # Build bar
         bar_width = 20
         filled = int(avail_score * bar_width)
-        bar = "[green]" + "█" * filled + "[/green]" + "[dim]" + "░" * (bar_width - filled) + "[/dim]"
+        bar = (
+            "[green]" + "█" * filled + "[/green]" + "[dim]" + "░" * (bar_width - filled) + "[/dim]"
+        )
 
         pct = f"{avail_score:.0%}"
         info = f"({avail_ext})"
@@ -385,9 +400,7 @@ def doctor() -> None:
         readiness = int(avg_coverage * 100)
         color = "green" if readiness >= 80 else "yellow" if readiness >= 60 else "red"
         console.print()
-        console.print(
-            f"[bold]Overall readiness: [{color}]{readiness}%[/{color}][/bold]"
-        )
+        console.print(f"[bold]Overall readiness: [{color}]{readiness}%[/{color}][/bold]")
         if readiness < 80:
             console.print("[dim]Add 1 more provider for better coverage[/dim]")
 
@@ -400,7 +413,7 @@ def benchmark(
         None,
         "--dataset",
         "-d",
-        help="Directory containing benchmark PDFs + ground truth (.gt.md). Default: built-in dataset.",
+        help="Directory containing benchmark PDFs + ground truth (.gt.md). Default: built-in dataset.",  # noqa: E501
     ),
     extractor: str | None = typer.Option(
         None,

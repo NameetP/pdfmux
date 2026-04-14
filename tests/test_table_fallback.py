@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import fitz
-import pytest
 
 from pdfmux.table_fallback import (
-    detect_text_tables,
     _find_column_positions,
     _find_table_regions,
     _has_numeric_column,
+    detect_text_tables,
 )
 
 
@@ -60,10 +59,7 @@ class TestDetectTextTables:
 
     def test_too_few_rows_skipped(self):
         """Fewer than 3 rows should not be detected as a table."""
-        text = (
-            "Item      Value\n"
-            "Foo       100\n"
-        )
+        text = "Item      Value\nFoo       100\n"
         page, page_num = _make_page_with_raw_text(text)
         tables = detect_text_tables(page, page_num)
         assert tables == []

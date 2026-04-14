@@ -64,9 +64,7 @@ class TestConvertCommand:
         import json
 
         output = tmp_path / "output.json"
-        result = runner.invoke(
-            app, ["convert", str(digital_pdf), "-f", "json", "-o", str(output)]
-        )
+        result = runner.invoke(app, ["convert", str(digital_pdf), "-f", "json", "-o", str(output)])
         assert result.exit_code == 0
         data = json.loads(output.read_text())
         assert "page_count" in data

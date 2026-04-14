@@ -26,7 +26,6 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from pdfmux import __version__
 from pdfmux.pipeline import process
 
 # Security: restrict file access to allowed directories.
@@ -79,7 +78,7 @@ mcp = FastMCP(
 
 @mcp.tool()
 def get_pdf_metadata(file_path: str) -> str:
-    """Get PDF metadata instantly — page count, file size, document type, and whether it has tables. No extraction performed. Use this first to decide which tool to call next: convert_pdf for full text, analyze_pdf for quality audit, or extract_structured for tables."""
+    """Get PDF metadata instantly — page count, file size, document type, and whether it has tables. No extraction performed. Use this first to decide which tool to call next: convert_pdf for full text, analyze_pdf for quality audit, or extract_structured for tables."""  # noqa: E501
     p = _check_path(file_path)
 
     if not p.exists():
@@ -114,14 +113,8 @@ def get_pdf_metadata(file_path: str) -> str:
         "detected_types": types,
         "has_tables": classification.has_tables,
         "is_scanned": classification.is_scanned,
-        "recommended_quality": (
-            "high" if classification.is_scanned
-            else "standard"
-        ),
-        "recommended_tool": (
-            "extract_structured" if classification.has_tables
-            else "convert_pdf"
-        ),
+        "recommended_quality": ("high" if classification.is_scanned else "standard"),
+        "recommended_tool": ("extract_structured" if classification.has_tables else "convert_pdf"),
     }
 
     return json.dumps(metadata, indent=2)
@@ -133,7 +126,7 @@ def convert_pdf(
     format: str = "markdown",
     quality: str = "standard",
 ) -> str:
-    """Convert a PDF to AI-readable Markdown. Automatically detects the PDF type and picks the best extraction method. Returns confidence score and warnings when extraction is limited."""
+    """Convert a PDF to AI-readable Markdown. Automatically detects the PDF type and picks the best extraction method. Returns confidence score and warnings when extraction is limited."""  # noqa: E501
     p = _check_path(file_path)
 
     result = process(
@@ -168,7 +161,7 @@ def convert_pdf(
 
 @mcp.tool()
 def analyze_pdf(file_path: str) -> str:
-    """Quick PDF triage — classify type and audit page quality without full extraction. Returns page count, type detection, per-page quality breakdown, and estimated extraction difficulty. Much cheaper than convert_pdf for initial assessment."""
+    """Quick PDF triage — classify type and audit page quality without full extraction. Returns page count, type detection, per-page quality breakdown, and estimated extraction difficulty. Much cheaper than convert_pdf for initial assessment."""  # noqa: E501
     p = _check_path(file_path)
 
     from pdfmux.audit import audit_document
@@ -233,9 +226,7 @@ def batch_convert(directory: str, quality: str = "standard") -> str:
     results = []
     for path, result_or_error in process_batch(pdfs, output_format="markdown", quality=quality):
         if isinstance(result_or_error, Exception):
-            results.append(
-                {"file": path.name, "status": "error", "error": str(result_or_error)}
-            )
+            results.append({"file": path.name, "status": "error", "error": str(result_or_error)})
         else:
             results.append(
                 {
@@ -265,7 +256,7 @@ def extract_structured(
     schema: str | None = None,
     quality: str = "standard",
 ) -> str:
-    """Extract structured data from a PDF — tables as JSON, key-value pairs, and optionally map to a JSON schema. Returns tables with headers/rows, detected key-value pairs with auto-normalization (dates, amounts, rates), and schema-mapped output if a schema is provided."""
+    """Extract structured data from a PDF — tables as JSON, key-value pairs, and optionally map to a JSON schema. Returns tables with headers/rows, detected key-value pairs with auto-normalization (dates, amounts, rates), and schema-mapped output if a schema is provided."""  # noqa: E501
     p = _check_path(file_path)
 
     result = process(

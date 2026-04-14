@@ -127,13 +127,9 @@ def extract_key_values(
                 existing = candidates[norm_key]
                 # Keep the one with a more complete value
                 if len(value) > len(existing.value):
-                    candidates[norm_key] = KeyValuePair(
-                        key=key, value=value, page_num=page_num
-                    )
+                    candidates[norm_key] = KeyValuePair(key=key, value=value, page_num=page_num)
             else:
-                candidates[norm_key] = KeyValuePair(
-                    key=key, value=value, page_num=page_num
-                )
+                candidates[norm_key] = KeyValuePair(key=key, value=value, page_num=page_num)
 
     # Sort: known labels first, then by position in text
     result = sorted(
@@ -145,5 +141,3 @@ def extract_key_values(
     )
 
     return result
-
-

@@ -138,9 +138,7 @@ def discover_all_providers() -> dict[str, LLMProvider]:
     return providers
 
 
-def resolve_provider(
-    provider_name: str | None = None, model: str | None = None
-) -> LLMProvider:
+def resolve_provider(provider_name: str | None = None, model: str | None = None) -> LLMProvider:
     """Resolve which LLM provider to use.
 
     Priority:

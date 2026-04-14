@@ -116,9 +116,7 @@ def _extract_array_from_tables(
                     raw_value = row[col_idx]
                     field_schema = items_props[schema_field]
                     field_type = field_schema.get("type", "string")
-                    item[schema_field] = _cast_value(
-                        raw_value, field_type, field_schema
-                    )
+                    item[schema_field] = _cast_value(raw_value, field_type, field_schema)
 
                     # Handle enum for direction/type fields
                     if "enum" in field_schema and item[schema_field] not in field_schema["enum"]:
@@ -168,9 +166,7 @@ def map_to_schema(
         if field_type == "array":
             items_schema = field_schema.get("items", {})
             if items_schema.get("type") == "object":
-                result[field_name] = _extract_array_from_tables(
-                    tables, items_schema
-                )
+                result[field_name] = _extract_array_from_tables(tables, items_schema)
             continue
 
         # Object fields → recurse
@@ -182,15 +178,11 @@ def map_to_schema(
                 # Try to find a KV match
                 match = _best_match(sub_name, kv_keys)
                 if not match:
-                    match = _best_match(
-                        sub_schema.get("description", sub_name), kv_keys
-                    )
+                    match = _best_match(sub_schema.get("description", sub_name), kv_keys)
                 if match:
                     kv = kv_by_key[match[0]]
                     normalized = auto_normalize(kv.key, kv.value)
-                    sub_result[sub_name] = _cast_value(
-                        normalized, sub_type, sub_schema
-                    )
+                    sub_result[sub_name] = _cast_value(normalized, sub_type, sub_schema)
                 else:
                     sub_result[sub_name] = None
             result[field_name] = sub_result
@@ -255,6 +247,5 @@ def load_schema(schema_path: str) -> dict:
         )
     except ImportError:
         raise FileNotFoundError(
-            f"Schema not found: {schema_path}. "
-            "Provide a file path or a built-in preset name."
+            f"Schema not found: {schema_path}. Provide a file path or a built-in preset name."
         )
