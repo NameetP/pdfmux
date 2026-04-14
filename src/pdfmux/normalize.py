@@ -20,46 +20,46 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _MONTH_MAP = {
-    "jan": 1, "january": 1,
-    "feb": 2, "february": 2,
-    "mar": 3, "march": 3,
-    "apr": 4, "april": 4,
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
     "may": 5,
-    "jun": 6, "june": 6,
-    "jul": 7, "july": 7,
-    "aug": 8, "august": 8,
-    "sep": 9, "sept": 9, "september": 9,
-    "oct": 10, "october": 10,
-    "nov": 11, "november": 11,
-    "dec": 12, "december": 12,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
 }
 
 # Common date patterns
 _DATE_PATTERNS = [
     # DD MMM YYYY — "28 Feb 2026", "1 January 2026"
-    re.compile(
-        r"(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]{3,9})\s+(?P<year>\d{4})"
-    ),
+    re.compile(r"(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]{3,9})\s+(?P<year>\d{4})"),
     # MMM DD, YYYY — "February 28, 2026"
-    re.compile(
-        r"(?P<month>[A-Za-z]{3,9})\s+(?P<day>\d{1,2}),?\s+(?P<year>\d{4})"
-    ),
+    re.compile(r"(?P<month>[A-Za-z]{3,9})\s+(?P<day>\d{1,2}),?\s+(?P<year>\d{4})"),
     # DD/MM/YYYY or DD-MM-YYYY
-    re.compile(
-        r"(?P<day>\d{1,2})[/\-](?P<month>\d{1,2})[/\-](?P<year>\d{4})"
-    ),
+    re.compile(r"(?P<day>\d{1,2})[/\-](?P<month>\d{1,2})[/\-](?P<year>\d{4})"),
     # YYYY-MM-DD (ISO)
-    re.compile(
-        r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})"
-    ),
+    re.compile(r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})"),
     # DD MMM (no year) — "01 Feb", "15 Mar"
-    re.compile(
-        r"(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]{3,9})$"
-    ),
+    re.compile(r"(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]{3,9})$"),
     # DD-MMM-YY — "01-Feb-26"
-    re.compile(
-        r"(?P<day>\d{1,2})-(?P<month>[A-Za-z]{3,9})-(?P<year>\d{2})"
-    ),
+    re.compile(r"(?P<day>\d{1,2})-(?P<month>[A-Za-z]{3,9})-(?P<year>\d{2})"),
 ]
 
 
@@ -152,8 +152,15 @@ def normalize_amount(value: str) -> dict[str, Any] | None:
     if currency_match:
         currency = currency_match.group("currency").upper()
         # Normalize common symbols
-        symbol_map = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY",
-                      "DHS": "AED", "RS": "INR", "د.إ": "AED"}
+        symbol_map = {
+            "$": "USD",
+            "€": "EUR",
+            "£": "GBP",
+            "¥": "JPY",
+            "DHS": "AED",
+            "RS": "INR",
+            "د.إ": "AED",
+        }
         currency = symbol_map.get(currency, currency)
 
     # Detect direction
@@ -255,26 +262,58 @@ def normalize_rate(value: str) -> dict[str, Any] | None:
 
 # Keys that suggest date values
 _DATE_KEYS = {
-    "date", "statement date", "due date", "payment due date",
-    "from", "to", "period", "issued", "expiry", "effective date",
-    "invoice date", "order date", "report date",
+    "date",
+    "statement date",
+    "due date",
+    "payment due date",
+    "from",
+    "to",
+    "period",
+    "issued",
+    "expiry",
+    "effective date",
+    "invoice date",
+    "order date",
+    "report date",
 }
 
 # Keys that suggest amount values
 _AMOUNT_KEYS = {
-    "balance", "outstanding balance", "total outstanding", "amount",
-    "credit limit", "available credit", "minimum payment",
-    "minimum payment due", "minimum amount due", "total amount due",
-    "previous balance", "new balance", "closing balance", "opening balance",
-    "available balance", "total", "subtotal", "tax", "fee",
-    "finance charge", "finance charges", "interest charge",
-    "total spend", "total payments", "net amount",
+    "balance",
+    "outstanding balance",
+    "total outstanding",
+    "amount",
+    "credit limit",
+    "available credit",
+    "minimum payment",
+    "minimum payment due",
+    "minimum amount due",
+    "total amount due",
+    "previous balance",
+    "new balance",
+    "closing balance",
+    "opening balance",
+    "available balance",
+    "total",
+    "subtotal",
+    "tax",
+    "fee",
+    "finance charge",
+    "finance charges",
+    "interest charge",
+    "total spend",
+    "total payments",
+    "net amount",
 }
 
 # Keys that suggest rate values
 _RATE_KEYS = {
-    "interest rate", "rate", "apr", "annual percentage rate",
-    "finance charges rate", "monthly percentage rate",
+    "interest rate",
+    "rate",
+    "apr",
+    "annual percentage rate",
+    "finance charges rate",
+    "monthly percentage rate",
 }
 
 
@@ -293,7 +332,9 @@ def auto_normalize(key: str, value: str) -> Any:
             return result
 
     # Check for amount
-    if key_lower in _AMOUNT_KEYS or any(k in key_lower for k in ("amount", "balance", "total", "fee", "charge", "payment", "limit")):
+    if key_lower in _AMOUNT_KEYS or any(  # noqa: E501
+        k in key_lower for k in ("amount", "balance", "total", "fee", "charge", "payment", "limit")
+    ):
         result = normalize_amount(value)
         if result:
             return result

@@ -47,19 +47,10 @@ def score_llm_output(
     if fast_text and len(fast_text.strip()) > 20:
         consistency = _consistency_signal(text, fast_text)
         # With fast-path reference: all 4 signals
-        score = (
-            0.30 * coherence
-            + 0.20 * structure
-            + 0.20 * completeness
-            + 0.30 * consistency
-        )
+        score = 0.30 * coherence + 0.20 * structure + 0.20 * completeness + 0.30 * consistency
     else:
         # No fast-path reference (pure scan): intrinsic signals only
-        score = (
-            0.40 * coherence
-            + 0.30 * structure
-            + 0.30 * completeness
-        )
+        score = 0.40 * coherence + 0.30 * structure + 0.30 * completeness
 
     return round(max(0.0, min(1.0, score)), 4)
 
@@ -136,7 +127,8 @@ def _structure_signal(text: str) -> float:
 
     # Lists
     list_count = sum(
-        1 for ln in lines
+        1
+        for ln in lines
         if re.match(r"^\s*[-*+]\s", ln.strip()) or re.match(r"^\s*\d+\.\s", ln.strip())
     )
     if list_count > 0:
@@ -163,9 +155,7 @@ def _structure_signal(text: str) -> float:
     return base + structure_bonus
 
 
-def _completeness_signal(
-    text: str, page_width: float = 612.0, page_height: float = 792.0
-) -> float:
+def _completeness_signal(text: str, page_width: float = 612.0, page_height: float = 792.0) -> float:
     """Estimate if the extraction is complete based on text density.
 
     Returns 0.0 (suspiciously empty) to 1.0 (reasonable amount of text).

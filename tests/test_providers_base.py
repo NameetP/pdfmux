@@ -116,8 +116,9 @@ class TestOpenAICompatibleProvider:
             api_key_env="TEST_KEY",
             models=[{"id": "test-model"}],
         )
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {"TEST_KEY": "sk-test"}
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {"TEST_KEY": "sk-test"}),
         ):
             assert p.available() is True
 
@@ -130,8 +131,9 @@ class TestOpenAICompatibleProvider:
             api_key_env="TEST_KEY",
             models=[{"id": "test-model"}],
         )
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {}, clear=True
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {}, clear=True),
         ):
             assert p.available() is False
 

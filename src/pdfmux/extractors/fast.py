@@ -70,18 +70,12 @@ def _extract_tables_fast(
             # Garbage filter: skip tables with <30% non-empty cells
             # (PyMuPDF 1.27 find_tables() regression produces near-empty tables)
             total_cells = sum(len(row) for row in cells)
-            filled_cells = sum(
-                1 for row in cells for c in row
-                if c and str(c).strip()
-            )
+            filled_cells = sum(1 for row in cells for c in row if c and str(c).strip())
             if total_cells > 0 and filled_cells / total_cells < 0.30:
                 continue
 
             headers = tuple(str(c).strip() if c else "" for c in cells[0])
-            rows = tuple(
-                tuple(str(c).strip() if c else "" for c in row)
-                for row in cells[1:]
-            )
+            rows = tuple(tuple(str(c).strip() if c else "" for c in row) for row in cells[1:])
 
             # Get bounding box if available
             bbox = None
@@ -225,4 +219,3 @@ class FastExtractor:
         """Convenience: return full text as a single string."""
         parts = [p.text for p in self.extract(file_path, pages) if p.text.strip()]
         return "\n\n---\n\n".join(parts)
-

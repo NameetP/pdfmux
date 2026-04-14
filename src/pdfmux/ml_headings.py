@@ -36,6 +36,7 @@ def _load_model() -> dict | None:
 
     try:
         import pickle
+
         with open(_MODEL_PATH, "rb") as f:
             _model_cache = pickle.load(f)
         return _model_cache
@@ -47,7 +48,7 @@ def _load_model() -> dict | None:
 def classify_headings(
     candidates: list,
     body_size: float,
-    page: "fitz.Page",
+    page: fitz.Page,
     threshold: float = 0.65,
 ) -> dict[str, int]:
     """Classify heading candidates using the ML model.
@@ -72,7 +73,7 @@ def classify_headings(
     feature_cols = model_data["feature_cols"]
 
     page_height = page.rect.height
-    page_width = page.rect.width
+    page_width = page.rect.width  # noqa: F841 — kept for symmetry/future use
 
     if body_size <= 0 or page_height <= 0:
         return {}
@@ -102,7 +103,8 @@ def classify_headings(
 
         # Build feature vector in correct order
         import numpy as np
-        X = np.array([[features[col] for col in feature_cols]], dtype=np.float32)
+
+        X = np.array([[features[col] for col in feature_cols]], dtype=np.float32)  # noqa: N806 — sklearn convention
 
         prob = model.predict_proba(X)[0, 1]
         if prob >= threshold:

@@ -16,8 +16,9 @@ class TestGeminiProvider:
         from pdfmux.extractors.llm_providers import GeminiProvider
 
         p = GeminiProvider()
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {"GEMINI_API_KEY": "test-key"}
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
         ):
             assert p.available() is True
 
@@ -25,8 +26,9 @@ class TestGeminiProvider:
         from pdfmux.extractors.llm_providers import GeminiProvider
 
         p = GeminiProvider()
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {}, clear=True
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {}, clear=True),
         ):
             assert p.available() is False
 
@@ -34,8 +36,9 @@ class TestGeminiProvider:
         from pdfmux.extractors.llm_providers import GeminiProvider
 
         p = GeminiProvider()
-        with patch.object(p, "sdk_installed", return_value=False), patch.dict(
-            "os.environ", {"GEMINI_API_KEY": "test-key"}
+        with (
+            patch.object(p, "sdk_installed", return_value=False),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
         ):
             assert p.available() is False
 
@@ -45,8 +48,9 @@ class TestClaudeProvider:
         from pdfmux.extractors.llm_providers import ClaudeProvider
 
         p = ClaudeProvider()
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}),
         ):
             assert p.available() is True
 
@@ -54,8 +58,9 @@ class TestClaudeProvider:
         from pdfmux.extractors.llm_providers import ClaudeProvider
 
         p = ClaudeProvider()
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {}, clear=True
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {}, clear=True),
         ):
             assert p.available() is False
 
@@ -65,8 +70,9 @@ class TestOpenAIProvider:
         from pdfmux.extractors.llm_providers import OpenAIProvider
 
         p = OpenAIProvider()
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {"OPENAI_API_KEY": "sk-test"}
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
         ):
             assert p.available() is True
 
@@ -74,8 +80,9 @@ class TestOpenAIProvider:
         from pdfmux.extractors.llm_providers import OpenAIProvider
 
         p = OpenAIProvider()
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {}, clear=True
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {}, clear=True),
         ):
             assert p.available() is False
 
@@ -85,8 +92,9 @@ class TestOllamaProvider:
         from pdfmux.extractors.llm_providers import OllamaProvider
 
         p = OllamaProvider()
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {"PDFMUX_LLM_MODEL": "llava"}
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {"PDFMUX_LLM_MODEL": "llava"}),
         ):
             assert p.available() is True
 
@@ -94,8 +102,9 @@ class TestOllamaProvider:
         from pdfmux.extractors.llm_providers import OllamaProvider
 
         p = OllamaProvider()
-        with patch.object(p, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {}, clear=True
+        with (
+            patch.object(p, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {}, clear=True),
         ):
             assert p.available() is False
 
@@ -109,8 +118,9 @@ class TestResolveProvider:
     def test_explicit_provider_name(self):
         from pdfmux.extractors.llm_providers import GeminiProvider, resolve_provider
 
-        with patch.object(GeminiProvider, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {"GEMINI_API_KEY": "test"}
+        with (
+            patch.object(GeminiProvider, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test"}),
         ):
             p = resolve_provider(provider_name="gemini")
             assert p.name == "gemini"
@@ -118,9 +128,12 @@ class TestResolveProvider:
     def test_explicit_env_var_override(self):
         from pdfmux.extractors.llm_providers import ClaudeProvider, resolve_provider
 
-        with patch.object(ClaudeProvider, "sdk_installed", return_value=True), patch.dict(
-            "os.environ",
-            {"PDFMUX_LLM_PROVIDER": "claude", "ANTHROPIC_API_KEY": "sk-ant-test"},
+        with (
+            patch.object(ClaudeProvider, "sdk_installed", return_value=True),
+            patch.dict(
+                "os.environ",
+                {"PDFMUX_LLM_PROVIDER": "claude", "ANTHROPIC_API_KEY": "sk-ant-test"},
+            ),
         ):
             p = resolve_provider()
             assert p.name == "claude"
@@ -132,11 +145,13 @@ class TestResolveProvider:
             resolve_provider,
         )
 
-        with patch.object(GeminiProvider, "sdk_installed", return_value=True), patch.object(
-            ClaudeProvider, "sdk_installed", return_value=True
-        ), patch.dict(
-            "os.environ",
-            {"GEMINI_API_KEY": "test", "ANTHROPIC_API_KEY": "sk-ant-test"},
+        with (
+            patch.object(GeminiProvider, "sdk_installed", return_value=True),
+            patch.object(ClaudeProvider, "sdk_installed", return_value=True),
+            patch.dict(
+                "os.environ",
+                {"GEMINI_API_KEY": "test", "ANTHROPIC_API_KEY": "sk-ant-test"},
+            ),
         ):
             p = resolve_provider()
             assert p.name == "gemini"
@@ -148,10 +163,10 @@ class TestResolveProvider:
             resolve_provider,
         )
 
-        with patch.object(GeminiProvider, "sdk_installed", return_value=False), patch.object(
-            ClaudeProvider, "sdk_installed", return_value=True
-        ), patch.dict(
-            "os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=True
+        with (
+            patch.object(GeminiProvider, "sdk_installed", return_value=False),
+            patch.object(ClaudeProvider, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=True),
         ):
             p = resolve_provider()
             assert p.name == "claude"
@@ -216,8 +231,9 @@ class TestLLMExtractorAvailable:
         from pdfmux.extractors.llm_providers import GeminiProvider
 
         ext = LLMExtractor()
-        with patch.object(GeminiProvider, "sdk_installed", return_value=True), patch.dict(
-            "os.environ", {"GEMINI_API_KEY": "test"}
+        with (
+            patch.object(GeminiProvider, "sdk_installed", return_value=True),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test"}),
         ):
             assert ext.available() is True
 

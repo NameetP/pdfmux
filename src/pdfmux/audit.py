@@ -188,15 +188,10 @@ def compute_document_confidence(
     if empty_pages:
         if len(empty_pages) <= 5:
             page_nums = ", ".join(str(p.page_num + 1) for p in empty_pages)
-            warnings.append(
-                f"{len(empty_pages)} empty page(s) detected (pages: {page_nums})"
-            )
+            warnings.append(f"{len(empty_pages)} empty page(s) detected (pages: {page_nums})")
         else:
             first_five = ", ".join(str(p.page_num + 1) for p in empty_pages[:5])
-            warnings.append(
-                f"{len(empty_pages)} empty pages detected "
-                f"(first 5: {first_five}, ...)"
-            )
+            warnings.append(f"{len(empty_pages)} empty pages detected (first 5: {first_five}, ...)")
 
     # Sparse page detection (non-empty but low text)
     sparse = [p for p in pages if 20 <= p.char_count < 100]
@@ -290,7 +285,6 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
                     reason=reason,
                 )
             )
-
 
     audit = DocumentAudit(pages=page_audits, total_pages=total_pages)
 
