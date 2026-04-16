@@ -1,0 +1,39 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.NameetP/pdfmux",
+  "title": "pdfmux",
+  "description": "PDF-to-Markdown orchestrator. Routes each page to the best extractor (PyMuPDF, Docling, RapidOCR, Gemini Flash), audits output, re-extracts low-confidence pages, and returns Markdown with per-page confidence scores. 5 tools exposed over stdio.",
+  "version": "1.5.0",
+  "repository": {
+    "url": "https://github.com/NameetP/pdfmux",
+    "source": "github"
+  },
+  "websiteUrl": "https://pdfmux.com",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "pdfmux",
+      "version": "1.5.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "pdfmux",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "serve",
+          "isRequired": true
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "GEMINI_API_KEY",
+          "description": "Optional Google AI API key. Enables the paid Gemini Flash fallback for pages where all local backends report low confidence. pdfmux runs 100% locally without this.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

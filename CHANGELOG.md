@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.1 (2026-04-17)
+
+### Added
+- MCP Registry ownership marker (`mcp-name: io.github.NameetP/pdfmux`) in README so the package can be claimed on registry.modelcontextprotocol.io. Unblocks aggregator ingest across PulseMCP and other downstream MCP directories.
+
+### Notes
+- Metadata-only release. No runtime, API, or benchmark changes vs. 1.5.0.
+
 ## 1.5.0 (2026-04-05)
 
 ### Changed

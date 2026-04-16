@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdfmux"
-version = "1.5.0"
+version = "1.5.1"
 description = "Universal PDF extraction orchestrator. Routes each page to the best of 5 backends + BYOK LLM, audits output, re-extracts failures. CLI, Python API, MCP server, LangChain, LlamaIndex."
 readme = "README.md"
 license = "MIT"

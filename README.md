@@ -437,3 +437,6 @@ ruff format src/ tests/
 ## License
 
 [MIT](LICENSE)
+
+<!-- mcp-name: io.github.NameetP/pdfmux -->
+
