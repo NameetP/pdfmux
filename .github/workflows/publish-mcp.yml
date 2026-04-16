@@ -1,0 +1,92 @@
+name: Publish to MCP Registry
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to republish (e.g. v1.5.1). Leave blank to use latest."
+        required: false
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Checkout the release tag if triggered by release, else the workflow input, else the default branch
+          ref: ${{ github.event.release.tag_name || inputs.version || '' }}
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(grep -E '^version = ' pyproject.toml | head -1 | cut -d\" -f2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "pdfmux version: $VERSION"
+
+      - name: Wait for PyPI publish to propagate
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Waiting for pdfmux==$VERSION to appear on PyPI..."
+          for i in {1..30}; do
+            if curl -sf "https://pypi.org/pypi/pdfmux/$VERSION/json" > /dev/null; then
+              echo "Found pdfmux==$VERSION on PyPI"
+              exit 0
+            fi
+            echo "Attempt $i/30: not yet live, sleeping 20s"
+            sleep 20
+          done
+          echo "::error::Timed out waiting for pdfmux==$VERSION on PyPI after 10 minutes"
+          exit 1
+
+      - name: Verify mcp-name marker is in PyPI description
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DESC=$(curl -s "https://pypi.org/pypi/pdfmux/$VERSION/json" | python3 -c "import json,sys;print(json.load(sys.stdin)['info']['description'])")
+          if echo "$DESC" | grep -q "mcp-name: io.github.NameetP/pdfmux"; then
+            echo "mcp-name marker verified in PyPI description"
+          else
+            echo "::error::mcp-name marker not found in PyPI description for pdfmux==$VERSION"
+            echo "The README must contain: <!-- mcp-name: io.github.NameetP/pdfmux -->"
+            exit 1
+          fi
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Sync server.json version with pyproject.toml
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          python3 -c "
+          import json, pathlib
+          p = pathlib.Path('server.json')
+          data = json.loads(p.read_text())
+          data['version'] = '$VERSION'
+          for pkg in data.get('packages', []):
+              pkg['version'] = '$VERSION'
+          p.write_text(json.dumps(data, indent=2) + '\n')
+          print('server.json synced to', data['version'])
+          "
+
+      - name: Validate server.json
+        run: ./mcp-publisher validate
+
+      - name: Authenticate via GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
+
+      - name: Verify listing is live
+        run: |
+          sleep 5
+          URL="https://registry.modelcontextprotocol.io/v0/servers/io.github.NameetP/pdfmux"
+          echo "Checking $URL"
+          curl -sf "$URL" | python3 -m json.tool || echo "Listing not immediately visible — may take a few minutes to index"
