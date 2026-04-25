@@ -5,14 +5,38 @@ build-backend = "hatchling.build"
 [project]
 name = "pdfmux"
 version = "1.5.1"
-description = "Universal PDF extraction orchestrator. Routes each page to the best of 5 backends + BYOK LLM, audits output, re-extracts failures. CLI, Python API, MCP server, LangChain, LlamaIndex."
+description = "Self-healing PDF extraction for RAG. Per-page confidence scoring, auto re-extracts bad pages, MCP server, LangChain/LlamaIndex loaders. LlamaParse alternative, #2 on opendataloader-bench."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "Nameet Potnis" },
 ]
-keywords = ["pdf", "markdown", "llm", "ai", "mcp", "extraction", "converter", "rag", "ocr", "langchain", "llamaindex", "orchestrator", "document-ingestion"]
+keywords = [
+    "pdf",
+    "pdf-to-markdown",
+    "pdf-extraction",
+    "rag",
+    "llm",
+    "langchain",
+    "llamaindex",
+    "mcp",
+    "ocr",
+    "confidence-scoring",
+    "self-healing",
+    "llamaparse-alternative",
+    "document-ai",
+    "pymupdf-alternative",
+    "docling-alternative",
+    "table-extraction",
+    "structured-extraction",
+    "ai-document-processing",
+    "pdf-parser",
+    "scanned-pdf",
+    "document-ingestion",
+    "rag-pipeline",
+    "claude-desktop",
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -23,6 +47,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Text Processing :: Markup :: Markdown",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Office/Business",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
     "Environment :: Console",
 ]

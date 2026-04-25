@@ -6,7 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://img.shields.io/pypi/dm/pdfmux)](https://pypi.org/project/pdfmux/)
 
-Universal PDF extraction orchestrator. Routes each page to the best backend, audits the output, re-extracts failures. 5 rule-based extractors + BYOK LLM fallback. One CLI. One API. Zero config.
+**Self-healing PDF extraction with per-page confidence scoring.** Open-source LlamaParse alternative for RAG pipelines, MCP server for Claude Desktop, LangChain + LlamaIndex loaders. Ranked #2 on opendataloader-bench (0.900).
+
+The only PDF extractor that audits its own output. Catches blank pages, scrambled columns, broken tables — re-extracts them with a stronger backend. So your LLM gets clean data, not silent garbage. Routes each page to the best of 5 rule-based backends + BYOK LLM fallback (Gemini / Claude / GPT-4o / Ollama). One CLI. One API. Zero config.
 
 <p align="center">
   <img src="demo.svg" alt="pdfmux terminal demo" width="700" />
