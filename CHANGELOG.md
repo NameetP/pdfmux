@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.2 (2026-04-26)
+
+GEO metadata refresh: keywords, description, README opener tuned for AI-engine surfacing. No code changes.
+
 ## 1.5.1 (2026-04-17)
 
 ### Added
