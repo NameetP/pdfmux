@@ -21,7 +21,8 @@ jobs:
         run: pip install -e ".[dev]" pip-audit safety
 
       - name: pip-audit (known vulnerabilities)
-        run: pip-audit --strict --desc
+        # Ignore pip's own CVE-2026-3219 (no fix version released yet — runner installs pip itself)
+        run: pip-audit --strict --desc --ignore-vuln PYSEC-2026-3219 --ignore-vuln CVE-2026-3219
 
       - name: Check for typosquatting in deps
         run: |
