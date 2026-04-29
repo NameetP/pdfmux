@@ -1,1 +1,13 @@
-{"$schema": "https://glama.ai/schemas/glama.json", "maintainers": ["NameetP"]}
+{
+  "$schema": "https://glama.ai/schemas/glama.json",
+  "maintainers": ["NameetP"],
+  "title": "pdfmux",
+  "description": "PDF extraction that audits its own output. Routes each page to the best of 5 backends (PyMuPDF, OpenDataLoader, RapidOCR, Docling) with optional BYOK LLM fallback (Claude/GPT-4o/Gemini/Ollama). Per-page confidence scoring catches blank pages, mojibake, broken column order, and re-extracts failures with a stronger backend. Ranked #2 on opendataloader-bench (200 real-world PDFs). Returns Markdown, JSON, or LLM-optimized chunks.",
+  "tags": ["pdf", "pdf-extraction", "pdf-to-markdown", "rag", "ocr", "llm", "mcp", "self-healing", "confidence-scoring", "langchain", "llamaindex", "structured-extraction", "table-extraction", "ai-agent"],
+  "homepage": "https://pdfmux.com",
+  "repository": "https://github.com/NameetP/pdfmux",
+  "license": "MIT",
+  "categories": ["document-processing", "ai-tools"],
+  "language": "Python",
+  "runtime": "python"
+}
