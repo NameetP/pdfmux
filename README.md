@@ -20,9 +20,11 @@ PDF ──> pdfmux router ──> best extractor per page ──> audit ──> 
             ├─ PyMuPDF         (digital text, 0.01s/page)
             ├─ OpenDataLoader  (complex layouts, 0.05s/page)
             ├─ RapidOCR        (scanned pages, CPU-only)
-            ├─ Docling          (tables, 97.9% TEDS)
-            ├─ Surya            (heavy OCR fallback)
-            └─ YOUR LLM        (Gemini / Claude / GPT-4o / Ollama — BYOK via 5-line YAML)
+            ├─ Docling         (tables, 97.9% TEDS)
+            ├─ Surya           (heavy OCR fallback)
+            ├─ Marker          (academic papers, neural)
+            ├─ Mistral OCR     ($0.002/page, 96.6% tables)
+            └─ YOUR LLM        (Gemini / Gemma 4 / Claude / GPT-4o / Ollama / Mistral — BYOK via YAML)
 ```
 
 ## Install
@@ -37,8 +39,15 @@ That's it. Handles digital PDFs out of the box. Add backends for harder document
 pip install "pdfmux[ocr]"             # RapidOCR — scanned/image pages (~200MB, CPU-only)
 pip install "pdfmux[tables]"          # Docling — table-heavy docs (~500MB)
 pip install "pdfmux[opendataloader]"  # OpenDataLoader — complex layouts (Java 11+)
-pip install "pdfmux[llm]"            # LLM fallback — Gemini, Claude, GPT-4o, Ollama
-pip install "pdfmux[all]"            # everything
+pip install "pdfmux[marker]"          # Marker — neural extraction for academic papers
+pip install "pdfmux[llm]"             # Gemini fallback (default LLM)
+pip install "pdfmux[llm-claude]"      # Claude (Sonnet / Opus)
+pip install "pdfmux[llm-openai]"      # GPT-4o family
+pip install "pdfmux[llm-ollama]"      # Ollama (any local model)
+pip install "pdfmux[llm-mistral]"     # Mistral OCR API ($0.002/page)
+pip install "pdfmux[llm-all]"         # all LLM providers (incl. Gemma 4 via Gemini key)
+pip install "pdfmux[watch]"           # `pdfmux watch <dir>` auto-convert on change
+pip install "pdfmux[all]"             # everything
 ```
 
 Requires Python 3.11+.
@@ -64,8 +73,27 @@ pdfmux convert invoice.pdf --schema invoice
 # BYOK any LLM for hardest pages
 pdfmux convert scan.pdf --llm-provider claude
 
+# use a built-in or saved profile (invoices, receipts, papers, contracts, bulk-rag)
+pdfmux convert invoice.pdf --profile invoices
+
+# predict cost before running anything
+pdfmux estimate big-report.pdf --llm-provider gemini
+
+# stream pages as NDJSON as they finish (great for long documents)
+pdfmux stream report.pdf --quality high
+
+# auto-convert any new PDFs that land in a folder
+pdfmux watch ./inbox/ -o ./output/
+
+# diff two extractions side-by-side
+pdfmux diff old.pdf new.pdf
+
 # batch a directory
 pdfmux convert ./docs/ -o ./output/
+
+# results are cached by file hash — re-runs are instant; bypass with --no-cache
+pdfmux convert report.pdf --no-cache
+pdfmux convert report.pdf --clear-cache
 ```
 
 ### Python
@@ -144,12 +172,19 @@ chunks = pdfmux.chunk("report.pdf", max_tokens=500)
 | RAG chunking | Section-aware chunks with token estimates | `pdfmux convert file.pdf --chunk --max-tokens 500` |
 | Cost modes | economy / balanced / premium with budget caps | `pdfmux convert file.pdf --mode economy --budget 0.50` |
 | Schema extraction | 5 built-in presets (invoice, receipt, contract, resume, paper) | `pdfmux convert file.pdf --schema invoice` |
-| BYOK LLM | Gemini, Claude, GPT-4o, Ollama, any OpenAI-compatible API | `pdfmux convert file.pdf --llm-provider claude` |
+| Profiles | Save and re-use config; built-ins for invoices/receipts/papers/contracts/bulk-rag | `pdfmux convert file.pdf --profile invoices` |
+| BYOK LLM | Gemini, Gemma 4, Claude, GPT-4o, Ollama, Mistral, any OpenAI-compatible API | `pdfmux convert file.pdf --llm-provider claude` |
+| Cost estimate | Predict spend before running | `pdfmux estimate file.pdf --llm-provider gemini` |
+| Streaming output | NDJSON events page-by-page for long docs | `pdfmux stream file.pdf` |
+| Smart cache | Hash-keyed result cache, 30-day TTL, 1 GB LRU | `pdfmux convert file.pdf` (auto), `--no-cache` to bypass |
+| Watch mode | Auto-convert any PDF added to a folder | `pdfmux watch ./inbox/` |
+| Diff | Compare two extractions | `pdfmux diff a.pdf b.pdf` |
 | Benchmark | Eval all installed extractors against ground truth | `pdfmux benchmark` |
 | Doctor | Show installed backends, coverage gaps, recommendations | `pdfmux doctor` |
 | MCP server | AI agents read PDFs via stdio or HTTP | `pdfmux serve` |
 | Batch processing | Convert entire directories | `pdfmux convert ./docs/` |
-| Streaming | Bounded-memory page iteration for large files | `for page in ext.extract("500pg.pdf")` |
+| Page-level streaming API | Bounded-memory page iteration for large files | `for page in ext.extract("500pg.pdf")` |
+| Retry with backoff | Every LLM provider auto-retries with exponential backoff + `Retry-After` | (built-in) |
 
 ## CLI Reference
 
@@ -209,6 +244,68 @@ pdfmux benchmark report.pdf
 # │ RapidOCR         │  4.20s │        88% │ 2,891 chars │ ok                   │
 # │ OpenDataLoader   │  0.12s │        97% │ 3,310 chars │ best                 │
 # └──────────────────┴────────┴────────────┴─────────────┴──────────────────────┘
+```
+
+### `pdfmux estimate`
+
+Predict spend (and which backends will run) before processing.
+
+```bash
+pdfmux estimate report.pdf --quality high --llm-provider gemini
+# Pages       : 47
+# Extractors  : pymupdf4llm + gemini-2.5-flash on 9 pages
+# Estimated   : $0.0234
+# Cache hit?  : no  (first run for this file)
+```
+
+### `pdfmux stream`
+
+Emit NDJSON events as pages complete — useful for very long PDFs and live UIs.
+
+```bash
+pdfmux stream long.pdf --quality high
+# {"event":"classified","page_count":312,"plan":"pymupdf+gemini-fallback"}
+# {"event":"page","page_num":0,"confidence":0.97,"chars":1842}
+# {"event":"page","page_num":1,"confidence":0.92,"chars":1611,"ocr":true}
+# ...
+# {"event":"complete","confidence":0.94,"cost_usd":0.0712}
+```
+
+### `pdfmux watch`
+
+Auto-convert any PDFs that land in a directory. Survives until Ctrl+C.
+
+```bash
+pdfmux watch ./inbox/ -o ./output/ --profile bulk-rag
+```
+
+### `pdfmux diff`
+
+Side-by-side extraction comparison (quality, content, cost).
+
+```bash
+pdfmux diff a.pdf b.pdf --quality standard
+```
+
+### `pdfmux profiles`
+
+Saved configs at `~/.config/pdfmux/profiles.yaml`. Built-ins ship for the
+common shapes; save your own for project defaults.
+
+```bash
+pdfmux profiles list
+# invoices    quality=standard, schema=invoice, format=json
+# receipts    quality=fast,     schema=receipt, format=json
+# papers      quality=high,     chunk=true, max_tokens=500
+# contracts   quality=high,     schema=contract
+# bulk-rag    quality=standard, format=llm, chunk=true
+
+pdfmux profiles show invoices
+pdfmux profiles save my-default --quality high --format llm --chunk
+pdfmux profiles delete my-default
+
+# use a profile when converting
+pdfmux convert file.pdf --profile invoices
 ```
 
 ## Python API
@@ -333,7 +430,8 @@ Or via Claude Code:
 claude mcp add pdfmux -- npx -y pdfmux-mcp
 ```
 
-Tools exposed: `convert_pdf`, `analyze_pdf`, `extract_structured`, `get_pdf_metadata`, `batch_convert`.
+Tools exposed: `convert_pdf`, `analyze_pdf`, `extract_structured`,
+`extract_streaming`, `get_pdf_metadata`, `batch_convert`.
 
 ## BYOK LLM Configuration
 
@@ -353,11 +451,16 @@ Supported providers:
 | Provider | Models | Local? | Cost |
 |----------|--------|--------|------|
 | Gemini | 2.5 Flash, 2.5 Pro | No | ~$0.01/page |
-| Gemma | 3 27B IT, 3 12B IT (Arabic) | No | ~$0.005/page |
+| Gemma 4 | 27B IT, 12B IT (great for Arabic) | No (via Gemini key) | ~$0.005/page |
 | Claude | Sonnet, Opus | No | ~$0.015/page |
 | GPT-4o | GPT-4o, GPT-4o-mini | No | ~$0.01/page |
+| Mistral | `mistral-ocr-latest` | No | $0.002/page |
 | Ollama | Any local model | Yes | Free |
 | Custom | Any OpenAI-compatible API | Configurable | Varies |
+
+Every provider's `extract_page()` is wrapped in `@with_retry(max_attempts=3,
+backoff_base=2.0)`, which honors `Retry-After` headers on 429s and skips
+retries on auth failures so a bad key fails fast.
 
 ## Arabic & RTL Support
 
@@ -430,6 +533,24 @@ Tested on [opendataloader-bench](https://github.com/opendataloader-project/opend
 
 #2 overall, #1 among free tools. 99.5% of the paid #1 score at zero cost per page. Best heading detection of any engine tested. Image table OCR extracts tables embedded as images.
 
+## Smart Result Cache
+
+Re-running the same extraction is instant. pdfmux hashes every input PDF
+(SHA-256) and keys results on `(file_hash, quality, format, schema)`. Cache
+files live under `~/.cache/pdfmux/results/`, expire after 30 days, and are
+LRU-evicted at 1 GB.
+
+```bash
+pdfmux convert big-report.pdf            # first run: 14.2s
+pdfmux convert big-report.pdf            # cache hit: 0.05s
+pdfmux convert big-report.pdf --no-cache # bypass cache (still writes back)
+pdfmux convert big-report.pdf --clear-cache  # purge and re-run
+```
+
+The cache also speeds up `--profile`, `--schema`, and `--format` switches —
+each combination is keyed independently, so you can flip between Markdown
+and JSON for the same document for free after the first extraction.
+
 ## Confidence Scoring
 
 Every result includes a 4-signal confidence score:
@@ -464,7 +585,8 @@ pdfmux is not another PDF extractor. It is the orchestration layer that picks th
 |------|---------|-----------|
 | PyMuPDF | Fast digital text | Cannot handle scans or image layouts |
 | Docling | Tables (97.9% accuracy) | Slow on non-table documents |
-| Marker | GPU ML extraction | Needs GPU, overkill for digital PDFs |
+| Marker | Neural extraction for academic papers | Needs GPU for speed; overkill for digital PDFs |
+| Mistral OCR | Tables (96.6% TEDS), $0.002/page | Cloud-only API |
 | Unstructured | Enterprise platform | Complex setup, paid tiers |
 | LlamaParse | Cloud-native | Requires API keys, not local |
 | Reducto | High accuracy | $0.015/page, closed source |
@@ -480,7 +602,7 @@ cd pdfmux
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest              # 151 tests
+pytest              # 659 tests
 ruff check src/ tests/
 ruff format src/ tests/
 ```

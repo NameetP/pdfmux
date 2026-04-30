@@ -36,12 +36,13 @@ That's it. Python 3.11+ and pdfmux are installed automatically on first run.
 | `analyze_pdf` | Per-page quality audit without full extraction |
 | `batch_convert` | Convert all PDFs in a directory |
 | `extract_structured` | Tables, key-values, and schema mapping |
+| `extract_streaming` | NDJSON page-by-page events (best for long documents) |
 
 ## Requirements
 
 - Node.js 18+ (for npx)
 - Python 3.11+ (auto-detected)
-- pdfmux 1.4.0+ (auto-installed)
+- pdfmux 1.6.0+ (auto-installed)
 
 ## Remote / Docker
 

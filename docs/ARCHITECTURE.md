@@ -1,4 +1,4 @@
-# Architecture — pdfmux v1.0.0
+# Architecture — pdfmux v1.6.0
 
 PDF extraction that checks its own work. This document describes how.
 
@@ -10,11 +10,13 @@ pdfmux Python API / CLI / MCP server
     ├─ __init__.py        public API: extract_text, extract_json, load_llm_context + type/error exports
     │
     ├─ types.py           frozen dataclasses + enums: Quality, OutputFormat, PageResult, DocumentResult, Chunk
-    ├─ errors.py          exception hierarchy: PdfmuxError → FileError, ExtractionError, FormatError, AuditError
+    ├─ errors.py          exception hierarchy with .user_message / .suggestion / .reproduce_cmd
+    ├─ retry.py           @with_retry — exponential backoff, Retry-After aware, skips on auth failures
     │
-    ├─ detect.py          classify PDF (digital / scanned / graphical / mixed / tables)
+    ├─ detect.py          classify PDF (digital / scanned / graphical / mixed / tables / arabic / academic)
     │
     ├─ pipeline.py        route to extractor based on classification + quality
+    │   │                 (consults result_cache before running, persists on success)
     │   │
     │   ├─ quality=fast     → FastExtractor only
     │   ├─ quality=high     → LLM → OCR → Fast fallback
@@ -25,15 +27,33 @@ pdfmux Python API / CLI / MCP server
     │
     ├─ chunking.py        section-aware splitting + token estimation
     │
+    ├─ result_cache.py    SHA-256 file hashing → ~/.cache/pdfmux/results/, 30d TTL, 1 GB LRU
+    ├─ streaming.py       generator yielding NDJSON StreamEvents (classified/page/warning/complete)
+    ├─ profiles.py        ~/.config/pdfmux/profiles.yaml + 5 built-ins
+    ├─ arabic.py          BiDi reordering + Arabic detection + canonicalization
+    │
     ├─ extractors/
     │   ├─ __init__.py      Extractor protocol + @register decorator + priority-ordered registry
     │   ├─ fast.py          PyMuPDF / pymupdf4llm — 0.01s/page, handles 90% (priority 10)
     │   ├─ rapid_ocr.py     RapidOCR (PaddleOCR v4 + ONNX) — ~200MB, CPU (priority 20)
+    │   ├─ mistral_ocr.py   Mistral OCR API — $0.002/page, 96.6% TEDS  (priority 25)
     │   ├─ ocr.py           Surya OCR — legacy, ~5GB, GPU (priority 30)
+    │   ├─ marker.py        Marker neural extractor — academic papers (priority 35)
     │   ├─ tables.py        Docling — 97.9% table accuracy (priority 40)
-    │   └─ llm.py           Gemini 2.5 Flash — API, ~$0.01/doc (priority 50)
+    │   ├─ opendataloader.py Java-backed reading-order extractor (priority 45)
+    │   └─ llm.py           BYOK vision LLM — Gemini, Gemma 4, Claude, GPT-4o, Ollama, Mistral (priority 50)
     │
-    ├─ postprocess.py     text cleanup
+    ├─ providers/
+    │   ├─ base.py            LLMProvider protocol + ModelInfo + CostEstimate
+    │   ├─ _discovery.py      auto-registers all built-in providers
+    │   ├─ gemini.py          Gemini 2.5 Flash / Pro
+    │   ├─ gemma.py           Gemma 4 27B IT (Gemini OpenAI-compat endpoint, reuses GEMINI_API_KEY)
+    │   ├─ claude.py          Claude Sonnet / Opus
+    │   ├─ openai_native.py   GPT-4o family
+    │   ├─ openai_compatible.py  Mistral + custom OpenAI-compatible APIs
+    │   └─ ollama.py          local models
+    │
+    ├─ postprocess.py     text cleanup + Arabic BiDi (markdown-aware)
     │
     └─ formatters/        markdown, json, csv, llm output
 ```
@@ -108,9 +128,17 @@ The registry maintains priority order. Lower priority = tried first. The pipelin
 |----------|--------------|---------|----------|
 | 10 | `fast` | PyMuPDF / pymupdf4llm | Digital text PDFs |
 | 20 | `rapidocr` | RapidOCR (PaddleOCR v4) | Lightweight OCR (~200MB, CPU) |
+| 25 | `mistral_ocr` | Mistral OCR API | Cloud table OCR — 96.6% TEDS, $0.002/page |
 | 30 | `surya` | Surya OCR | Heavy OCR (~5GB, GPU) |
+| 35 | `marker` | Marker neural extractor | Academic papers, dense layouts |
 | 40 | `docling` | Docling | Table-heavy documents |
-| 50 | `llm` | Gemini 2.5 Flash | Complex layouts, handwriting |
+| 45 | `opendataloader` | OpenDataLoader (Java) | Complex multi-column reading order |
+| 50 | `llm` | BYOK vision LLM | Complex layouts, handwriting, Arabic, charts |
+
+The router (`router/engine.py`) maintains a `ROUTING_MATRIX` keyed by page
+type (`digital`, `scanned`, `graphical`, `tables`, `academic`, `arabic`)
+and a `quality` preset, plus per-extractor `QUALITY_ESTIMATES` and
+`COST_PER_PAGE` to power `pdfmux estimate`.
 
 ## Streaming Architecture
 
@@ -279,23 +307,99 @@ Text cleanup:
 
 ### `mcp_server.py` — MCP Server
 
-JSON-RPC over stdio. Implements MCP protocol for AI agent integration.
+JSON-RPC over stdio (or HTTP via `pdfmux serve --http <port>`). Implements
+the MCP protocol for AI agent integration.
 
-Single tool: `convert_pdf`. When confidence <80% or warnings exist, response includes metadata header (confidence, extractor, OCR pages, warnings) so agents know what they're working with.
+Tools exposed:
+
+| Tool | Purpose |
+|------|---------|
+| `convert_pdf` | Full extraction → markdown / json / csv / llm |
+| `analyze_pdf` | Quick triage: classification, page count, recommended quality |
+| `extract_structured` | Tables and key-values via schema preset |
+| `extract_streaming` | NDJSON page-by-page events for very long documents |
+| `get_pdf_metadata` | Title, author, page count, embedded metadata |
+| `batch_convert` | Run a directory of PDFs through the pipeline |
+
+When confidence < 80% or warnings exist, responses include a metadata
+header (confidence, extractor, OCR pages, warnings) so agents know what
+they're working with.
 
 ## Dependency Model
 
 ```
 Base (every install):
-  pymupdf, pymupdf4llm, typer, rich, mcp
+  pymupdf, pymupdf4llm, typer, rich, python-bidi
 
 Optional:
-  pdfmux[ocr]        → rapidocr + onnxruntime     (~200MB, CPU)
-  pdfmux[ocr-heavy]  → surya-ocr                  (~5GB, GPU)
-  pdfmux[tables]     → docling                     (~500MB)
-  pdfmux[llm]        → google-genai                (API key)
-  pdfmux[all]        → tables + ocr + llm
+  pdfmux[ocr]              → rapidocr + onnxruntime         (~200MB, CPU)
+  pdfmux[ocr-heavy]        → surya-ocr                      (~5GB, GPU)
+  pdfmux[tables]           → docling                        (~500MB)
+  pdfmux[opendataloader]   → opendataloader-pdf             (Java 11+)
+  pdfmux[marker]           → marker-pdf                     (~2GB models)
+  pdfmux[llm]              → google-genai                   (Gemini API key)
+  pdfmux[llm-claude]       → anthropic
+  pdfmux[llm-openai]       → openai
+  pdfmux[llm-ollama]       → ollama
+  pdfmux[llm-mistral]      → mistralai
+  pdfmux[llm-all]          → all LLM providers (Gemma 4 piggybacks on Gemini key)
+  pdfmux[langchain]        → langchain-core
+  pdfmux[llamaindex]       → llama-index-core
+  pdfmux[serve]            → mcp + uvicorn (MCP server)
+  pdfmux[watch]            → watchdog (`pdfmux watch <dir>`)
+  pdfmux[all]              → everything
 ```
+
+## v1.6 Additions
+
+### `result_cache.py` — Smart result cache
+
+Hash every input PDF (SHA-256). Build a cache key from
+`(file_hash, quality, format, schema)`. Cache hit returns the previous
+`DocumentResult` in milliseconds; miss runs the pipeline and persists the
+result. Cache lives at `~/.cache/pdfmux/results/{hash}.json`, expires after
+30 days, LRU-evicts at 1 GB. The CLI exposes `--no-cache` (bypass) and
+`--clear-cache` (purge then run).
+
+### `streaming.py` — Page-at-a-time NDJSON
+
+Generator that yields `StreamEvent` objects in order:
+
+```
+classified  → page → page → ... → warning? → complete
+```
+
+Each `page` event ships once a page exits the audit/recovery pipeline so
+clients can render output progressively. Wired into the CLI as
+`pdfmux stream` and into the MCP server as `extract_streaming`.
+
+### `profiles.py` — Saved configurations
+
+YAML-backed preset store at `~/.config/pdfmux/profiles.yaml`. Built-ins:
+`invoices`, `receipts`, `papers`, `contracts`, `bulk-rag`. CRUD via
+`pdfmux profiles list/show/save/delete`. `convert --profile <name>` merges
+profile values with explicit flags (explicit flags win).
+
+### `arabic.py` — RTL pipeline
+
+- `is_arabic_text` / `arabic_ratio` — fast detection.
+- `fix_bidi_order` — Unicode Bidi Algorithm (`python-bidi`) with
+  markdown awareness: heading prefixes (`#`), list markers, code fences,
+  and pipe-table cells are preserved while inner text is reordered.
+- `normalize_arabic` — Tatweel removal, Alef/Yeh/Hamza unification,
+  Tashkeel stripping for indexable / embeddable strings.
+
+`detect.py` samples the first 20 pages and sets
+`PDFClassification.is_arabic` + `arabic_pages`. The router's
+`ROUTING_MATRIX` includes an `arabic` page type that prefers the Gemma 4
+provider when available.
+
+### `retry.py` — Decorator on every LLM provider
+
+`@with_retry(max_attempts=3, backoff_base=2.0)` wraps each provider's
+`extract_page()`. Honors `Retry-After` headers, returns immediately on
+auth failures (401/403), and uses exponential backoff with jitter on
+5xx / 429 / network errors.
 
 ## Design Principles
 
