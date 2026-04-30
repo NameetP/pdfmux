@@ -28,10 +28,17 @@ def _load_builtins() -> list[type[LLMProvider]]:
 
     from pdfmux.providers.claude import ClaudeProvider
     from pdfmux.providers.gemini import GeminiProvider
+    from pdfmux.providers.gemma import GemmaProvider
     from pdfmux.providers.ollama import OllamaProvider
     from pdfmux.providers.openai_native import OpenAINativeProvider
 
-    _BUILTIN_CLASSES = [GeminiProvider, ClaudeProvider, OpenAINativeProvider, OllamaProvider]
+    _BUILTIN_CLASSES = [
+        GeminiProvider,
+        GemmaProvider,
+        ClaudeProvider,
+        OpenAINativeProvider,
+        OllamaProvider,
+    ]
     return _BUILTIN_CLASSES
 
 

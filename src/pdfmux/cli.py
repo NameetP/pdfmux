@@ -38,6 +38,12 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
 )
+profiles_app = typer.Typer(
+    name="profiles",
+    help="Manage saved configuration profiles (invoices, receipts, papers, ...).",
+    no_args_is_help=True,
+)
+app.add_typer(profiles_app, name="profiles")
 console = Console()
 
 
@@ -138,12 +144,71 @@ def convert(
         "--llm-model",
         help="LLM model override (e.g. gpt-4o-mini, claude-sonnet-4-6-20250514).",
     ),
+    no_cache: bool = typer.Option(
+        False,
+        "--no-cache",
+        help="Disable the smart result cache for this run.",
+    ),
+    clear_cache: bool = typer.Option(
+        False,
+        "--clear-cache",
+        help="Wipe the smart result cache before extracting.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show INFO-level logs."),
     debug: bool = typer.Option(False, "--debug", help="Show DEBUG-level logs."),
     quiet: bool = typer.Option(False, "--quiet", help="Suppress all logs except errors."),
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        help="Apply a saved profile (e.g. invoices, receipts, papers, contracts, bulk-rag). "
+        "Explicit flags override profile values.",
+    ),
 ) -> None:
     """Convert a PDF (or directory of PDFs) to Markdown."""
     _configure_logging(verbose=verbose, debug=debug, quiet=quiet)
+
+    # Apply profile defaults — explicit flags win over profile values.
+    if profile:
+        from pdfmux.profiles import apply_profile_defaults
+
+        explicit: dict[str, object | None] = {
+            "quality": quality if quality != "standard" else None,
+            "format": format if format != "markdown" else None,
+            "mode": mode,
+            "schema": schema,
+            "chunk": True if chunk else None,
+            "max_tokens": max_tokens if max_tokens != 500 else None,
+            "overlap": overlap if overlap != 50 else None,
+            "confidence": True if confidence else None,
+            "llm_provider": llm_provider,
+            "llm_model": llm_model,
+            "budget": budget,
+        }
+        try:
+            merged = apply_profile_defaults(profile, explicit)
+        except KeyError:
+            console.print(
+                f"[red]Profile '{profile}' not found.[/red] "
+                "Run [bold]pdfmux profiles list[/bold] to see available profiles."
+            )
+            raise typer.Exit(2)
+
+        quality = str(merged.get("quality") or "standard")
+        format = str(merged.get("format") or "markdown")
+        if merged.get("mode") is not None:
+            mode = str(merged["mode"])
+        if merged.get("schema") is not None:
+            schema = str(merged["schema"])
+        chunk = bool(merged.get("chunk")) or chunk
+        max_tokens = int(merged.get("max_tokens") or max_tokens)
+        overlap = int(merged.get("overlap") or overlap)
+        confidence = bool(merged.get("confidence")) or confidence
+        if not llm_provider and merged.get("llm_provider"):
+            llm_provider = str(merged["llm_provider"])
+        if not llm_model and merged.get("llm_model"):
+            llm_model = str(merged["llm_model"])
+        if budget is None and merged.get("budget") is not None:
+            budget = float(merged["budget"])  # type: ignore[arg-type]
 
     # Set LLM provider/model via env vars so extractors pick them up
     if llm_provider:
@@ -155,13 +220,27 @@ def convert(
     if budget is not None:
         os.environ["PDFMUX_BUDGET"] = str(budget)
 
+    # Smart cache controls
+    if clear_cache:
+        from pdfmux.result_cache import get_default_cache
+
+        removed = get_default_cache().clear()
+        console.print(f"[dim]Cleared {removed} cache entries[/dim]")
+
     # Auto-switch to JSON format when schema is provided
     effective_format = format
     if schema and format == "markdown":
         effective_format = "json"
 
     if input_path.is_dir():
-        _convert_directory(input_path, output, effective_format, quality, confidence)
+        _convert_directory(
+            input_path,
+            output,
+            effective_format,
+            quality,
+            confidence,
+            use_cache=not no_cache,
+        )
     else:
         _convert_file(
             input_path,
@@ -174,6 +253,7 @@ def convert(
             chunk_mode=chunk,
             max_tokens=max_tokens,
             overlap_tokens=overlap,
+            use_cache=not no_cache,
         )
 
 
@@ -740,6 +820,56 @@ def analyze(
 
 
 @app.command()
+def stream(
+    input_path: Path = typer.Argument(
+        ...,
+        help="PDF file to stream-extract.",
+        exists=True,
+    ),
+    quality: str = typer.Option(
+        "standard",
+        "--quality",
+        "-q",
+        help="Quality preset: fast (no OCR), standard (default), high.",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Write NDJSON to this file instead of stdout.",
+    ),
+) -> None:
+    """Stream-extract a PDF, page-by-page, as NDJSON.
+
+    Each line is a JSON object with ``type`` and ``data``. The first event
+    is always ``classified``; the last is always ``complete``. Pipe into
+    ``jq`` for live processing of large documents::
+
+        pdfmux stream report.pdf | jq 'select(.type=="page") | .data.text'
+    """
+    import json as _json
+    import sys
+
+    from pdfmux.streaming import process_streaming
+
+    out = output.open("w", encoding="utf-8") if output else None
+    try:
+        for ev in process_streaming(input_path, quality=quality):
+            line = _json.dumps(ev.to_dict(), ensure_ascii=False)
+            if out is not None:
+                out.write(line)
+                out.write("\n")
+                out.flush()
+            else:
+                sys.stdout.write(line)
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+    finally:
+        if out is not None:
+            out.close()
+
+
+@app.command()
 def version() -> None:
     """Show the version."""
     console.print(f"pdfmux {__version__}")
@@ -757,6 +887,7 @@ def _convert_file(
     chunk_mode: bool = False,
     max_tokens: int = 500,
     overlap_tokens: int = 50,
+    use_cache: bool = True,
 ) -> None:
     """Convert a single PDF file."""
     if output is None:
@@ -781,6 +912,7 @@ def _convert_file(
             quality=quality,
             show_confidence=confidence,
             schema=schema,
+            use_cache=use_cache,
         )
 
     # RAG chunking mode
@@ -869,6 +1001,8 @@ def _convert_directory(
     fmt: str,
     quality: str,
     confidence: bool,
+    *,
+    use_cache: bool = True,
 ) -> None:
     """Convert all PDFs in a directory using process_batch()."""
     if output_dir is None:
@@ -885,7 +1019,12 @@ def _convert_directory(
     success = 0
     failed = 0
 
-    for path, result_or_error in process_batch(pdfs, output_format=fmt, quality=quality):
+    for path, result_or_error in process_batch(
+        pdfs,
+        output_format=fmt,
+        quality=quality,
+        use_cache=use_cache,
+    ):
         ext = {"markdown": ".md", "json": ".json", "csv": ".csv", "llm": ".json"}.get(fmt, ".md")
         out_file = output_dir / path.with_suffix(ext).name
 
@@ -901,6 +1040,555 @@ def _convert_directory(
             success += 1
 
     console.print(f"\nDone: {success} converted, {failed} failed")
+
+
+# ---------------------------------------------------------------------------
+# Profiles subcommands
+# ---------------------------------------------------------------------------
+
+
+@profiles_app.command("list")
+def profiles_list_cmd() -> None:
+    """List all available profiles (built-in + user)."""
+    from pdfmux.profiles import list_profiles, load_profile
+
+    rows = list_profiles()
+    if not rows:
+        console.print("[dim]No profiles found.[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Profile", min_width=12)
+    table.add_column("Source", min_width=8)
+    table.add_column("Highlights", min_width=40)
+
+    for name, source in rows:
+        try:
+            settings = load_profile(name)
+        except KeyError:
+            settings = {}
+        highlights = ", ".join(
+            f"{k}={v}" for k, v in sorted(settings.items()) if v not in (None, False)
+        )
+        if not highlights:
+            highlights = "[dim](empty)[/dim]"
+        src_color = "green" if source == "user" else "cyan"
+        table.add_row(name, f"[{src_color}]{source}[/{src_color}]", highlights)
+
+    console.print(table)
+
+
+@profiles_app.command("show")
+def profiles_show_cmd(
+    name: str = typer.Argument(..., help="Profile name to show."),
+) -> None:
+    """Show the settings for a single profile."""
+    from pdfmux.profiles import load_profile
+
+    try:
+        settings = load_profile(name)
+    except KeyError:
+        console.print(f"[red]Profile '{name}' not found.[/red]")
+        raise typer.Exit(2)
+
+    console.print(f"\n[bold]{name}[/bold]")
+    if not settings:
+        console.print("[dim](no settings)[/dim]")
+        return
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Setting", min_width=14)
+    table.add_column("Value", min_width=20)
+    for k, v in sorted(settings.items()):
+        table.add_row(k, str(v))
+    console.print(table)
+
+
+@profiles_app.command("save")
+def profiles_save_cmd(
+    name: str = typer.Argument(..., help="Profile name to save."),
+    quality: str | None = typer.Option(None, "--quality", "-q"),
+    format: str | None = typer.Option(None, "--format", "-f"),
+    mode: str | None = typer.Option(None, "--mode", "-m"),
+    schema: str | None = typer.Option(None, "--schema", "-s"),
+    chunk: bool = typer.Option(False, "--chunk"),
+    max_tokens: int | None = typer.Option(None, "--max-tokens"),
+    overlap: int | None = typer.Option(None, "--overlap"),
+    confidence: bool = typer.Option(False, "--confidence"),
+    llm_provider: str | None = typer.Option(None, "--llm-provider"),
+    llm_model: str | None = typer.Option(None, "--llm-model"),
+    budget: float | None = typer.Option(None, "--budget"),
+) -> None:
+    """Save a new profile with the supplied flags."""
+    from pdfmux.profiles import save_profile
+
+    settings: dict[str, object] = {
+        "quality": quality,
+        "format": format,
+        "mode": mode,
+        "schema": schema,
+        "chunk": True if chunk else None,
+        "max_tokens": max_tokens,
+        "overlap": overlap,
+        "confidence": True if confidence else None,
+        "llm_provider": llm_provider,
+        "llm_model": llm_model,
+        "budget": budget,
+    }
+    cleaned = {k: v for k, v in settings.items() if v is not None}
+    if not cleaned:
+        console.print("[yellow]No settings supplied — refusing to save an empty profile.[/yellow]")
+        raise typer.Exit(2)
+
+    try:
+        path = save_profile(name, cleaned)
+    except (ValueError, RuntimeError) as e:
+        console.print(f"[red]Failed to save profile:[/red] {e}")
+        raise typer.Exit(1)
+
+    console.print(f"[green]✓[/green] Saved profile '[bold]{name}[/bold]' → {path}")
+
+
+@profiles_app.command("delete")
+def profiles_delete_cmd(
+    name: str = typer.Argument(..., help="Profile name to delete."),
+) -> None:
+    """Delete a user profile (built-ins cannot be deleted)."""
+    from pdfmux.profiles import delete_profile
+
+    try:
+        deleted = delete_profile(name)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+
+    if deleted:
+        console.print(f"[green]✓[/green] Deleted profile '{name}'")
+    else:
+        console.print(f"[yellow]Profile '{name}' not found.[/yellow]")
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Watch mode
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def watch(
+    directory: Path = typer.Argument(
+        ...,
+        help="Directory to watch for new PDFs.",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+    ),
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        help="Profile to apply when processing each file.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Directory to write outputs to. Defaults to the watched directory.",
+    ),
+    quality: str = typer.Option("standard", "--quality", "-q"),
+    format: str = typer.Option("markdown", "--format", "-f"),
+    mode: str | None = typer.Option(None, "--mode", "-m"),
+    schema: str | None = typer.Option(None, "--schema", "-s"),
+    chunk: bool = typer.Option(False, "--chunk"),
+    max_tokens: int = typer.Option(500, "--max-tokens"),
+    overlap: int = typer.Option(50, "--overlap"),
+    process_existing: bool = typer.Option(
+        False,
+        "--process-existing",
+        help="Also process PDFs that already exist in the directory at startup.",
+    ),
+) -> None:
+    """Watch a directory and auto-process new PDFs as they appear.
+
+    Press Ctrl+C to stop. A summary of processed/failed files is printed on exit.
+    """
+    try:
+        from watchdog.events import FileSystemEventHandler
+        from watchdog.observers import Observer
+    except ImportError:
+        console.print(
+            "[red]Watch mode requires the 'watchdog' package.[/red]\n"
+            'Install with: [bold]pip install "pdfmux[watch]"[/bold]'
+        )
+        raise typer.Exit(1)
+
+    if profile:
+        from pdfmux.profiles import apply_profile_defaults
+
+        explicit = {
+            "quality": quality if quality != "standard" else None,
+            "format": format if format != "markdown" else None,
+            "mode": mode,
+            "schema": schema,
+            "chunk": True if chunk else None,
+            "max_tokens": max_tokens if max_tokens != 500 else None,
+            "overlap": overlap if overlap != 50 else None,
+        }
+        try:
+            merged = apply_profile_defaults(profile, explicit)
+        except KeyError:
+            console.print(f"[red]Profile '{profile}' not found.[/red]")
+            raise typer.Exit(2)
+        quality = str(merged.get("quality") or quality)
+        format = str(merged.get("format") or format)
+        if merged.get("mode") is not None:
+            mode = str(merged["mode"])
+        if merged.get("schema") is not None:
+            schema = str(merged["schema"])
+        chunk = bool(merged.get("chunk")) or chunk
+        max_tokens = int(merged.get("max_tokens") or max_tokens)
+        overlap = int(merged.get("overlap") or overlap)
+
+    if mode:
+        os.environ["PDFMUX_MODE"] = mode
+
+    out_dir = output_dir or directory
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    counts = {"processed": 0, "failed": 0}
+
+    def _process_pdf(pdf_path: Path) -> None:
+        try:
+            console.print(f"[dim]→ processing {pdf_path.name}...[/dim]")
+            effective_format = format
+            if schema and format == "markdown":
+                effective_format = "json"
+
+            from pdfmux.pipeline import process
+
+            result = process(
+                file_path=pdf_path,
+                output_format=effective_format,
+                quality=quality,
+                schema=schema,
+            )
+
+            if chunk:
+                import json
+
+                from pdfmux.chunking import chunk_for_rag
+
+                chunks = chunk_for_rag(
+                    result.text,
+                    confidence=result.confidence,
+                    max_tokens=max_tokens,
+                    overlap_tokens=overlap,
+                    extractor=result.extractor_used,
+                )
+                payload = {
+                    "source": str(pdf_path),
+                    "total_chunks": len(chunks),
+                    "confidence": result.confidence,
+                    "chunks": [
+                        {
+                            "index": i,
+                            "title": c.title,
+                            "text": c.text,
+                            "page_start": c.page_start,
+                            "page_end": c.page_end,
+                            "tokens": c.tokens,
+                            "confidence": c.confidence,
+                        }
+                        for i, c in enumerate(chunks)
+                    ],
+                }
+                out_file = out_dir / f"{pdf_path.stem}.chunks.json"
+                out_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            else:
+                ext = {"markdown": ".md", "json": ".json", "csv": ".csv", "llm": ".json"}.get(
+                    effective_format, ".md"
+                )
+                out_file = out_dir / f"{pdf_path.stem}{ext}"
+                out_file.write_text(result.text, encoding="utf-8")
+
+            console.print(
+                f"[green]✓[/green] {pdf_path.name} → {out_file.name} "
+                f"({result.confidence:.0%})"
+            )
+            counts["processed"] += 1
+        except Exception as e:
+            console.print(f"[red]✗[/red] {pdf_path.name}: {e}")
+            counts["failed"] += 1
+
+    class PdfEventHandler(FileSystemEventHandler):
+        def on_created(self, event: object) -> None:
+            src_path = getattr(event, "src_path", None)
+            is_dir = getattr(event, "is_directory", False)
+            if is_dir or not src_path:
+                return
+            p = Path(str(src_path))
+            if p.suffix.lower() != ".pdf":
+                return
+            time.sleep(0.5)
+            if p.exists():
+                _process_pdf(p)
+
+    if process_existing:
+        existing = sorted(directory.glob("*.pdf")) + sorted(directory.glob("*.PDF"))
+        if existing:
+            console.print(f"[dim]Processing {len(existing)} existing PDFs...[/dim]")
+            for p in existing:
+                _process_pdf(p)
+
+    observer = Observer()
+    handler = PdfEventHandler()
+    observer.schedule(handler, str(directory), recursive=False)
+    observer.start()
+
+    console.print(f"[bold]Watching[/bold] {directory} — press [bold]Ctrl+C[/bold] to stop")
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopping...[/dim]")
+    finally:
+        observer.stop()
+        observer.join()
+
+    console.print(
+        f"\nDone: [green]{counts['processed']} processed[/green], "
+        f"[red]{counts['failed']} failed[/red]"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Estimate command
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def estimate(
+    input_path: Path = typer.Argument(
+        ...,
+        help="PDF file to estimate cost for.",
+        exists=True,
+    ),
+    mode: str = typer.Option(
+        "balanced",
+        "--mode",
+        "-m",
+        help="Routing strategy: economy / balanced / premium.",
+    ),
+) -> None:
+    """Estimate extraction cost across all available LLM providers.
+
+    Classifies the PDF (cheap), then for each provider/model shows the
+    expected cost given the chosen routing strategy.
+    """
+    from pdfmux.detect import classify
+    from pdfmux.providers import discover_all_providers
+    from pdfmux.router.engine import RouterEngine
+    from pdfmux.router.strategies import Strategy
+
+    classification = classify(input_path)
+    n_pages = classification.page_count
+
+    page_types: list[str] = []
+    for i in range(n_pages):
+        if i in classification.scanned_pages:
+            page_types.append("scanned")
+        elif i in classification.graphical_pages:
+            page_types.append("graphical")
+        elif classification.has_tables:
+            page_types.append("tables")
+        else:
+            page_types.append("digital")
+
+    try:
+        strategy = Strategy(mode)
+    except ValueError:
+        console.print(f"[red]Invalid mode '{mode}'. Use economy/balanced/premium.[/red]")
+        raise typer.Exit(2)
+
+    engine = RouterEngine()
+    base_estimate = engine.estimate_document_cost(page_types, strategy)
+
+    console.print(
+        f"\n[bold]{input_path.name}[/bold] — {n_pages} pages, mode=[bold]{mode}[/bold]\n"
+    )
+
+    llm_pages = 0
+    for pt in page_types:
+        decision = engine.select(pt, strategy)
+        if decision.extractor == "llm":
+            llm_pages += 1
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Provider", min_width=10)
+    table.add_column("Model", min_width=24)
+    table.add_column("Per page", min_width=10, justify="right")
+    table.add_column(f"Total ({llm_pages} LLM pages)", min_width=18, justify="right")
+    table.add_column("Available", min_width=10)
+
+    providers = discover_all_providers()
+    if not providers:
+        console.print("[yellow]No LLM providers discovered.[/yellow]")
+    else:
+        for name, provider in sorted(providers.items()):
+            available = provider.available()
+            avail_str = "[green]✓[/green]" if available else "[dim]—[/dim]"
+            for model_info in provider.supported_models() or []:
+                cost = provider.estimate_cost(image_bytes_count=200_000)
+                per_page = cost.cost_usd
+                total = per_page * llm_pages
+                table.add_row(
+                    name,
+                    model_info.id,
+                    f"${per_page:.4f}",
+                    f"${total:.4f}",
+                    avail_str,
+                )
+
+    console.print(table)
+    console.print(
+        f"\n[dim]Router-estimated total (current mode): ${base_estimate:.4f}[/dim]\n"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Diff command
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def diff(
+    file1: Path = typer.Argument(..., help="First PDF.", exists=True),
+    file2: Path = typer.Argument(..., help="Second PDF.", exists=True),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format: table (default) or unified.",
+    ),
+) -> None:
+    """Extract two PDFs and report a structural diff.
+
+    Compares page count, total chars, headings, table count, and confidence
+    so you can spot regressions or differences between document versions.
+    """
+    from pdfmux.pipeline import process
+
+    def _summary(path: Path) -> dict[str, object]:
+        result = process(file_path=path, output_format="markdown", quality="standard")
+        text = result.text
+        lines = text.splitlines()
+        headings = [
+            line.strip()
+            for line in lines
+            if line.strip().startswith("#") and not line.strip().startswith("#!")
+        ]
+        tables = sum(
+            1
+            for line in lines
+            if line.strip().startswith("|---") or line.strip().startswith("| ---")
+        )
+        return {
+            "path": path,
+            "page_count": result.page_count,
+            "total_chars": len(text),
+            "headings": headings,
+            "tables": tables,
+            "text": text,
+            "confidence": result.confidence,
+            "extractor": result.extractor_used,
+        }
+
+    s1 = _summary(file1)
+    s2 = _summary(file2)
+
+    if output_format == "unified":
+        import difflib
+
+        diff_lines = list(
+            difflib.unified_diff(
+                str(s1["text"]).splitlines(keepends=True),
+                str(s2["text"]).splitlines(keepends=True),
+                fromfile=str(file1),
+                tofile=str(file2),
+                n=3,
+            )
+        )
+        if not diff_lines:
+            console.print("[green]Files are identical at the text level.[/green]")
+        else:
+            console.print("".join(diff_lines))
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Metric", min_width=18)
+    table.add_column(file1.name, min_width=20)
+    table.add_column(file2.name, min_width=20)
+    table.add_column("Δ", min_width=10)
+
+    def _delta(a: int, b: int) -> str:
+        d = b - a
+        if d == 0:
+            return "[dim]0[/dim]"
+        sign = "+" if d > 0 else ""
+        return f"[yellow]{sign}{d}[/yellow]"
+
+    h1_list = s1["headings"]
+    h2_list = s2["headings"]
+    assert isinstance(h1_list, list) and isinstance(h2_list, list)
+
+    table.add_row(
+        "Page count",
+        str(s1["page_count"]),
+        str(s2["page_count"]),
+        _delta(int(s1["page_count"]), int(s2["page_count"])),  # type: ignore[arg-type]
+    )
+    table.add_row(
+        "Total chars",
+        f"{int(s1['total_chars']):,}",
+        f"{int(s2['total_chars']):,}",
+        _delta(int(s1["total_chars"]), int(s2["total_chars"])),  # type: ignore[arg-type]
+    )
+    table.add_row(
+        "Headings",
+        str(len(h1_list)),
+        str(len(h2_list)),
+        _delta(len(h1_list), len(h2_list)),
+    )
+    table.add_row(
+        "Table rows",
+        str(s1["tables"]),
+        str(s2["tables"]),
+        _delta(int(s1["tables"]), int(s2["tables"])),  # type: ignore[arg-type]
+    )
+    table.add_row(
+        "Confidence",
+        f"{float(s1['confidence']):.0%}",
+        f"{float(s2['confidence']):.0%}",
+        "",
+    )
+    table.add_row("Extractor", str(s1["extractor"]), str(s2["extractor"]), "")
+
+    console.print(f"\n[bold]Diff:[/bold] {file1.name} vs {file2.name}\n")
+    console.print(table)
+
+    h1 = set(h1_list)
+    h2 = set(h2_list)
+    only1 = sorted(h1 - h2)
+    only2 = sorted(h2 - h1)
+    if only1 or only2:
+        console.print()
+        console.print("[bold]Heading differences[/bold]")
+        for h in only1:
+            console.print(f"  [red]- {h}[/red]")
+        for h in only2:
+            console.print(f"  [green]+ {h}[/green]")
+    else:
+        console.print("\n[dim]Same headings on both files.[/dim]")
+    console.print()
 
 
 if __name__ == "__main__":

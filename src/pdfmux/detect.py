@@ -28,6 +28,7 @@ class PDFClassification:
     is_scanned: bool = False
     is_mixed: bool = False
     is_graphical: bool = False  # Image-heavy — text in images that fast extraction misses
+    is_arabic: bool = False  # Arabic-heavy — needs bidi handling and Arabic-aware OCR
     has_tables: bool = False
     page_count: int = 0
     languages: list[str] = field(default_factory=list)
@@ -35,6 +36,7 @@ class PDFClassification:
     digital_pages: list[int] = field(default_factory=list)
     scanned_pages: list[int] = field(default_factory=list)
     graphical_pages: list[int] = field(default_factory=list)
+    arabic_pages: list[int] = field(default_factory=list)
     empty_pages: list[int] = field(default_factory=list)
 
 
@@ -70,7 +72,15 @@ def classify(file_path: str | Path) -> PDFClassification:
     digital_pages = []
     scanned_pages = []
     graphical_pages = []
+    arabic_pages = []
     empty_pages = []
+
+    # Lazy import to avoid a hard dependency on the arabic module at import time.
+    from pdfmux.arabic import arabic_ratio
+
+    # Sample only the first ~20 pages for Arabic detection on huge docs.
+    # Logistics PDFs typically have Arabic on every page if at all.
+    arabic_sample_limit = min(len(doc), 20)
 
     for page_num in range(len(doc)):
         page = doc[page_num]
@@ -93,9 +103,16 @@ def classify(file_path: str | Path) -> PDFClassification:
         if (image_count >= 2 and text_len < 500) or (image_count >= 1 and text_len < 100):
             graphical_pages.append(page_num)
 
+        # Arabic detection — flag pages where >5% of non-whitespace chars
+        # are Arabic. Small threshold catches docs with Arabic headers + LTR body.
+        if page_num < arabic_sample_limit and text_len > 0:
+            if arabic_ratio(text) > 0.05:
+                arabic_pages.append(page_num)
+
     result.digital_pages = digital_pages
     result.scanned_pages = scanned_pages
     result.graphical_pages = graphical_pages
+    result.arabic_pages = arabic_pages
     result.empty_pages = empty_pages
 
     total = len(doc)
@@ -126,6 +143,13 @@ def classify(file_path: str | Path) -> PDFClassification:
     graphical_ratio = len(graphical_pages) / total
     if graphical_ratio > 0.25:
         result.is_graphical = True
+
+    # Arabic flag: any sampled page above the threshold means we should
+    # use Arabic-aware extraction for the document.
+    if arabic_pages:
+        result.is_arabic = True
+        if "ar" not in result.languages:
+            result.languages.append("ar")
 
     result.has_tables = _detect_tables(doc, page_count=len(doc))
 

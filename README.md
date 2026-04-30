@@ -353,10 +353,67 @@ Supported providers:
 | Provider | Models | Local? | Cost |
 |----------|--------|--------|------|
 | Gemini | 2.5 Flash, 2.5 Pro | No | ~$0.01/page |
+| Gemma | 3 27B IT, 3 12B IT (Arabic) | No | ~$0.005/page |
 | Claude | Sonnet, Opus | No | ~$0.015/page |
 | GPT-4o | GPT-4o, GPT-4o-mini | No | ~$0.01/page |
 | Ollama | Any local model | Yes | Free |
 | Custom | Any OpenAI-compatible API | Configurable | Varies |
+
+## Arabic & RTL Support
+
+pdfmux ships first-class support for Arabic, Persian, Urdu, and Hebrew.
+Out of the box, RTL detection runs on every PDF and PyMuPDF-extracted
+pages are passed through the Unicode Bidirectional Algorithm so glyphs
+that were stored in left-to-right order render in correct reading order.
+
+```bash
+# Default install — already includes python-bidi for RTL reordering
+pip install pdfmux
+
+# Recommended for Arabic-heavy docs — adds Gemma 4 vision OCR
+pip install "pdfmux[arabic,llm-gemma]"
+
+# One credential covers Gemma + Gemini (same Google endpoint)
+export GEMINI_API_KEY=...
+```
+
+What happens automatically:
+
+- `pdfmux convert` detects Arabic content and routes pages with >5%
+  Arabic characters through the Arabic-aware extractor chain.
+- PyMuPDF, RapidOCR, and Docling outputs are post-processed with the
+  Bidi algorithm — markdown headings (`#`) and pipe-table rows preserve
+  structure, only inner text is reordered.
+- `DocumentResult.has_arabic` is set to `True` whenever any page contains
+  Arabic script.
+
+What requires opt-in:
+
+- Vision LLM extraction. Set `--llm-provider gemma` (or any vision
+  provider) to route Arabic pages through Gemma 4 instead of PyMuPDF.
+- Aggressive normalization (Tatweel removal, Alef/Yeh unification,
+  Tashkeel stripping) — call `pdfmux.arabic.normalize_arabic(text)`
+  on extracted strings if you need canonicalized output for search or
+  embedding.
+
+```python
+from pdfmux.arabic import (
+    is_arabic_text,
+    is_rtl_dominant,
+    fix_bidi_order,
+    normalize_arabic,
+)
+
+text = "مرحبا بالعالم"
+assert is_arabic_text(text)
+assert is_rtl_dominant(text)
+
+# Fix glyph order from PyMuPDF / OCR engines
+visual = fix_bidi_order(text)
+
+# Canonicalize for indexing — strip Tatweel, unify Alef variants, drop diacritics
+indexable = normalize_arabic("أَحْمَدْ")  # → "احمد"
+```
 
 ## Benchmark
 

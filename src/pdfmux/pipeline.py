@@ -77,6 +77,7 @@ def process(
     quality: str = "standard",
     show_confidence: bool = False,
     schema: str | None = None,
+    use_cache: bool = True,
 ) -> ConversionResult:
     """Process a PDF through the tiered extraction pipeline.
 
@@ -91,6 +92,10 @@ def process(
         schema: Optional JSON schema file path or preset name for
             structured extraction. When provided, output includes
             tables, key-values, and schema-mapped structured data.
+        use_cache: When True (default), consult the smart result cache
+            before extracting and store new results on completion. The
+            cache is keyed by ``(file_hash, quality, format, schema)``.
+            Disable for benchmarking or one-off runs.
 
     Returns:
         ConversionResult with extracted text and metadata.
@@ -110,6 +115,29 @@ def process(
                 f"{MAX_FILE_SIZE_MB}MB limit. Set PDFMUX_MAX_FILE_SIZE_MB to override.",
                 code="PDF_TOO_LARGE",
             )
+
+    # Smart cache: return early on hit. Cache key includes file hash so
+    # any change to the source PDF, quality preset, output format, or
+    # schema produces a fresh extraction.
+    cache = None
+    if use_cache and file_path.exists():
+        try:
+            from pdfmux.result_cache import get_default_cache
+
+            cache = get_default_cache()
+            if cache.enabled:
+                cached = cache.get(file_path, quality, output_format, schema)
+                if cached is not None:
+                    logger.info(
+                        "ResultCache hit: %s (%s/%s)",
+                        file_path.name,
+                        quality,
+                        output_format,
+                    )
+                    return cached
+        except Exception as e:  # pragma: no cover - cache must never break extraction
+            logger.debug("ResultCache lookup skipped: %s", e)
+            cache = None
 
     # Validate format
     try:
@@ -254,6 +282,40 @@ def process(
     except Exception as e:
         logger.debug("Image table OCR skipped: %s", e)
 
+    # Step 3.6: Arabic bidi repair for PyMuPDF-extracted pages.
+    # PyMuPDF returns Arabic glyphs in storage (LTR) order. Re-run pages
+    # through the BiDi algorithm so the merged text reads correctly.
+    # Vision LLMs (gemma/gemini/claude) already return correctly-ordered
+    # text so we skip them here to avoid double-reordering.
+    if classification.is_arabic or any(
+        _page_text_has_arabic(p.text) for p in pages
+    ):
+        from pdfmux.arabic import fix_bidi_order, is_arabic_text
+
+        for i, p in enumerate(pages):
+            if not is_arabic_text(p.text):
+                continue
+            extractor_lower = (p.extractor or "").lower()
+            # Only re-order pages where the extractor returns storage-order
+            # glyphs. Vision LLMs already return correctly-ordered RTL text.
+            if any(
+                tag in extractor_lower
+                for tag in ("pymupdf", "rapidocr", "opendataloader", "docling")
+            ):
+                pages[i] = PageResult(
+                    page_num=p.page_num,
+                    text=fix_bidi_order(p.text),
+                    confidence=p.confidence,
+                    quality=p.quality,
+                    extractor=p.extractor + "+bidi",
+                    image_count=p.image_count,
+                    ocr_applied=p.ocr_applied,
+                    tables=p.tables,
+                    key_values=p.key_values,
+                    cost_usd=p.cost_usd,
+                    tokens_used=p.tokens_used,
+                )
+
     # Step 4: Build the merged text
     merged_text = "\n\n".join(p.text for p in pages if p.text.strip())
 
@@ -295,7 +357,7 @@ def process(
     except Exception:
         pass
 
-    return ConversionResult(
+    final = ConversionResult(
         text=formatted,
         format=output_format,
         confidence=confidence,
@@ -306,12 +368,22 @@ def process(
         ocr_pages=ocr_pages,
     )
 
+    # Persist to the smart cache for next time.
+    if cache is not None and cache.enabled:
+        try:
+            cache.put(file_path, quality, output_format, schema, final)
+        except Exception as e:  # pragma: no cover - cache must never break extraction
+            logger.debug("ResultCache write skipped: %s", e)
+
+    return final
+
 
 def process_batch(
     file_paths: list[str | Path],
     output_format: str = "markdown",
     quality: str = "standard",
     workers: int = 4,
+    use_cache: bool = True,
 ) -> Iterator[tuple[Path, ConversionResult | Exception]]:
     """Process multiple PDFs concurrently.
 
@@ -323,6 +395,7 @@ def process_batch(
         output_format: Output format for all files.
         quality: Quality preset for all files.
         workers: Number of concurrent workers.
+        use_cache: Forwarded to :func:`process`.
 
     Yields:
         (Path, ConversionResult) on success.
@@ -330,7 +403,12 @@ def process_batch(
     """
 
     def _process_one(path: Path) -> ConversionResult:
-        return process(file_path=path, output_format=output_format, quality=quality)
+        return process(
+            file_path=path,
+            output_format=output_format,
+            quality=quality,
+            use_cache=use_cache,
+        )
 
     paths = [Path(p) for p in file_paths]
 
@@ -438,6 +516,11 @@ def _route_and_extract(
 
 def _classify_to_page_type(classification: PDFClassification) -> str:
     """Convert PDFClassification to a router page type string."""
+    # Arabic is the highest-priority signal — it changes which extractor
+    # we pick more than any other content type because PyMuPDF/RapidOCR
+    # are unsuitable on Arabic-heavy docs.
+    if classification.is_arabic:
+        return "arabic"
     if classification.is_scanned:
         return "scanned"
     if classification.has_tables:
@@ -447,6 +530,17 @@ def _classify_to_page_type(classification: PDFClassification) -> str:
     if classification.is_mixed:
         return "mixed"
     return "digital"
+
+
+def _page_text_has_arabic(text: str) -> bool:
+    """True if any character in ``text`` is in the Arabic Unicode range."""
+    if not text:
+        return False
+    for ch in text:
+        cp = ord(ch)
+        if 0x0600 <= cp <= 0x06FF or 0x0750 <= cp <= 0x077F or 0xFB50 <= cp <= 0xFEFF:
+            return True
+    return False
 
 
 def _execute_route_decision(

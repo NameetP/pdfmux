@@ -6,6 +6,7 @@ import base64
 import os
 
 from pdfmux.providers.base import CostEstimate, LLMProvider, ModelInfo
+from pdfmux.retry import with_retry
 
 
 class GeminiProvider(LLMProvider):
@@ -49,6 +50,7 @@ class GeminiProvider(LLMProvider):
         cost = (input_tokens * 0.15 + output_tokens * 0.60) / 1_000_000
         return CostEstimate(input_tokens=input_tokens, output_tokens=output_tokens, cost_usd=cost)
 
+    @with_retry(max_attempts=3, backoff_base=2.0)
     def extract_page(self, image_bytes: bytes, prompt: str, model: str | None = None) -> str:
         from google import genai
 

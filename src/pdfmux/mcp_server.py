@@ -66,7 +66,8 @@ mcp = FastMCP(
     instructions=(
         "pdfmux converts PDFs to AI-readable Markdown. "
         "Use convert_pdf for full extraction, analyze_pdf for quick triage, "
-        "batch_convert for directories, and extract_structured for tables/key-values."
+        "batch_convert for directories, extract_structured for tables/key-values, "
+        "and extract_streaming for page-by-page NDJSON streaming on large docs."
     ),
 )
 
@@ -267,6 +268,36 @@ def extract_structured(
     )
 
     return result.text
+
+
+@mcp.tool()
+def extract_streaming(
+    file_path: str,
+    quality: str = "standard",
+) -> str:
+    """Stream extraction events for a PDF as NDJSON.
+
+    Use for large documents (100+ pages) where waiting for the full
+    extraction is impractical. The response body is newline-delimited
+    JSON with one object per line:
+
+        {"type":"classified","data":{"page_count":N,"page_types":[...]}}
+        {"type":"page","data":{"page_num":0,"text":"...","confidence":0.92,...}}
+        {"type":"warning","data":{"message":"..."}}        (zero or more)
+        {"type":"complete","data":{"total_confidence":0.94,"ocr_pages":[...],...}}
+
+    The first event is always ``classified``; the last is always ``complete``.
+    Each ``page`` event arrives as soon as that page is extracted, including
+    OCR re-extraction in standard/high quality modes.
+    """
+    p = _check_path(file_path)
+
+    from pdfmux.streaming import process_streaming
+
+    lines: list[str] = []
+    for ev in process_streaming(str(p), quality=quality):
+        lines.append(json.dumps(ev.to_dict(), ensure_ascii=False))
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

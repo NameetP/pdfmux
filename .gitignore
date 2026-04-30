@@ -34,3 +34,6 @@ secrets.*
 HN-DRAFT.md
 DEMO-SCRIPT.md
 demo-sample.md
+demo-sample.json
+demo-sample.chunks.json
+heading_features.jsonl

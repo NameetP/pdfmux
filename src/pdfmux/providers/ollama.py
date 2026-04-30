@@ -6,6 +6,7 @@ import base64
 import os
 
 from pdfmux.providers.base import CostEstimate, LLMProvider, ModelInfo
+from pdfmux.retry import with_retry
 
 
 class OllamaProvider(LLMProvider):
@@ -38,6 +39,7 @@ class OllamaProvider(LLMProvider):
     def estimate_cost(self, image_bytes_count: int, prompt_tokens: int = 200) -> CostEstimate:
         return CostEstimate()  # local = free
 
+    @with_retry(max_attempts=3, backoff_base=2.0)
     def extract_page(self, image_bytes: bytes, prompt: str, model: str | None = None) -> str:
         import ollama
 

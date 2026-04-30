@@ -123,6 +123,7 @@ class DocumentResult:
     ocr_pages: tuple[int, ...] = field(default_factory=tuple)  # 0-indexed
     total_cost_usd: float = 0.0
     total_tokens: int = 0
+    has_arabic: bool = False  # at least one page contains Arabic script
 
     @property
     def page_count(self) -> int:

@@ -75,7 +75,8 @@ llm-mistral = ["mistralai>=1.0.0"]
 llm-all = ["pdfmux[llm,llm-claude,llm-openai,llm-ollama,llm-mistral]"]
 langchain = ["langchain-core>=0.2.0"]
 llamaindex = ["llama-index-core>=0.10.0"]
-all = ["pdfmux[serve,tables,ocr,opendataloader,marker,llm-all,langchain,llamaindex]"]
+watch = ["watchdog>=3.0.0"]
+all = ["pdfmux[serve,tables,ocr,opendataloader,marker,llm-all,langchain,llamaindex,watch]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
@@ -103,7 +104,7 @@ line-length = 100
 select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["E501", "F401", "I001"]
+"tests/**" = ["E501", "F401", "I001", "N818"]
 "src/pdfmux/mcp_server.py" = ["E501"]  # MCP tool docstrings are user-facing
 "src/pdfmux/cli.py" = ["E501"]  # CLI help text is user-facing
 "src/pdfmux/headings.py" = ["E501"]  # regex patterns for date matching

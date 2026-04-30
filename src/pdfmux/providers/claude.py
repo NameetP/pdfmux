@@ -6,6 +6,7 @@ import base64
 import os
 
 from pdfmux.providers.base import CostEstimate, LLMProvider, ModelInfo
+from pdfmux.retry import with_retry
 
 
 class ClaudeProvider(LLMProvider):
@@ -49,6 +50,7 @@ class ClaudeProvider(LLMProvider):
         cost = (input_tokens * 3.0 + output_tokens * 15.0) / 1_000_000
         return CostEstimate(input_tokens=input_tokens, output_tokens=output_tokens, cost_usd=cost)
 
+    @with_retry(max_attempts=3, backoff_base=2.0)
     def extract_page(self, image_bytes: bytes, prompt: str, model: str | None = None) -> str:
         import anthropic
 
