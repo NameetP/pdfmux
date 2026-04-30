@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.6.0 (2026-04-30)
+
+### Added — Extraction backends
+- **Mistral OCR** as a paid extraction backend ($0.002/page, 96.6% table accuracy on internal benches). Optional dep: `pdfmux[llm-mistral]`.
+- **Marker** neural extractor (`pdfmux[marker]`) — strong on academic papers and dense layouts. Models cached as module-level singletons to amortize warm-up.
+- **Gemma 4 27B IT** as a vision LLM provider via the GeminiAPI OpenAI-compat endpoint. Reuses `GEMINI_API_KEY`. Native Arabic OCR.
+
+### Added — Arabic / RTL support
+- **BiDi post-processing** for Arabic and Hebrew using `python-bidi`. Markdown-aware: preserves heading prefixes, list markers, and code fences while reordering RTL text.
+- **Arabic detection** in the document classifier (samples first 20 pages). New `arabic` page type wired into the routing matrix → Gemma fallback chain.
+- `has_arabic` flag on `DocumentResult`.
+
+### Added — Caching & streaming
+- **Smart result cache** keyed by `(file_hash, quality, format, schema)` at `~/.cache/pdfmux/results/`. 30-day TTL, 1 GB max, LRU eviction. New `--no-cache` and `--clear-cache` flags.
+- **Streaming extraction** as NDJSON events (`classified` → `page` → `warning` → `complete`). New `pdfmux stream` CLI command and `extract_streaming` MCP tool.
+
+### Added — Developer experience
+- **Configuration profiles** at `~/.config/pdfmux/profiles.yaml`. Built-ins: `invoices`, `receipts`, `papers`, `contracts`, `bulk-rag`. New `pdfmux profiles list/show/save/delete` sub-commands and `--profile` flag on `convert`.
+- **Watch mode**: `pdfmux watch <dir>` auto-converts new and changed PDFs (via `watchdog`).
+- **Cost estimation**: `pdfmux estimate <pdf>` predicts cost before running.
+- **Diff command**: `pdfmux diff a.pdf b.pdf` produces a Levenshtein-style comparison of two extractions.
+- **Better error messages** — every `PDFMuxError` carries `.user_message`, `.suggestion`, and a copy-pasteable `.reproduce_cmd`.
+- **Retry with backoff** — `@with_retry(max_attempts=3, backoff_base=2.0)` decorator applied to every LLM provider's `extract_page()`. Honors `Retry-After` headers.
+
+### Tests
+- 9 new test modules. **659 tests passing** (3 skipped) — up from 481.
+
 ## 1.5.2 (2026-04-26)
 
 GEO metadata refresh: keywords, description, README opener tuned for AI-engine surfacing. No code changes.
