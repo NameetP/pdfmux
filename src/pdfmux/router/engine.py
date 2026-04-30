@@ -38,34 +38,65 @@ class RouteDecision:
 # "llm" means use the best available LLM provider.
 
 ROUTING_MATRIX: dict[tuple[str, Strategy], tuple[str, ...]] = {
-    # Digital text — no LLM needed, fast extractors dominate
+    # Digital text — no LLM needed, fast extractors dominate.
+    # Marker is a strong digital extractor too but slower than opendataloader.
     ("digital", Strategy.ECONOMY): ("pymupdf",),
-    ("digital", Strategy.BALANCED): ("opendataloader", "pymupdf"),
-    ("digital", Strategy.PREMIUM): ("opendataloader", "pymupdf"),
-    # Scanned documents — OCR or LLM
-    ("scanned", Strategy.ECONOMY): ("rapidocr", "pymupdf"),
-    ("scanned", Strategy.BALANCED): ("rapidocr", "llm", "pymupdf"),
-    ("scanned", Strategy.PREMIUM): ("llm", "rapidocr", "pymupdf"),
-    # Tables — Docling excels, LLM for complex cases
-    ("tables", Strategy.ECONOMY): ("docling", "opendataloader", "pymupdf"),
-    ("tables", Strategy.BALANCED): ("docling", "opendataloader", "llm", "pymupdf"),
-    ("tables", Strategy.PREMIUM): ("llm", "docling", "opendataloader", "pymupdf"),
+    ("digital", Strategy.BALANCED): ("opendataloader", "marker", "pymupdf"),
+    ("digital", Strategy.PREMIUM): ("marker", "opendataloader", "pymupdf"),
+    # Scanned documents — Mistral OCR is the cheapest cloud option for economy.
+    ("scanned", Strategy.ECONOMY): ("mistral_ocr", "rapidocr", "pymupdf"),
+    ("scanned", Strategy.BALANCED): ("mistral_ocr", "rapidocr", "llm", "pymupdf"),
+    ("scanned", Strategy.PREMIUM): ("llm", "mistral_ocr", "rapidocr", "pymupdf"),
+    # Tables — Docling and Mistral OCR both score very high; Marker is solid backup.
+    ("tables", Strategy.ECONOMY): ("docling", "mistral_ocr", "opendataloader", "pymupdf"),
+    ("tables", Strategy.BALANCED): (
+        "docling",
+        "mistral_ocr",
+        "marker",
+        "opendataloader",
+        "llm",
+        "pymupdf",
+    ),
+    ("tables", Strategy.PREMIUM): (
+        "llm",
+        "docling",
+        "mistral_ocr",
+        "marker",
+        "opendataloader",
+        "pymupdf",
+    ),
     # Mixed documents — multi-pass approach
     ("mixed", Strategy.ECONOMY): ("opendataloader", "pymupdf"),
-    ("mixed", Strategy.BALANCED): ("opendataloader", "pymupdf"),
-    ("mixed", Strategy.PREMIUM): ("llm", "opendataloader", "pymupdf"),
+    ("mixed", Strategy.BALANCED): ("marker", "opendataloader", "pymupdf"),
+    ("mixed", Strategy.PREMIUM): ("llm", "marker", "opendataloader", "pymupdf"),
     # Graphical / image-heavy — needs OCR or LLM
-    ("graphical", Strategy.ECONOMY): ("rapidocr", "pymupdf"),
-    ("graphical", Strategy.BALANCED): ("rapidocr", "llm", "pymupdf"),
-    ("graphical", Strategy.PREMIUM): ("llm", "rapidocr", "pymupdf"),
+    ("graphical", Strategy.ECONOMY): ("mistral_ocr", "rapidocr", "pymupdf"),
+    ("graphical", Strategy.BALANCED): ("mistral_ocr", "rapidocr", "llm", "pymupdf"),
+    ("graphical", Strategy.PREMIUM): ("llm", "mistral_ocr", "rapidocr", "pymupdf"),
     # Handwriting — LLM is best, OCR as fallback
-    ("handwritten", Strategy.ECONOMY): ("rapidocr", "pymupdf"),
-    ("handwritten", Strategy.BALANCED): ("llm", "rapidocr", "pymupdf"),
-    ("handwritten", Strategy.PREMIUM): ("llm", "rapidocr", "pymupdf"),
+    ("handwritten", Strategy.ECONOMY): ("rapidocr", "mistral_ocr", "pymupdf"),
+    ("handwritten", Strategy.BALANCED): ("llm", "rapidocr", "mistral_ocr", "pymupdf"),
+    ("handwritten", Strategy.PREMIUM): ("llm", "rapidocr", "mistral_ocr", "pymupdf"),
     # Forms — structured extraction, LLM excels
-    ("forms", Strategy.ECONOMY): ("opendataloader", "docling", "pymupdf"),
-    ("forms", Strategy.BALANCED): ("opendataloader", "docling", "llm", "pymupdf"),
-    ("forms", Strategy.PREMIUM): ("llm", "docling", "opendataloader", "pymupdf"),
+    ("forms", Strategy.ECONOMY): ("opendataloader", "docling", "mistral_ocr", "pymupdf"),
+    ("forms", Strategy.BALANCED): (
+        "opendataloader",
+        "docling",
+        "mistral_ocr",
+        "llm",
+        "pymupdf",
+    ),
+    ("forms", Strategy.PREMIUM): (
+        "llm",
+        "docling",
+        "mistral_ocr",
+        "opendataloader",
+        "pymupdf",
+    ),
+    # Academic / research papers — Marker is purpose-built for this case
+    ("academic", Strategy.ECONOMY): ("marker", "opendataloader", "pymupdf"),
+    ("academic", Strategy.BALANCED): ("marker", "opendataloader", "llm", "pymupdf"),
+    ("academic", Strategy.PREMIUM): ("marker", "llm", "opendataloader", "pymupdf"),
 }
 
 # Default fallback for unknown page types
@@ -82,6 +113,8 @@ COST_PER_PAGE: dict[str, float] = {
     "docling": 0.0,
     "rapidocr": 0.0,
     "surya": 0.0,
+    "marker": 0.0,  # local model, free per page
+    "mistral_ocr": 0.002,  # flat rate per page
     "llm": 0.01,  # varies by provider, this is average
 }
 
@@ -98,12 +131,27 @@ QUALITY_ESTIMATES: dict[tuple[str, str], float] = {
     ("opendataloader", "tables"): 0.85,
     ("opendataloader", "mixed"): 0.85,
     ("opendataloader", "graphical"): 0.30,
+    ("opendataloader", "academic"): 0.85,
     ("docling", "digital"): 0.90,
     ("docling", "tables"): 0.92,
     ("docling", "mixed"): 0.80,
     ("rapidocr", "scanned"): 0.75,
     ("rapidocr", "graphical"): 0.65,
     ("rapidocr", "mixed"): 0.60,
+    # Mistral OCR — strong tables (96.6% acc), great on scans, cheap
+    ("mistral_ocr", "digital"): 0.88,
+    ("mistral_ocr", "scanned"): 0.92,
+    ("mistral_ocr", "tables"): 0.94,
+    ("mistral_ocr", "mixed"): 0.85,
+    ("mistral_ocr", "graphical"): 0.80,
+    ("mistral_ocr", "handwritten"): 0.70,
+    ("mistral_ocr", "forms"): 0.86,
+    # Marker — neural extraction, excels on academic papers + complex layouts
+    ("marker", "digital"): 0.93,
+    ("marker", "tables"): 0.86,
+    ("marker", "mixed"): 0.88,
+    ("marker", "academic"): 0.95,
+    ("marker", "forms"): 0.78,
     ("llm", "digital"): 0.90,
     ("llm", "scanned"): 0.88,
     ("llm", "tables"): 0.85,
@@ -111,6 +159,7 @@ QUALITY_ESTIMATES: dict[tuple[str, str], float] = {
     ("llm", "graphical"): 0.82,
     ("llm", "handwritten"): 0.80,
     ("llm", "forms"): 0.85,
+    ("llm", "academic"): 0.85,
 }
 
 

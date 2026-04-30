@@ -267,6 +267,8 @@ def doctor() -> None:
         ("docling", "docling.document_converter", "Docling", r"pip install pdfmux\[tables]"),
         ("rapidocr", "rapidocr", "RapidOCR", r"pip install pdfmux\[ocr]"),
         ("surya-ocr", "surya.recognition", "Surya OCR", r"pip install pdfmux\[ocr-heavy]"),
+        ("marker-pdf", "marker.converters.pdf", "Marker", r"pip install pdfmux\[marker]"),
+        ("mistralai", "mistralai", "Mistral OCR SDK", r"pip install pdfmux\[llm-mistral]"),
         ("google-genai", "google.genai", "Gemini Flash", r"pip install pdfmux\[llm]"),
     ]
 

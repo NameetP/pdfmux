@@ -66,14 +66,16 @@ tables = ["docling>=2.0.0"]
 opendataloader = ["opendataloader-pdf>=2.0.0"]
 ocr = ["rapidocr>=3.0.0", "onnxruntime>=1.19.0"]
 ocr-heavy = ["surya-ocr>=0.6.0"]
+marker = ["marker-pdf>=1.0.0"]
 llm = ["google-genai>=1.0.0"]
 llm-claude = ["anthropic>=0.40.0"]
 llm-openai = ["openai>=1.0.0"]
 llm-ollama = ["ollama>=0.4.0"]
-llm-all = ["pdfmux[llm,llm-claude,llm-openai,llm-ollama]"]
+llm-mistral = ["mistralai>=1.0.0"]
+llm-all = ["pdfmux[llm,llm-claude,llm-openai,llm-ollama,llm-mistral]"]
 langchain = ["langchain-core>=0.2.0"]
 llamaindex = ["llama-index-core>=0.10.0"]
-all = ["pdfmux[serve,tables,ocr,opendataloader,llm-all,langchain,llamaindex]"]
+all = ["pdfmux[serve,tables,ocr,opendataloader,marker,llm-all,langchain,llamaindex]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
