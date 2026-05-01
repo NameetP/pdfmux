@@ -33,10 +33,15 @@ PDF ──> pdfmux router ──> best extractor per page ──> audit ──> 
 pip install pdfmux
 ```
 
-That's it. Handles digital PDFs out of the box. Add backends for harder documents:
+That handles digital PDFs. **For any real-world batch, install `pdfmux[ocr]` too** — almost every directory of PDFs has at least one scan, and without OCR those pages return empty text:
 
 ```bash
-pip install "pdfmux[ocr]"             # RapidOCR — scanned/image pages (~200MB, CPU-only)
+pip install "pdfmux[ocr]"             # ⭐ recommended — RapidOCR for scanned pages (~200MB, CPU)
+```
+
+Other backends, by document type:
+
+```bash
 pip install "pdfmux[tables]"          # Docling — table-heavy docs (~500MB)
 pip install "pdfmux[opendataloader]"  # OpenDataLoader — complex layouts (Java 11+)
 pip install "pdfmux[marker]"          # Marker — neural extraction for academic papers
@@ -88,8 +93,14 @@ pdfmux watch ./inbox/ -o ./output/
 # diff two extractions side-by-side
 pdfmux diff old.pdf new.pdf
 
-# batch a directory
+# batch a directory — writes manifest.json with per-doc confidence
 pdfmux convert ./docs/ -o ./output/
+
+# CI mode: fail the run if any document is below 0.20 confidence
+pdfmux convert ./docs/ -o ./output/ --strict --min-confidence 0.20
+
+# pre-flight a directory: which extras do you actually need for THIS batch?
+pdfmux doctor --check ./docs/
 
 # results are cached by file hash — re-runs are instant; bypass with --no-cache
 pdfmux convert report.pdf --no-cache
@@ -98,18 +109,30 @@ pdfmux convert report.pdf --clear-cache
 
 ### Python
 
+For batch processing, use `batch_extract()` — not a `subprocess.run(['pdfmux', ...])` loop. Same pipeline, no per-file process spawn, handles non-ASCII filenames:
+
 ```python
 import pdfmux
+from pathlib import Path
 
-# text -> markdown
-text = pdfmux.extract_text("report.pdf")
+# Batch extract — yields (path, result) tuples as each PDF completes.
+pdfs = list(Path("./inbox").glob("*.pdf"))
+for path, result in pdfmux.batch_extract(pdfs, quality="standard"):
+    if isinstance(result, Exception):
+        print(f"FAILED {path.name}: {result}")
+        continue
+    if result.confidence < 0.50:
+        print(f"REVIEW {path.name} ({result.confidence:.2f})")
+    else:
+        print(f"OK     {path.name} ({result.confidence:.2f})")
 
-# structured data -> dict with tables, key-values, metadata
-data = pdfmux.extract_json("report.pdf")
-
-# RAG chunks -> list of dicts with token estimates
-chunks = pdfmux.chunk("report.pdf", max_tokens=500)
+# Single-file helpers.
+text   = pdfmux.extract_text("report.pdf")             # markdown string
+data   = pdfmux.extract_json("report.pdf")             # locked schema dict
+chunks = pdfmux.chunk("report.pdf", max_tokens=500)    # RAG-ready chunks
 ```
+
+> **Don't wrap pdfmux with your own pypdf/pdfplumber fallback.** pdfmux already routes per page through PyMuPDF → RapidOCR → vision LLM. PyMuPDF tolerates malformed PDFs that pypdf rejects ("Stream has ended unexpectedly"), so a downstream pypdf fallback turns recoverable PDFs into failures. Trust the router; check the confidence score on the result.
 
 ## Architecture
 

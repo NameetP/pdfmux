@@ -176,14 +176,6 @@ def inject_headings(text: str, page: fitz.Page) -> str:
         # Soft fallback: try relaxed threshold for very short text only
         heading_map = _assign_levels_soft(candidates, body_size)
     if not heading_map:
-        # ML fallback: use classifier if heuristics found nothing
-        try:
-            from pdfmux.ml_headings import classify_headings
-
-            heading_map = classify_headings(candidates, body_size, page, threshold=0.75)
-        except Exception:
-            pass
-    if not heading_map:
         return _finalize(_promote_bold_lines(text))
 
     text = _inject_markers(text, heading_map)

@@ -9,6 +9,7 @@ Install: pip install pdfmux[ocr]
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -18,6 +19,43 @@ from pdfmux.extractors import register
 from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
+
+# Thread-local context populated by `_ocr_page` so the RapidOCR upstream
+# logger filter can attach file+page provenance to every translated warning.
+_ocr_context = threading.local()
+
+
+class _PdfmuxRapidOCRFilter(logging.Filter):
+    """Translate upstream `RapidOCR` warnings into pdfmux-namespaced messages.
+
+    Background: RapidOCR emits messages like
+    ``[RapidOCR] main.py:132: The text detection result is empty`` straight to
+    stderr with no file context. From a user's POV that's indistinguishable
+    from "OCR gave up on a page that needed re-extraction." This filter:
+
+      1. Reads the current file/page from a thread-local set by ``_ocr_page``.
+      2. Re-emits the message via ``pdfmux.extractors.rapid_ocr`` at INFO with
+         the document name and 0-indexed page number.
+      3. Returns False to drop the original noisy record.
+    """
+
+    _NOISY_PHRASES = ("text detection result is empty",)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        for phrase in self._NOISY_PHRASES:
+            if phrase in msg:
+                ctx_file = getattr(_ocr_context, "file_name", "<unknown>")
+                ctx_page = getattr(_ocr_context, "page_num", -1)
+                logger.info(
+                    "OCR found no text on page %s of %s (RapidOCR: %s)",
+                    ctx_page,
+                    ctx_file,
+                    msg,
+                )
+                return False  # suppress the original noisy record
+        # Anything else from RapidOCR — let it through unchanged.
+        return True
 
 
 def _check_rapidocr() -> bool:
@@ -48,11 +86,14 @@ class RapidOCRExtractor:
         """Lazy-init the RapidOCR engine (loads 3 ONNX models, ~1s)."""
         from rapidocr import RapidOCR
 
-        # Suppress noisy RapidOCR INFO logs
+        # Translate noisy upstream RapidOCR warnings into pdfmux-namespaced
+        # messages with file+page context (set by _ocr_page just before
+        # invoking the engine). The upstream record is suppressed.
         rapid_logger = logging.getLogger("RapidOCR")
         rapid_logger.setLevel(logging.WARNING)
-        for handler in rapid_logger.handlers:
-            handler.setLevel(logging.WARNING)
+        # Don't double-install if RapidOCRExtractor is constructed twice.
+        if not any(isinstance(f, _PdfmuxRapidOCRFilter) for f in rapid_logger.filters):
+            rapid_logger.addFilter(_PdfmuxRapidOCRFilter())
 
         self._engine = RapidOCR()
 
@@ -127,6 +168,14 @@ class RapidOCRExtractor:
         page = doc[page_num]
         pix = page.get_pixmap(dpi=200)
         img_bytes = pix.tobytes("png")
+
+        # Stash file+page provenance for _PdfmuxRapidOCRFilter so any upstream
+        # warnings get re-emitted with context instead of bare module names.
+        try:
+            _ocr_context.file_name = Path(doc.name).name if doc.name else "<unknown>"
+        except Exception:
+            _ocr_context.file_name = "<unknown>"
+        _ocr_context.page_num = page_num
 
         result = self._engine(img_bytes)
 

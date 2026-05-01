@@ -1,19 +1,25 @@
 """CLI entry point — the user-facing interface.
 
 Usage:
-    pdfmux invoice.pdf              → invoice.md
-    pdfmux ./docs/ -o ./output/     → batch convert
-    pdfmux report.pdf --confidence  → show confidence score
-    pdfmux report.pdf -f llm        → LLM-ready chunked JSON
-    pdfmux analyze report.pdf       → per-page extraction breakdown
-    pdfmux serve                    → start MCP server
-    pdfmux doctor                   → check your setup
-    pdfmux bench report.pdf         → benchmark extractors
+    pdfmux invoice.pdf                                  → invoice.md
+    pdfmux ./docs/ -o ./output/                         → batch convert
+    pdfmux report.pdf --confidence                      → show confidence score
+    pdfmux report.pdf -f llm                            → LLM-ready chunked JSON
+    pdfmux ./docs/ --strict --min-confidence 0.20       → fail on low confidence
+    pdfmux analyze report.pdf                           → per-page breakdown
+    pdfmux serve                                        → start MCP server
+    pdfmux doctor                                       → check your setup
+    pdfmux doctor --check ./docs/                       → check a batch directory
+    pdfmux bench report.pdf                             → benchmark extractors
 
 Exit codes:
-    0 — success
-    1 — extraction or runtime error
-    2 — usage error (bad arguments, file not found)
+    0 — success (all documents >= --min-confidence, if --strict)
+    1 — extraction or runtime error (file unreadable, extractor crashed, etc.)
+    2 — usage error (bad arguments, file not found, profile missing)
+    3 — strict gate failed: at least one document below --min-confidence
+
+A document confidence below 0.50 always emits a stderr WARNING regardless of
+--strict, so silent low-quality batches are visible in CI logs.
 """
 
 from __future__ import annotations
@@ -163,6 +169,19 @@ def convert(
         help="Apply a saved profile (e.g. invoices, receipts, papers, contracts, bulk-rag). "
         "Explicit flags override profile values.",
     ),
+    min_confidence: float = typer.Option(
+        0.0,
+        "--min-confidence",
+        help="Minimum acceptable document confidence (0.0–1.0). Documents below this "
+        "threshold are flagged. Use with --strict to fail the run on low confidence. "
+        "Default 0.0 = warn only, never fail.",
+    ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit with code 3 if any document confidence falls below --min-confidence. "
+        "Recommended for batch runs in CI where silent low-quality output is unacceptable.",
+    ),
 ) -> None:
     """Convert a PDF (or directory of PDFs) to Markdown."""
     _configure_logging(verbose=verbose, debug=debug, quiet=quiet)
@@ -240,6 +259,8 @@ def convert(
             quality,
             confidence,
             use_cache=not no_cache,
+            min_confidence=min_confidence,
+            strict=strict,
         )
     else:
         _convert_file(
@@ -254,6 +275,8 @@ def convert(
             max_tokens=max_tokens,
             overlap_tokens=overlap,
             use_cache=not no_cache,
+            min_confidence=min_confidence,
+            strict=strict,
         )
 
 
@@ -326,14 +349,153 @@ def serve(
         run_server()
 
 
+def _doctor_check_directory(directory: Path, sample_size: int) -> None:
+    """Sample PDFs from a directory and recommend missing extras.
+
+    Implements the antidote to the silent-failure mode: classify before you
+    extract, and tell the user which extras to install based on the classes
+    actually present in their input.
+    """
+    import importlib
+    import random
+
+    if not directory.exists() or not directory.is_dir():
+        console.print(f"[red]✗[/red] Not a directory: {directory}")
+        raise typer.Exit(2)
+
+    pdfs = list(directory.rglob("*.pdf")) + list(directory.rglob("*.PDF"))
+    if not pdfs:
+        console.print(f"[yellow]No PDFs found under {directory}[/yellow]")
+        return
+
+    sample_n = min(sample_size, len(pdfs))
+    sample = random.sample(pdfs, sample_n) if sample_n < len(pdfs) else pdfs
+
+    console.print(
+        f"[bold]Batch check[/bold]: {len(pdfs)} PDFs in [dim]{directory}[/dim] "
+        f"(sampling {sample_n})"
+    )
+
+    from pdfmux.detect import classify
+
+    counts = {
+        "digital": 0,
+        "scanned": 0,
+        "graphical": 0,
+        "tables": 0,
+        "arabic": 0,
+        "mixed": 0,
+        "errors": 0,
+    }
+    for pdf in sample:
+        try:
+            cls = classify(pdf)
+            if getattr(cls, "is_arabic", False):
+                counts["arabic"] += 1
+            if getattr(cls, "is_scanned", False):
+                counts["scanned"] += 1
+            if getattr(cls, "is_digital", False):
+                counts["digital"] += 1
+            if getattr(cls, "is_graphical", False):
+                counts["graphical"] += 1
+            if getattr(cls, "has_tables", False):
+                counts["tables"] += 1
+            if getattr(cls, "is_mixed", False):
+                counts["mixed"] += 1
+        except Exception:
+            counts["errors"] += 1
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Page type", min_width=14)
+    table.add_column("Sample count")
+    table.add_column("Estimated batch share")
+    for label in ("digital", "scanned", "graphical", "tables", "arabic", "mixed", "errors"):
+        if counts[label] == 0:
+            continue
+        share = counts[label] / max(sample_n, 1)
+        share_pct = f"{share:.0%} (~{int(round(share * len(pdfs)))} of {len(pdfs)})"
+        color = "green" if label in ("digital", "tables") else "yellow"
+        table.add_row(label, str(counts[label]), f"[{color}]{share_pct}[/{color}]")
+    console.print(table)
+
+    # Recommendations: what extras you SHOULD install based on what we saw.
+    def _have(import_name: str) -> bool:
+        try:
+            importlib.import_module(import_name)
+            return True
+        except ImportError:
+            return False
+
+    rec_lines: list[str] = []
+    if counts["scanned"] > 0 and not _have("rapidocr"):
+        share = counts["scanned"] / max(sample_n, 1)
+        eta = int(round(share * len(pdfs)))
+        rec_lines.append(
+            f"  [yellow]⚠[/yellow]  ~{eta} of {len(pdfs)} PDFs look scanned. "
+            f"Without OCR they will return empty text.\n"
+            f"     Install: [bold]pip install 'pdfmux[ocr]'[/bold]"
+        )
+    if counts["tables"] > 0 and not _have("docling.document_converter"):
+        rec_lines.append(
+            "  [yellow]⚠[/yellow]  Table-heavy pages detected. Docling improves table fidelity.\n"
+            "     Install: [bold]pip install 'pdfmux[tables]'[/bold]"
+        )
+    if counts["arabic"] > 0:
+        # Arabic detection just needs python-bidi (base dep). Suggest Gemma vision LLM
+        # for hard pages and surface that path.
+        rec_lines.append(
+            "  [yellow]⚠[/yellow]  Arabic / RTL content detected. python-bidi handles digital "
+            "pages; for scanned Arabic install a vision LLM.\n"
+            "     Recommended: [bold]pip install 'pdfmux[llm-all]'[/bold] (Gemma 4 reuses "
+            "GEMINI_API_KEY)"
+        )
+    if counts["errors"] > 0:
+        rec_lines.append(
+            f"  [red]✗[/red]  {counts['errors']} of {sample_n} sampled PDFs failed to classify "
+            "(corrupt or unreadable)."
+        )
+
+    if rec_lines:
+        console.print()
+        console.print("[bold]Recommendations for this batch[/bold]")
+        for line in rec_lines:
+            console.print(line)
+    else:
+        console.print()
+        console.print(
+            "[green]✓[/green] Your installed extractors cover everything in this sample."
+        )
+
+
 @app.command()
-def doctor() -> None:
-    """Check your setup — installed extractors, versions, and readiness."""
+def doctor(
+    check: Path | None = typer.Option(
+        None,
+        "--check",
+        help="Sample PDFs in a directory and recommend missing extras. "
+        "Use this BEFORE running batch extraction to avoid silent OCR failures.",
+    ),
+    sample_size: int = typer.Option(
+        10,
+        "--sample-size",
+        help="Number of PDFs to sample when --check is given (default 10).",
+    ),
+) -> None:
+    """Check your setup — installed extractors, versions, and readiness.
+
+    With --check <dir>: samples PDFs from the directory, classifies them, and
+    warns you about missing extras (e.g. "23% of your batch is scanned —
+    install pdfmux[ocr] or those pages will return empty").
+    """
     import importlib
     import sys
 
     console.print(f"\n[bold]pdfmux {__version__}[/bold]")
     console.print(f"Python {sys.version.split()[0]}\n")
+
+    if check is not None:
+        _doctor_check_directory(check, sample_size)
+        console.print()
 
     checks = [
         ("pymupdf", "fitz", "PyMuPDF", "Base (always available)"),
@@ -875,6 +1037,20 @@ def version() -> None:
     console.print(f"pdfmux {__version__}")
 
 
+def _emit_low_confidence_warning(name: str, conf: float) -> None:
+    """Always emit a stderr WARNING when document confidence < 0.50.
+
+    This runs regardless of --strict so silent low-quality batches are
+    visible in CI logs. Format is intentionally machine-parseable.
+    """
+    if conf < 0.50:
+        import sys
+
+        sys.stderr.write(
+            f"pdfmux WARNING: {name} confidence {conf:.2f} (below 0.50 threshold)\n"
+        )
+
+
 def _convert_file(
     input_path: Path,
     output: Path | None,
@@ -888,6 +1064,8 @@ def _convert_file(
     max_tokens: int = 500,
     overlap_tokens: int = 50,
     use_cache: bool = True,
+    min_confidence: float = 0.0,
+    strict: bool = False,
 ) -> None:
     """Convert a single PDF file."""
     if output is None:
@@ -994,6 +1172,19 @@ def _convert_file(
         for warning in result.warnings:
             console.print(f"  [yellow]⚠[/yellow] {rich_escape(warning)}")
 
+    # Emit machine-parseable stderr WARNING below 0.50 (always, regardless of --strict)
+    _emit_low_confidence_warning(input_path.name, result.confidence)
+
+    # --strict: fail the run if confidence < --min-confidence
+    if strict and result.confidence < min_confidence:
+        import sys
+
+        sys.stderr.write(
+            f"pdfmux ERROR: --strict gate failed — {input_path.name} confidence "
+            f"{result.confidence:.2f} < --min-confidence {min_confidence:.2f}\n"
+        )
+        raise typer.Exit(3)
+
 
 def _convert_directory(
     input_dir: Path,
@@ -1003,8 +1194,14 @@ def _convert_directory(
     confidence: bool,
     *,
     use_cache: bool = True,
+    min_confidence: float = 0.0,
+    strict: bool = False,
 ) -> None:
-    """Convert all PDFs in a directory using process_batch()."""
+    """Convert all PDFs in a directory using process_batch().
+
+    Always writes ``manifest.json`` to ``output_dir`` summarizing the batch:
+    per-document confidence, extractor used, cost, and a confidence breakdown.
+    """
     if output_dir is None:
         output_dir = input_dir
 
@@ -1018,6 +1215,9 @@ def _convert_directory(
 
     success = 0
     failed = 0
+    low_confidence = 0  # confidence < min_confidence (when --strict, this triggers exit 3)
+    documents: list[dict] = []  # for manifest.json
+    start_time = time.time()
 
     for path, result_or_error in process_batch(
         pdfs,
@@ -1031,6 +1231,14 @@ def _convert_directory(
         if isinstance(result_or_error, Exception):
             console.print(f"  [red]✗[/red] {path.name}: {result_or_error}")
             failed += 1
+            documents.append(
+                {
+                    "path": path.name,
+                    "status": "error",
+                    "error": str(result_or_error),
+                    "confidence": None,
+                }
+            )
         else:
             out_file.write_text(result_or_error.text, encoding="utf-8")
             console.print(
@@ -1038,8 +1246,82 @@ def _convert_directory(
                 f"({result_or_error.confidence:.0%})"
             )
             success += 1
+            _emit_low_confidence_warning(path.name, result_or_error.confidence)
+            if result_or_error.confidence < min_confidence:
+                low_confidence += 1
+            documents.append(
+                {
+                    "path": path.name,
+                    "status": "ok",
+                    "output": out_file.name,
+                    "confidence": result_or_error.confidence,
+                    "extractor": result_or_error.extractor_used,
+                    "page_count": result_or_error.page_count,
+                    "ocr_pages": list(result_or_error.ocr_pages),
+                    "cost_usd": result_or_error.total_cost_usd,
+                    "warnings": list(result_or_error.warnings),
+                }
+            )
 
-    console.print(f"\nDone: {success} converted, {failed} failed")
+    duration = time.time() - start_time
+
+    # Build manifest.json — the missing primary output of any batch run.
+    confidence_values = [
+        d["confidence"]
+        for d in documents
+        if d.get("status") == "ok" and d.get("confidence") is not None
+    ]
+
+    def _bucket(threshold: float) -> int:
+        return sum(1 for c in confidence_values if c >= threshold)
+
+    manifest = {
+        "schema_version": "1.0",
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "input_dir": str(input_dir),
+        "output_dir": str(output_dir),
+        "format": fmt,
+        "quality": quality,
+        "duration_seconds": round(duration, 2),
+        "summary": {
+            "total": len(pdfs),
+            "processed": success,
+            "failed": failed,
+            "low_confidence": low_confidence,
+            "min_confidence_threshold": min_confidence,
+            "strict": strict,
+            "confidence_breakdown": {
+                "high_ge_0.80": _bucket(0.80),
+                "medium_0.50_to_0.80": _bucket(0.50) - _bucket(0.80),
+                "low_lt_0.50": len(confidence_values) - _bucket(0.50),
+            },
+            "total_cost_usd": round(
+                sum(d.get("cost_usd", 0.0) for d in documents if d.get("status") == "ok"), 6
+            ),
+        },
+        "documents": documents,
+    }
+    import json
+
+    manifest_path = output_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    summary_line = f"\nDone: {success} converted, {failed} failed"
+    if low_confidence:
+        summary_line += f", {low_confidence} below --min-confidence {min_confidence:.2f}"
+    summary_line += f" → {manifest_path.name}"
+    console.print(summary_line)
+
+    # --strict: fail the run if any document fell below --min-confidence
+    if strict and low_confidence > 0:
+        import sys
+
+        sys.stderr.write(
+            f"pdfmux ERROR: --strict gate failed — {low_confidence} of {success} "
+            f"documents below --min-confidence {min_confidence:.2f}. "
+            f"See {manifest_path} for the per-document list.\n"
+        )
+        raise typer.Exit(3)
 
 
 # ---------------------------------------------------------------------------

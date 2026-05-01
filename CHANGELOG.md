@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.6.1 (2026-05-01)
+
+Field-driven patch release. Triggered by a real-world 433-PDF batch run where the first invocation silently dropped 16 documents — the exact failure mode pdfmux's brand promises to prevent. All changes are additive; no breaking defaults. The retro and full plan are at <https://github.com/NameetP/pdfmux/blob/main/CHANGELOG.md> and the corresponding [blog post](https://pdfmux.com/blog/).
+
+### Added — surface signals that already exist
+- **`pdfmux convert --strict --min-confidence FLOAT`** — exits with code `3` if any document confidence falls below the threshold. Exit codes are now documented: `0` ok, `1` runtime error, `2` usage error, `3` strict gate failed.
+- **stderr WARNING line** for every document with confidence < 0.50, regardless of `--strict`. Makes silent low-quality batches visible in CI logs.
+- **`manifest.json`** written to the output directory at the end of every batch `convert <dir>` run. Includes per-document confidence, extractor used, OCR pages, cost, warnings, and a confidence breakdown (high ≥0.80 / medium 0.50–0.80 / low <0.50). Schema v1.0.
+- **`pdfmux.batch_extract(paths, **kwargs)`** — public Python API over `process_batch`. Use this instead of shelling out to `pdfmux convert` in a loop.
+- **`pdfmux doctor --check <dir>`** — samples PDFs from a directory, classifies them, and recommends missing extras. Catches "23% of your batch is scanned, install `pdfmux[ocr]`" before you waste a batch run.
+- **RapidOCR warnings translated** into pdfmux-namespaced INFO messages with file + page context. The bare `[RapidOCR] main.py:132: The text detection result is empty` lines are gone.
+
+### Removed
+- **`pdfmux.ml_headings` and `models/heading_classifier.pkl`.** The ML heading classifier required `sklearn` (not a base dep), printed `Failed to load ML heading model` 24+ times per batch, and produced no measurable lift over the heuristic font-size fallback. Net: -250 LOC, no behavior change on real-world PDFs.
+
+### Fixed
+- `pdfmux.__version__` was stale at `1.5.1`; now matches `pyproject.toml`.
+
+### Docs
+- README leads Python users with `batch_extract` for batch use cases.
+- `pdfmux[ocr]` promoted from "optional extra" to recommended-default for any real batch.
+- Note added: don't wrap pdfmux with your own pypdf/pdfplumber fallback — PyMuPDF tolerates malformed PDFs that pypdf rejects.
+
 ## 1.6.0 (2026-04-30)
 
 ### Added — Extraction backends

@@ -30,13 +30,14 @@ finally:
     _sys.stdout = _orig
 del _orig, _io
 
-__version__ = "1.5.1"
+__version__ = "1.6.1"
 __all__ = [
     # Public API
     "extract_text",
     "extract_json",
     "load_llm_context",
     "chunk",
+    "batch_extract",
     # Types
     "Quality",
     "OutputFormat",
@@ -236,3 +237,56 @@ def chunk(
         }
         for i, c in enumerate(chunks)
     ]
+
+
+def batch_extract(
+    paths: list[str | Path],
+    *,
+    output_format: str = "markdown",
+    quality: str = "standard",
+    workers: int = 4,
+    use_cache: bool = True,
+):
+    """Extract many PDFs concurrently. Yields results as they complete.
+
+    This is the public surface over :func:`pdfmux.pipeline.process_batch`. Use
+    this instead of shelling out to ``pdfmux convert`` in a Python loop — it
+    avoids three process-spawns per PDF and handles non-ASCII filenames
+    correctly.
+
+    Args:
+        paths: List of PDF file paths.
+        output_format: Output format applied to every file
+            (``"markdown"`` | ``"json"`` | ``"csv"`` | ``"llm"``).
+        quality: Quality preset (``"fast"`` | ``"standard"`` | ``"high"``).
+        workers: Concurrent worker count (default 4).
+        use_cache: If True, hits the smart result cache for repeat runs.
+
+    Yields:
+        ``(Path, DocumentResult)`` on success.
+        ``(Path, Exception)`` on per-file failure (other files still run).
+
+    Example::
+
+        import pdfmux
+        from pathlib import Path
+
+        pdfs = list(Path("./inbox").glob("*.pdf"))
+        for path, result in pdfmux.batch_extract(pdfs, quality="standard"):
+            if isinstance(result, Exception):
+                print(f"FAILED {path.name}: {result}")
+                continue
+            if result.confidence < 0.50:
+                print(f"REVIEW  {path.name} ({result.confidence:.2f})")
+            else:
+                print(f"OK      {path.name} → {result.confidence:.2f}")
+    """
+    from pdfmux.pipeline import process_batch
+
+    yield from process_batch(
+        paths,
+        output_format=output_format,
+        quality=quality,
+        workers=workers,
+        use_cache=use_cache,
+    )
