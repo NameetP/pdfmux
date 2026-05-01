@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.2 (2026-05-01)
+
+Regression-guard release. No code behavior changes. Adds 11 contract tests for the real-world failure modes seen in the 433-PDF batch run that prompted 1.6.1.
+
+### Added
+- `tests/test_real_world_failures.py` — 11 behavioral-contract tests covering:
+  - **Truncated PDFs** (the four `pypdf: Stream has ended unexpectedly` cases from the v1 batch). Pdfmux must either recover or raise — never silently return empty Markdown.
+  - **Non-ASCII filenames** (CJK + full-width punctuation, e.g. `（原版）`). `extract_text` and `batch_extract` must accept these without shell-quoting issues.
+  - **Arabic-only PDFs.** The BiDi pipeline must not crash on RTL text.
+  - **0-byte files.** Must raise a named `PdfmuxError`, never silently return empty.
+  - **HTML files renamed to `.pdf`.** Must error cleanly OR return text without HTML markup — never pass through `<html>...</html>` as if it were content.
+  - **Missing files.** Must raise `FileError`, not bare `FileNotFoundError`.
+  - **Batch isolation.** A bad file in `batch_extract` must yield an exception for that file without poisoning the rest of the batch.
+
+Test count: 670 passing (up from 659).
+
 ## 1.6.1 (2026-05-01)
 
 Field-driven patch release. Triggered by a real-world 433-PDF batch run where the first invocation silently dropped 16 documents — the exact failure mode pdfmux's brand promises to prevent. All changes are additive; no breaking defaults. The retro and full plan are at <https://github.com/NameetP/pdfmux/blob/main/CHANGELOG.md> and the corresponding [blog post](https://pdfmux.com/blog/).

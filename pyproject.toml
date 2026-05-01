@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdfmux"
-version = "1.6.1"
+version = "1.6.2"
 description = "Self-healing PDF extraction for RAG. Per-page confidence scoring, auto re-extracts bad pages, MCP server, LangChain/LlamaIndex loaders. LlamaParse alternative, #2 on opendataloader-bench."
 readme = "README.md"
 license = "MIT"
