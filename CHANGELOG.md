@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.6.3 (2026-05-02)
+
+Correctness patch — the bug behind the silent-failure incident that prompted 1.6.1. **No defaults change.** Every existing flag and CLI invocation behaves identically. Confidence numbers are now correct on documents where they were previously inflated.
+
+### Fixed
+
+- **`audit.compute_document_confidence` was returning 1.0 on documents with empty extractions.** The function did a content-weighted average of the per-page `confidence` value the extractor wrote at yield time — always `1.0` with the comment "audit will reassess". The reassessment never happened, so blank pages, HTML files renamed to `.pdf`, single-character bodies, and image-only pages with no OCR all returned document confidence `1.0`.
+
+  Fix in `src/pdfmux/audit.py`: re-score every page with `score_page(p.text, p.image_count)` before averaging, and stop flooring the per-page weight at `1` (which let blank pages register full weight in the denominator).
+
+  This is the bug behind the silent failures in [the 433-PDF batch retro](https://pdfmux.com/blog/when-our-own-pdf-extractor-failed-silently/). `--strict --min-confidence 0.20` (shipped in 1.6.1) could not catch the eleven silent failures because the audit didn't know the pages were empty.
+
+### Added
+
+- **`eval/` directory at the project root** — a self-contained confidence calibration harness:
+  - `eval/build_fixtures.py` generates 50 labeled PDFs from a fixed seed (clean digital, multi-page, table-heavy, Arabic, 0-byte, HTML-as-PDF, heavily/lightly truncated, blank pages, micro-text, image-only-no-OCR).
+  - `eval/run_eval.py` runs pdfmux on each fixture and writes `outputs/raw_scores.csv`.
+  - `eval/calibrate.py` computes ROC and recommends thresholds at fixed precision targets (P >= 0.95 for the strict gate, P >= 0.80 for the warning gate).
+  - `eval/README.md` documents the workflow and the May 2026 calibration result that drives the 1.7 default.
+
+  The eval set was the instrument that surfaced the audit bug — without it, the bug was invisible. The first calibration run produced precision flat at 0.683 across every threshold, which is the smoking gun.
+
+### Calibration headline (informational, not yet a default)
+
+After the audit fix, on the 50-fixture eval set:
+
+| Threshold | Precision | Recall | F1 |
+|---:|---:|---:|---:|
+| 0.50 | 0.821 | 0.821 | 0.821 |
+| **0.75** | **1.000** | **0.714** | **0.833** |
+
+`0.75` is the recommended default for `--min-confidence` when 1.7 ships breaking-default-strict on `pdfmux convert <dir>`. Not enabled by default in this release.
+
 ## 1.6.2 (2026-05-01)
 
 Regression-guard release. No code behavior changes. Adds 11 contract tests for the real-world failure modes seen in the 433-PDF batch run that prompted 1.6.1.
