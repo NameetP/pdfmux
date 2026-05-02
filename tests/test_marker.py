@@ -99,9 +99,7 @@ class TestMarkerExtractor:
             )
         )
         fake_converter = MagicMock(return_value=rendered)
-        monkeypatch.setattr(
-            "pdfmux.extractors.marker._get_converter", lambda: fake_converter
-        )
+        monkeypatch.setattr("pdfmux.extractors.marker._get_converter", lambda: fake_converter)
 
         ext = MarkerExtractor()
         results = list(ext.extract(digital_pdf))
@@ -126,9 +124,7 @@ class TestMarkerExtractor:
 
         rendered = SimpleNamespace(markdown="One big chunk of text without separators.")
         fake_converter = MagicMock(return_value=rendered)
-        monkeypatch.setattr(
-            "pdfmux.extractors.marker._get_converter", lambda: fake_converter
-        )
+        monkeypatch.setattr("pdfmux.extractors.marker._get_converter", lambda: fake_converter)
 
         ext = MarkerExtractor()
         results = list(ext.extract(multi_page_pdf))
@@ -137,9 +133,7 @@ class TestMarkerExtractor:
         assert len(results) == 1
         assert "One big chunk" in results[0].text
 
-    def test_extract_pages_filter(
-        self, digital_pdf: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_extract_pages_filter(self, digital_pdf: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("pdfmux.extractors.marker._check_marker", lambda: True)
         monkeypatch.setattr("pdfmux.extractors.marker._converter_instance", None)
         monkeypatch.setattr("pdfmux.extractors.marker._models_instance", None)
@@ -148,9 +142,7 @@ class TestMarkerExtractor:
             markdown="page zero text long enough\n\n---\n\npage one text long enough"
         )
         fake_converter = MagicMock(return_value=rendered)
-        monkeypatch.setattr(
-            "pdfmux.extractors.marker._get_converter", lambda: fake_converter
-        )
+        monkeypatch.setattr("pdfmux.extractors.marker._get_converter", lambda: fake_converter)
 
         ext = MarkerExtractor()
         results = list(ext.extract(digital_pdf, pages=[1]))

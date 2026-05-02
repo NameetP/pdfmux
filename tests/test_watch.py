@@ -54,7 +54,9 @@ def mock_watchdog(monkeypatch: pytest.MonkeyPatch):
 
 
 class TestWatchImportError:
-    def test_missing_watchdog_shows_install_hint(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_missing_watchdog_shows_install_hint(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         # Force an ImportError by removing watchdog from sys.modules and
         # blocking re-import via meta path.
         for key in list(sys.modules):

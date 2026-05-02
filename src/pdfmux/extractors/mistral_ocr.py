@@ -64,8 +64,7 @@ class MistralOCRExtractor:
             from pdfmux.errors import ExtractorNotAvailable
 
             raise ExtractorNotAvailable(
-                "Mistral SDK is not installed. "
-                "Install with: pip install pdfmux[llm-mistral]"
+                "Mistral SDK is not installed. Install with: pip install pdfmux[llm-mistral]"
             )
 
         api_key = os.environ.get("MISTRAL_API_KEY")
@@ -105,8 +104,7 @@ class MistralOCRExtractor:
 
             if not _check_mistral_sdk():
                 raise ExtractorNotAvailable(
-                    "Mistral SDK is not installed. "
-                    "Install with: pip install pdfmux[llm-mistral]"
+                    "Mistral SDK is not installed. Install with: pip install pdfmux[llm-mistral]"
                 )
             raise ExtractorNotAvailable(
                 "MISTRAL_API_KEY is not set. "

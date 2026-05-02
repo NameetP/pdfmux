@@ -141,9 +141,7 @@ class TestTruncatedStream:
             "the silent-failure mode the 1.6.1 contract forbids."
         )
 
-    def test_extract_json_reports_low_confidence_or_raises(
-        self, truncated_pdf: Path
-    ) -> None:
+    def test_extract_json_reports_low_confidence_or_raises(self, truncated_pdf: Path) -> None:
         """If we got JSON output, the confidence field must reflect the damage."""
         try:
             data = pdfmux.extract_json(truncated_pdf, quality="fast")

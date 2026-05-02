@@ -179,9 +179,7 @@ def save_profile(name: str, settings: dict[str, Any]) -> Path:
     cleaned: dict[str, Any] = {}
     for k, v in settings.items():
         if k not in ALLOWED_KEYS:
-            raise ValueError(
-                f"unknown profile key '{k}'. Allowed: {sorted(ALLOWED_KEYS)}"
-            )
+            raise ValueError(f"unknown profile key '{k}'. Allowed: {sorted(ALLOWED_KEYS)}")
         if v is None:
             continue
         cleaned[k] = v

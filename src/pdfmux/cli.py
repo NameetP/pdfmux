@@ -462,9 +462,7 @@ def _doctor_check_directory(directory: Path, sample_size: int) -> None:
             console.print(line)
     else:
         console.print()
-        console.print(
-            "[green]✓[/green] Your installed extractors cover everything in this sample."
-        )
+        console.print("[green]✓[/green] Your installed extractors cover everything in this sample.")
 
 
 @app.command()
@@ -1046,9 +1044,7 @@ def _emit_low_confidence_warning(name: str, conf: float) -> None:
     if conf < 0.50:
         import sys
 
-        sys.stderr.write(
-            f"pdfmux WARNING: {name} confidence {conf:.2f} (below 0.50 threshold)\n"
-        )
+        sys.stderr.write(f"pdfmux WARNING: {name} confidence {conf:.2f} (below 0.50 threshold)\n")
 
 
 def _convert_file(
@@ -1592,8 +1588,7 @@ def watch(
                 out_file.write_text(result.text, encoding="utf-8")
 
             console.print(
-                f"[green]✓[/green] {pdf_path.name} → {out_file.name} "
-                f"({result.confidence:.0%})"
+                f"[green]✓[/green] {pdf_path.name} → {out_file.name} ({result.confidence:.0%})"
             )
             counts["processed"] += 1
         except Exception as e:
@@ -1694,9 +1689,7 @@ def estimate(
     engine = RouterEngine()
     base_estimate = engine.estimate_document_cost(page_types, strategy)
 
-    console.print(
-        f"\n[bold]{input_path.name}[/bold] — {n_pages} pages, mode=[bold]{mode}[/bold]\n"
-    )
+    console.print(f"\n[bold]{input_path.name}[/bold] — {n_pages} pages, mode=[bold]{mode}[/bold]\n")
 
     llm_pages = 0
     for pt in page_types:
@@ -1731,9 +1724,7 @@ def estimate(
                 )
 
     console.print(table)
-    console.print(
-        f"\n[dim]Router-estimated total (current mode): ${base_estimate:.4f}[/dim]\n"
-    )
+    console.print(f"\n[dim]Router-estimated total (current mode): ${base_estimate:.4f}[/dim]\n")
 
 
 # ---------------------------------------------------------------------------

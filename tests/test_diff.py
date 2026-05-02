@@ -41,9 +41,7 @@ class TestDiffCommand:
         result = runner.invoke(app, ["diff", str(digital_pdf), "/tmp/nope-abc123.pdf"])
         assert result.exit_code != 0
 
-    def test_diff_shows_delta_for_page_count(
-        self, digital_pdf: Path, multi_page_pdf: Path
-    ) -> None:
+    def test_diff_shows_delta_for_page_count(self, digital_pdf: Path, multi_page_pdf: Path) -> None:
         result = runner.invoke(app, ["diff", str(digital_pdf), str(multi_page_pdf)])
         assert result.exit_code == 0
         # multi_page has 5 pages, digital has 2 → +3 delta somewhere

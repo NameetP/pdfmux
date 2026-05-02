@@ -36,7 +36,11 @@ jobs:
           echo "Waiting for pdfmux==$VERSION to appear on PyPI..."
           for i in {1..30}; do
             if curl -sf "https://pypi.org/pypi/pdfmux/$VERSION/json" > /dev/null; then
-              echo "Found pdfmux==$VERSION on PyPI"
+              echo "Found pdfmux==$VERSION on PyPI (attempt $i)"
+              # Extra buffer: PyPI CDN can lag behind the API response by 60-90s.
+              # MCP registry validates against PyPI files, not the API, so we wait.
+              echo "Waiting 90s for CDN propagation before publishing to MCP registry..."
+              sleep 90
               exit 0
             fi
             echo "Attempt $i/30: not yet live, sleeping 20s"
@@ -82,7 +86,17 @@ jobs:
         run: ./mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry
-        run: ./mcp-publisher publish
+        run: |
+          for attempt in 1 2 3; do
+            if ./mcp-publisher publish; then
+              echo "Published successfully on attempt $attempt"
+              exit 0
+            fi
+            echo "Attempt $attempt failed, retrying in 30s..."
+            sleep 30
+          done
+          echo "::error::MCP Registry publish failed after 3 attempts"
+          exit 1
 
       - name: Verify listing is live
         run: |

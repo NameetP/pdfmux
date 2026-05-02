@@ -113,9 +113,7 @@ class TestGemmaExtractPage:
         fake_choice.message.content = "بوليصة الشحن"
         fake_response = MagicMock()
         fake_response.choices = [fake_choice]
-        fake_response.usage = MagicMock(
-            prompt_tokens=300, completion_tokens=50
-        )
+        fake_response.usage = MagicMock(prompt_tokens=300, completion_tokens=50)
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = fake_response
@@ -132,9 +130,7 @@ class TestGemmaExtractPage:
         assert text == "بوليصة الشحن"
         # Verify base URL is the OpenAI-compatible Google endpoint.
         ((), kwargs) = fake_openai_module.OpenAI.call_args
-        assert kwargs["base_url"].startswith(
-            "https://generativelanguage.googleapis.com"
-        )
+        assert kwargs["base_url"].startswith("https://generativelanguage.googleapis.com")
         assert kwargs["api_key"] == "test-key"
 
         # Verify the message contains both text prompt and image.
@@ -167,9 +163,7 @@ class TestGemmaExtractPage:
             patch.dict("sys.modules", {"openai": fake_openai_module}),
             patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}, clear=True),
         ):
-            text, cost = p.extract_page_with_cost(
-                b"fake-image-bytes", "Extract"
-            )
+            text, cost = p.extract_page_with_cost(b"fake-image-bytes", "Extract")
 
         assert text == "extracted"
         assert cost.input_tokens == 400

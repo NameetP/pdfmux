@@ -43,26 +43,20 @@ class TestMistralOCRExtractor:
 
     def test_unavailable_no_sdk(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should report unavailable when SDK missing."""
-        monkeypatch.setattr(
-            "pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: False
-        )
+        monkeypatch.setattr("pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: False)
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
         ext = MistralOCRExtractor()
         assert ext.available() is False
 
     def test_unavailable_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should report unavailable when API key missing."""
-        monkeypatch.setattr(
-            "pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True
-        )
+        monkeypatch.setattr("pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True)
         monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
         ext = MistralOCRExtractor()
         assert ext.available() is False
 
     def test_available_when_both_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True
-        )
+        monkeypatch.setattr("pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True)
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
         ext = MistralOCRExtractor()
         assert ext.available() is True
@@ -70,9 +64,7 @@ class TestMistralOCRExtractor:
     def test_extract_raises_when_sdk_missing(
         self, digital_pdf: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            "pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: False
-        )
+        monkeypatch.setattr("pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: False)
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
         ext = MistralOCRExtractor()
         with pytest.raises(ExtractorNotAvailable, match="Mistral SDK is not installed"):
@@ -81,9 +73,7 @@ class TestMistralOCRExtractor:
     def test_extract_raises_when_api_key_missing(
         self, digital_pdf: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            "pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True
-        )
+        monkeypatch.setattr("pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True)
         monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
         ext = MistralOCRExtractor()
         with pytest.raises(ExtractorNotAvailable, match="MISTRAL_API_KEY"):
@@ -93,9 +83,7 @@ class TestMistralOCRExtractor:
         self, digital_pdf: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Run a full extraction against a mocked Mistral SDK."""
-        monkeypatch.setattr(
-            "pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True
-        )
+        monkeypatch.setattr("pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True)
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
 
         # Build a fake mistralai module so the lazy import resolves.
@@ -146,13 +134,9 @@ class TestMistralOCRExtractor:
         assert process_kwargs["document"]["type"] == "document_url"
         assert process_kwargs["document"]["document_url"] == "https://signed.example/abc"
 
-    def test_extract_pages_filter(
-        self, digital_pdf: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_extract_pages_filter(self, digital_pdf: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Page filtering should restrict the yielded results."""
-        monkeypatch.setattr(
-            "pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True
-        )
+        monkeypatch.setattr("pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True)
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
 
         fake_client = MagicMock()
@@ -182,9 +166,7 @@ class TestMistralOCRExtractor:
         self, digital_pdf: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Network/API errors should surface as ExtractionError."""
-        monkeypatch.setattr(
-            "pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True
-        )
+        monkeypatch.setattr("pdfmux.extractors.mistral_ocr._check_mistral_sdk", lambda: True)
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
 
         fake_client = MagicMock()

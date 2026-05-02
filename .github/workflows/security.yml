@@ -21,8 +21,9 @@ jobs:
         run: pip install -e ".[dev]" pip-audit safety
 
       - name: pip-audit (known vulnerabilities)
+        # --skip-editable: skip the local pdfmux package itself (not on PyPI at push time)
         # Ignore pip's own CVE-2026-3219 (no fix version released yet — runner installs pip itself)
-        run: pip-audit --strict --desc --ignore-vuln PYSEC-2026-3219 --ignore-vuln CVE-2026-3219
+        run: pip-audit --strict --desc --skip-editable --ignore-vuln PYSEC-2026-3219 --ignore-vuln CVE-2026-3219
 
       - name: Check for typosquatting in deps
         run: |

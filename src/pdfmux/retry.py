@@ -145,7 +145,7 @@ def _retry_after_seconds(exc: BaseException) -> float | None:
 
 def _sleep_for(attempt: int, backoff_base: float, max_sleep: float, jitter: bool) -> float:
     """Compute and execute the backoff sleep. Returns seconds slept."""
-    delay = min(max_sleep, backoff_base ** attempt)
+    delay = min(max_sleep, backoff_base**attempt)
     if jitter:
         delay = delay * (0.5 + random.random() / 2.0)  # 50–100% of computed delay
     time.sleep(delay)

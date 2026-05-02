@@ -279,9 +279,7 @@ class ResultCache:
             raw = json.loads(self._index_path.read_text(encoding="utf-8"))
             entries = raw.get("entries") or {}
             self._index = {
-                key: _Entry(**vals)
-                for key, vals in entries.items()
-                if isinstance(vals, dict)
+                key: _Entry(**vals) for key, vals in entries.items() if isinstance(vals, dict)
             }
         except (json.JSONDecodeError, TypeError, ValueError) as e:
             logger.warning("Cache index unreadable, resetting: %s", e)

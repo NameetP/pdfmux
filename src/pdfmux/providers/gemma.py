@@ -160,8 +160,7 @@ class GemmaProvider(LLMProvider):
             input_tokens = getattr(usage, "prompt_tokens", 0) or 0
             output_tokens = getattr(usage, "completion_tokens", 0) or 0
             cost = (
-                input_tokens * _INPUT_COST_PER_MTOK
-                + output_tokens * _OUTPUT_COST_PER_MTOK
+                input_tokens * _INPUT_COST_PER_MTOK + output_tokens * _OUTPUT_COST_PER_MTOK
             ) / 1_000_000
             return text, CostEstimate(
                 input_tokens=input_tokens,

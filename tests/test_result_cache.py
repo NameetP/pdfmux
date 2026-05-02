@@ -46,9 +46,7 @@ def cache_dir(tmp_path: Path) -> Path:
 def cache(cache_dir: Path) -> ResultCache:
     # Force-enable: bypass any PDFMUX_NO_CACHE env var that the suite
     # may set globally to keep state out of the user's home cache.
-    return ResultCache(
-        cache_dir, ttl_seconds=3600, max_bytes=10 * 1024 * 1024, enabled=True
-    )
+    return ResultCache(cache_dir, ttl_seconds=3600, max_bytes=10 * 1024 * 1024, enabled=True)
 
 
 def test_file_hash_changes_when_contents_change(tmp_path: Path) -> None:
@@ -217,9 +215,7 @@ def test_pipeline_use_cache_false(monkeypatch, tmp_path, digital_pdf: Path) -> N
     monkeypatch.delenv("PDFMUX_NO_CACHE", raising=False)
     result_cache_module.reset_default_cache()
 
-    pipeline_module.process(
-        digital_pdf, output_format="markdown", quality="fast", use_cache=False
-    )
+    pipeline_module.process(digital_pdf, output_format="markdown", quality="fast", use_cache=False)
 
     cache = result_cache_module.get_default_cache()
     assert cache.get(digital_pdf, "fast", "markdown") is None

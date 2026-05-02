@@ -287,9 +287,7 @@ def process(
     # through the BiDi algorithm so the merged text reads correctly.
     # Vision LLMs (gemma/gemini/claude) already return correctly-ordered
     # text so we skip them here to avoid double-reordering.
-    if classification.is_arabic or any(
-        _page_text_has_arabic(p.text) for p in pages
-    ):
+    if classification.is_arabic or any(_page_text_has_arabic(p.text) for p in pages):
         from pdfmux.arabic import fix_bidi_order, is_arabic_text
 
         for i, p in enumerate(pages):
