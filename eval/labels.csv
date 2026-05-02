@@ -1,0 +1,51 @@
+fixture,label,category,note
+good-digital-00.pdf,good,digital_single,"1 page, clean digital text"
+good-digital-01.pdf,good,digital_single,"1 page, clean digital text"
+good-digital-02.pdf,good,digital_single,"1 page, clean digital text"
+good-digital-03.pdf,good,digital_single,"1 page, clean digital text"
+good-digital-04.pdf,good,digital_single,"1 page, clean digital text"
+good-digital-05.pdf,good,digital_single,"1 page, clean digital text"
+good-multipage-00.pdf,good,digital_multi,"3 pages, clean digital text"
+good-multipage-01.pdf,good,digital_multi,"3 pages, clean digital text"
+good-multipage-02.pdf,good,digital_multi,"3 pages, clean digital text"
+good-multipage-03.pdf,good,digital_multi,"3 pages, clean digital text"
+good-multipage-04.pdf,good,digital_multi,"3 pages, clean digital text"
+good-multipage-05.pdf,good,digital_multi,"3 pages, clean digital text"
+good-table-00.pdf,good,digital_table,table-heavy markdown body
+good-table-01.pdf,good,digital_table,table-heavy markdown body
+good-table-02.pdf,good,digital_table,table-heavy markdown body
+good-arabic-00.pdf,good,arabic,Arabic-only content
+good-arabic-01.pdf,good,arabic,Arabic-only content
+good-arabic-02.pdf,good,arabic,Arabic-only content
+bad-zero-byte-00.pdf,bad,zero_byte,0-byte file
+bad-zero-byte-01.pdf,bad,zero_byte,0-byte file
+bad-zero-byte-02.pdf,bad,zero_byte,0-byte file
+bad-zero-byte-03.pdf,bad,zero_byte,0-byte file
+bad-zero-byte-04.pdf,bad,zero_byte,0-byte file
+bad-html-as-pdf-00.pdf,bad,html_as_pdf,"HTML body, .pdf extension"
+bad-html-as-pdf-01.pdf,bad,html_as_pdf,"HTML body, .pdf extension"
+bad-html-as-pdf-02.pdf,bad,html_as_pdf,"HTML body, .pdf extension"
+bad-html-as-pdf-03.pdf,bad,html_as_pdf,"HTML body, .pdf extension"
+bad-html-as-pdf-04.pdf,bad,html_as_pdf,"HTML body, .pdf extension"
+bad-trunc-15pct-00.pdf,bad,truncated_heavy,15% bytes kept
+bad-trunc-15pct-01.pdf,bad,truncated_heavy,15% bytes kept
+bad-trunc-15pct-02.pdf,bad,truncated_heavy,15% bytes kept
+bad-trunc-15pct-03.pdf,bad,truncated_heavy,15% bytes kept
+bad-micro-text-00.pdf,bad,micro_text,single character body
+bad-micro-text-01.pdf,bad,micro_text,single character body
+bad-micro-text-02.pdf,bad,micro_text,single character body
+bad-micro-text-03.pdf,bad,micro_text,single character body
+edge-trunc-70pct-00.pdf,good,truncated_light,70% bytes kept — PyMuPDF repair
+edge-trunc-70pct-01.pdf,good,truncated_light,70% bytes kept — PyMuPDF repair
+edge-trunc-70pct-02.pdf,good,truncated_light,70% bytes kept — PyMuPDF repair
+edge-trunc-70pct-03.pdf,good,truncated_light,70% bytes kept — PyMuPDF repair
+edge-trunc-70pct-04.pdf,good,truncated_light,70% bytes kept — PyMuPDF repair
+edge-image-only-00.pdf,good,image_only,"rendered raster, needs OCR"
+edge-image-only-01.pdf,good,image_only,"rendered raster, needs OCR"
+edge-image-only-02.pdf,good,image_only,"rendered raster, needs OCR"
+edge-image-only-03.pdf,good,image_only,"rendered raster, needs OCR"
+edge-image-only-04.pdf,good,image_only,"rendered raster, needs OCR"
+bad-blank-page-00.pdf,bad,blank_page,"structurally valid, zero text"
+bad-blank-page-01.pdf,bad,blank_page,"structurally valid, zero text"
+bad-blank-page-02.pdf,bad,blank_page,"structurally valid, zero text"
+bad-blank-page-03.pdf,bad,blank_page,"structurally valid, zero text"

@@ -149,6 +149,10 @@ def compute_document_confidence(
     Longer pages contribute more to the average — a 3000-char page
     matters more than a 50-char page.
 
+    Each page is re-scored against its actual text via ``score_page`` —
+    we cannot trust the extractor's optimistic ``confidence=1.0`` default
+    on a page that ended up with zero characters extracted.
+
     Returns:
         (confidence, warnings) tuple.
     """
@@ -158,13 +162,23 @@ def compute_document_confidence(
         warnings.append("Empty output — extraction may have failed")
         return 0.0, warnings
 
-    # Content-weighted average
-    total_chars = sum(max(1, p.char_count) for p in pages)
+    # Re-score each page against its actual extracted text. The extractor
+    # writes confidence=1.0 by default at yield time; that has to be
+    # reconciled with what the page actually contains. Without this,
+    # an HTML-as-PDF or a blank page sails through with confidence 1.0.
+    page_scores: list[float] = []
+    for p in pages:
+        page_scores.append(score_page(p.text, p.image_count))
+
+    # Content-weighted average over the *re-scored* per-page numbers.
+    # Pages with zero text count as 0 weight (used to be max(1, ...) which
+    # let empty-page documents register full confidence).
+    total_chars = sum(p.char_count for p in pages)
     if total_chars == 0:
         warnings.append("No text extracted from any page")
         return 0.0, warnings
 
-    weighted_sum = sum(p.confidence * max(1, p.char_count) for p in pages)
+    weighted_sum = sum(score * p.char_count for score, p in zip(page_scores, pages, strict=False))
     score = weighted_sum / total_chars
 
     # OCR penalty — small noise penalty per OCR'd page

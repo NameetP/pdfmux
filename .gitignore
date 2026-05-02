@@ -27,6 +27,10 @@ secrets.*
 
 *.pdf
 !tests/fixtures/*.pdf
+!eval/fixtures/*.pdf
+
+# Eval calibration artifacts (regenerated on demand)
+eval/outputs/
 
 # Local artifacts
 .DS_Store
