@@ -57,9 +57,7 @@ def _validate_ollama_url(url: str) -> str:
     if ip.is_loopback or ip.is_private or ip.is_link_local:
         return url
 
-    raise ValueError(
-        f"OLLAMA_BASE_URL must point at loopback or a private network, got {host}"
-    )
+    raise ValueError(f"OLLAMA_BASE_URL must point at loopback or a private network, got {host}")
 
 
 class OllamaProvider(LLMProvider):
@@ -102,9 +100,7 @@ class OllamaProvider(LLMProvider):
                 "Ollama requires PDFMUX_LLM_MODEL to be set (e.g. 'llava', 'bakllava')"
             )
 
-        base_url = _validate_ollama_url(
-            os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-        )
+        base_url = _validate_ollama_url(os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
         client = ollama.Client(host=base_url)
         image_b64 = base64.b64encode(image_bytes).decode()
 

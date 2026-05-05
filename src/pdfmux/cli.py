@@ -1140,8 +1140,7 @@ def audit(
         raise typer.Exit(2)
 
     console.print(
-        f"[bold]Auditing {len(pdfs)} PDFs[/bold] against {against.name} "
-        f"(quality={quality})…"
+        f"[bold]Auditing {len(pdfs)} PDFs[/bold] against {against.name} (quality={quality})…"
     )
 
     # ---- 2. tokenize for Jaccard ---------------------------------------
@@ -1183,20 +1182,20 @@ def audit(
         console=console,
         transient=True,
     ) as progress:
-        progress.add_task(
-            f"Extracting {len(audit_paths)} PDFs via pdfmux…", total=None
-        )
+        progress.add_task(f"Extracting {len(audit_paths)} PDFs via pdfmux…", total=None)
         for path, result in process_batch(audit_paths, output_format="markdown", quality=quality):
             if isinstance(result, Exception):
-                rows.append({
-                    "filename": path.name,
-                    "my_extractor_chars": len(other_text.get(path.name, "")),
-                    "pdfmux_chars": 0,
-                    "jaccard_overlap": 0.0,
-                    "pdfmux_confidence": 0.0,
-                    "recommendation": "review",
-                    "error": type(result).__name__ + ": " + str(result)[:120],
-                })
+                rows.append(
+                    {
+                        "filename": path.name,
+                        "my_extractor_chars": len(other_text.get(path.name, "")),
+                        "pdfmux_chars": 0,
+                        "jaccard_overlap": 0.0,
+                        "pdfmux_confidence": 0.0,
+                        "recommendation": "review",
+                        "error": type(result).__name__ + ": " + str(result)[:120],
+                    }
+                )
                 flagged += 1
                 continue
 
@@ -1204,26 +1203,31 @@ def audit(
             theirs = result.text
             jacc = _jaccard(_tokens(mine), _tokens(theirs))
             conf = result.confidence
-            should_review = (
-                jacc < overlap_threshold or conf < confidence_threshold
-            )
+            should_review = jacc < overlap_threshold or conf < confidence_threshold
             if should_review:
                 flagged += 1
 
-            rows.append({
-                "filename": path.name,
-                "my_extractor_chars": len(mine),
-                "pdfmux_chars": len(theirs),
-                "jaccard_overlap": round(jacc, 4),
-                "pdfmux_confidence": round(conf, 4),
-                "recommendation": "review" if should_review else "ok",
-                "error": "",
-            })
+            rows.append(
+                {
+                    "filename": path.name,
+                    "my_extractor_chars": len(mine),
+                    "pdfmux_chars": len(theirs),
+                    "jaccard_overlap": round(jacc, 4),
+                    "pdfmux_confidence": round(conf, 4),
+                    "recommendation": "review" if should_review else "ok",
+                    "error": "",
+                }
+            )
 
     # ---- 4. write CSV ---------------------------------------------------
     fields = [
-        "filename", "my_extractor_chars", "pdfmux_chars",
-        "jaccard_overlap", "pdfmux_confidence", "recommendation", "error",
+        "filename",
+        "my_extractor_chars",
+        "pdfmux_chars",
+        "jaccard_overlap",
+        "pdfmux_confidence",
+        "recommendation",
+        "error",
     ]
     with output.open("w", newline="", encoding="utf-8") as f:
         writer = _csv.DictWriter(f, fieldnames=fields)

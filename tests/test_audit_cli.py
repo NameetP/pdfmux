@@ -73,22 +73,35 @@ def disagreeing_csv(tmp_path: Path) -> Path:
 def disagreeing_json(tmp_path: Path) -> Path:
     json_path = tmp_path / "other.json"
     json_path.write_text(
-        json.dumps({
-            "alpha.pdf": "totally unrelated stub from a broken extractor",
-            "beta.pdf": "garbage output completely different content",
-        }),
+        json.dumps(
+            {
+                "alpha.pdf": "totally unrelated stub from a broken extractor",
+                "beta.pdf": "garbage output completely different content",
+            }
+        ),
         encoding="utf-8",
     )
     return json_path
 
 
 class TestAuditCSV:
-    def test_csv_input_high_overlap_no_flag(self, pdf_dir: Path, matching_csv: Path, tmp_path: Path) -> None:
+    def test_csv_input_high_overlap_no_flag(
+        self, pdf_dir: Path, matching_csv: Path, tmp_path: Path
+    ) -> None:
         out = tmp_path / "audit.csv"
         result = runner.invoke(
             app,
-            ["audit", "--against", str(matching_csv), "--on", str(pdf_dir),
-             "--output", str(out), "--quality", "fast"],
+            [
+                "audit",
+                "--against",
+                str(matching_csv),
+                "--on",
+                str(pdf_dir),
+                "--output",
+                str(out),
+                "--quality",
+                "fast",
+            ],
         )
         # Should NOT exit 3 — overlap is high enough to mark "ok"
         assert result.exit_code == 0, f"got {result.exit_code}; stdout={result.stdout}"
@@ -105,8 +118,17 @@ class TestAuditCSV:
         out = tmp_path / "audit.csv"
         result = runner.invoke(
             app,
-            ["audit", "--against", str(disagreeing_csv), "--on", str(pdf_dir),
-             "--output", str(out), "--quality", "fast"],
+            [
+                "audit",
+                "--against",
+                str(disagreeing_csv),
+                "--on",
+                str(pdf_dir),
+                "--output",
+                str(out),
+                "--quality",
+                "fast",
+            ],
         )
         # Should exit 3 — every document flagged
         assert result.exit_code == 3, f"got {result.exit_code}; stdout={result.stdout}"
@@ -117,13 +139,24 @@ class TestAuditCSV:
             assert r["recommendation"] == "review"
             assert float(r["jaccard_overlap"]) < 0.7
 
-    def test_csv_columns_are_documented(self, pdf_dir: Path, matching_csv: Path, tmp_path: Path) -> None:
+    def test_csv_columns_are_documented(
+        self, pdf_dir: Path, matching_csv: Path, tmp_path: Path
+    ) -> None:
         """The CSV column list is part of the public contract — pin it."""
         out = tmp_path / "audit.csv"
         runner.invoke(
             app,
-            ["audit", "--against", str(matching_csv), "--on", str(pdf_dir),
-             "--output", str(out), "--quality", "fast"],
+            [
+                "audit",
+                "--against",
+                str(matching_csv),
+                "--on",
+                str(pdf_dir),
+                "--output",
+                str(out),
+                "--quality",
+                "fast",
+            ],
         )
         with out.open() as f:
             header = next(csv.reader(f))
@@ -143,8 +176,17 @@ class TestAuditJSON:
         out = tmp_path / "audit.csv"
         result = runner.invoke(
             app,
-            ["audit", "--against", str(disagreeing_json), "--on", str(pdf_dir),
-             "--output", str(out), "--quality", "fast"],
+            [
+                "audit",
+                "--against",
+                str(disagreeing_json),
+                "--on",
+                str(pdf_dir),
+                "--output",
+                str(out),
+                "--quality",
+                "fast",
+            ],
         )
         assert result.exit_code == 3  # all flagged
         assert out.exists()
@@ -186,8 +228,17 @@ class TestAuditEdgeCases:
         out = tmp_path / "audit.csv"
         result = runner.invoke(
             app,
-            ["audit", "--against", str(alt), "--on", str(pdf_dir),
-             "--output", str(out), "--quality", "fast"],
+            [
+                "audit",
+                "--against",
+                str(alt),
+                "--on",
+                str(pdf_dir),
+                "--output",
+                str(out),
+                "--quality",
+                "fast",
+            ],
         )
         # Either 0 or 3 is fine — what matters is it parsed.
         assert result.exit_code in (0, 3), f"got {result.exit_code}; stdout={result.stdout}"

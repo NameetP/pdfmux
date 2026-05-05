@@ -217,9 +217,7 @@ def _validate_schema_structure(schema: object, source: str) -> dict:
     if not isinstance(schema, dict):
         raise ValueError(f"Schema must be a JSON object (loaded from {source})")
     if "properties" not in schema and "type" not in schema:
-        raise ValueError(
-            f"Schema missing 'properties' or 'type' field (loaded from {source})"
-        )
+        raise ValueError(f"Schema missing 'properties' or 'type' field (loaded from {source})")
     return schema
 
 
