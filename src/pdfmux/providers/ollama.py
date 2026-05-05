@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 from pdfmux.providers.base import CostEstimate, LLMProvider, ModelInfo
 from pdfmux.retry import with_retry
 
-
 # Cloud metadata service hostnames — never legitimate for an Ollama server.
 _METADATA_HOSTS = frozenset(
     {

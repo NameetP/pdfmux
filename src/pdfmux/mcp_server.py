@@ -27,7 +27,11 @@ from mcp.server.fastmcp import FastMCP
 
 from pdfmux.path_safety import (
     ALLOWED_DIRS,
+)
+from pdfmux.path_safety import (
     check_path as _check_path,
+)
+from pdfmux.path_safety import (
     is_path_allowed as _is_path_allowed,
 )
 from pdfmux.pipeline import process

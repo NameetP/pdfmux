@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.6.4 (2026-05-05)
+
+Additive release. Two new things, no breaking changes, no defaults change. This is the OSS half of the **Verified Extraction Manifest (VEM)** standard — the `audit` command produces the comparison artifact that VEM 1.0 standardizes.
+
+### Added
+
+- **`pdfmux audit --against <other.csv|other.json> --on <pdf-dir>`** — diff your current extractor's output against pdfmux on the same PDFs.
+  - Reads `--against` as either CSV (columns `filename,text` or aliases `file,content`) or JSON (`{filename: text}`).
+  - Runs pdfmux on every PDF named in `--against` that exists in `--on`.
+  - Computes per-document **word-set Jaccard overlap** between the two extractors.
+  - Flags documents with `overlap < --overlap-threshold` (default `0.70`) **OR** `pdfmux_confidence < --confidence-threshold` (default `0.50`).
+  - Writes a 7-column CSV: `filename, my_extractor_chars, pdfmux_chars, jaccard_overlap, pdfmux_confidence, recommendation, error`.
+  - Exit codes: `0` everything clean, `2` usage error, `3` anything flagged (matches `--strict` convention).
+
+  Use case: "diff our output against your current extractor on 100 of your own PDFs — if we agree on every document, you don't need us. If we disagree on more than 2%, those are the silent failures already in your pipeline." This is the public artifact behind the [VEM 1.0 spec](https://verifiedextraction.org/spec/v1).
+
+- **OSS → cloud funnel-upsell line** on `convert` completion. A single `[dim]`-styled line prints to stdout after a successful conversion, pointing to the free tier and the open VEM spec. Suppress with `PDFMUX_NO_UPSELL=1`. Skipped automatically when stdout isn't a TTY (so it never pollutes piped output) and when writing to stdout via `--output -`.
+
+### Tests
+
+- `tests/test_audit_cli.py` — 8 tests covering CSV/JSON inputs, alternate column names, unsupported extensions, no-filename-overlap, empty directory, exit-code contracts, and the documented column set.
+
+Test count: 678 passing (up from 670).
+
 ## 1.6.3 (2026-05-02)
 
 Correctness patch — the bug behind the silent-failure incident that prompted 1.6.1. **No defaults change.** Every existing flag and CLI invocation behaves identically. Confidence numbers are now correct on documents where they were previously inflated.

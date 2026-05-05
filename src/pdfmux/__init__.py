@@ -30,7 +30,7 @@ finally:
     _sys.stdout = _orig
 del _orig, _io
 
-__version__ = "1.6.3"
+__version__ = "1.6.4"
 __all__ = [
     # Public API
     "extract_text",

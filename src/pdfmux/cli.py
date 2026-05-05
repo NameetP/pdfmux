@@ -1034,9 +1034,257 @@ def stream(
 
 
 @app.command()
+def audit(
+    against: Path = typer.Option(
+        ...,
+        "--against",
+        "-a",
+        help="Path to your existing extractor's output. CSV with columns "
+        "(filename, text) or JSON object {filename: text}.",
+        exists=True,
+    ),
+    on: Path = typer.Option(
+        ...,
+        "--on",
+        help="Directory of PDFs to audit (those your existing extractor processed).",
+        exists=True,
+    ),
+    output: Path = typer.Option(
+        Path("./audit-report.csv"),
+        "--output",
+        "-o",
+        help="Output CSV path. Default: ./audit-report.csv",
+    ),
+    quality: str = typer.Option(
+        "standard",
+        "--quality",
+        "-q",
+        help="pdfmux quality preset for the audit run.",
+    ),
+    overlap_threshold: float = typer.Option(
+        0.70,
+        "--overlap-threshold",
+        help="Minimum word-set Jaccard overlap to consider extractions equivalent. "
+        "Default 0.70 — anything below recommended for review.",
+    ),
+    confidence_threshold: float = typer.Option(
+        0.50,
+        "--confidence-threshold",
+        help="Minimum pdfmux confidence to skip review. Default 0.50.",
+    ),
+) -> None:
+    """Diff your current PDF extractor's output against pdfmux. Find silent failures.
+
+    Run pdfmux on the same PDFs your existing extractor (LlamaParse / pypdf /
+    Unstructured / Reducto / your own pipeline) already processed, then compute
+    per-document word-set Jaccard overlap between the two. Documents with low
+    overlap OR low pdfmux confidence are flagged for review — those are the
+    silent failures your existing pipeline is hiding.
+
+    Examples::
+
+        # CSV input from your existing pipeline
+        pdfmux audit --against ./my-extractor-out.csv --on ./pdfs/
+
+        # JSON input
+        pdfmux audit --against ./my-extractor-out.json --on ./pdfs/ -o audit.csv
+
+    The output CSV has columns: filename, my_extractor_chars, pdfmux_chars,
+    jaccard_overlap, pdfmux_confidence, recommendation. ``recommendation`` is
+    ``review`` when overlap < --overlap-threshold OR confidence < --confidence-threshold,
+    else ``ok``.
+    """
+    import csv as _csv
+    import json as _json
+    import re as _re
+    import sys
+
+    if not on.is_dir():
+        console.print(f"[red]✗[/red] --on must be a directory: {on}")
+        raise typer.Exit(2)
+
+    # ---- 1. load other-extractor output ----------------------------------
+    other_text: dict[str, str] = {}
+    suffix = against.suffix.lower()
+    if suffix == ".csv":
+        with against.open(newline="", encoding="utf-8") as f:
+            reader = _csv.DictReader(f)
+            field_lc = {h.lower(): h for h in reader.fieldnames or []}
+            fname_col = field_lc.get("filename") or field_lc.get("file") or field_lc.get("path")
+            text_col = field_lc.get("text") or field_lc.get("content") or field_lc.get("output")
+            if not fname_col or not text_col:
+                console.print(
+                    "[red]✗[/red] --against CSV must have 'filename' and 'text' columns "
+                    "(or 'file/path' + 'content/output')."
+                )
+                raise typer.Exit(2)
+            for row in reader:
+                other_text[Path(row[fname_col]).name] = row[text_col] or ""
+    elif suffix == ".json":
+        try:
+            data = _json.loads(against.read_text(encoding="utf-8"))
+        except _json.JSONDecodeError as e:
+            console.print(f"[red]✗[/red] --against JSON parse error: {e}")
+            raise typer.Exit(2) from e
+        if not isinstance(data, dict):
+            console.print("[red]✗[/red] --against JSON must be an object {filename: text}.")
+            raise typer.Exit(2)
+        other_text = {Path(k).name: (v or "") for k, v in data.items()}
+    else:
+        console.print(f"[red]✗[/red] --against must be .csv or .json (got {suffix})")
+        raise typer.Exit(2)
+
+    pdfs = sorted(list(on.glob("*.pdf")) + list(on.glob("*.PDF")))
+    if not pdfs:
+        console.print(f"[yellow]No PDFs found in {on}[/yellow]")
+        raise typer.Exit(2)
+
+    console.print(
+        f"[bold]Auditing {len(pdfs)} PDFs[/bold] against {against.name} "
+        f"(quality={quality})…"
+    )
+
+    # ---- 2. tokenize for Jaccard ---------------------------------------
+    _word_re = _re.compile(r"[a-z0-9]+")
+
+    def _tokens(text: str) -> set[str]:
+        return set(_word_re.findall(text.lower()))
+
+    def _jaccard(a: set[str], b: set[str]) -> float:
+        if not a and not b:
+            return 1.0
+        if not a or not b:
+            return 0.0
+        return len(a & b) / len(a | b)
+
+    # ---- 3. extract via pdfmux + diff ----------------------------------
+    rows: list[dict] = []
+    flagged = 0
+    only_in_yours = 0  # PDF mentioned in --against but not in --on
+    not_in_yours = 0  # PDF in --on directory but not in --against
+
+    from pdfmux.pipeline import process_batch
+
+    name_to_path = {p.name: p for p in pdfs}
+    audit_paths = [p for p in pdfs if p.name in other_text]
+    not_in_yours = sum(1 for p in pdfs if p.name not in other_text)
+    only_in_yours = sum(1 for n in other_text if n not in name_to_path)
+
+    if not audit_paths:
+        console.print(
+            "[red]✗[/red] No filename overlap between --against and --on. "
+            "Check that the filenames in your CSV/JSON match the PDFs in the directory."
+        )
+        raise typer.Exit(2)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        progress.add_task(
+            f"Extracting {len(audit_paths)} PDFs via pdfmux…", total=None
+        )
+        for path, result in process_batch(audit_paths, output_format="markdown", quality=quality):
+            if isinstance(result, Exception):
+                rows.append({
+                    "filename": path.name,
+                    "my_extractor_chars": len(other_text.get(path.name, "")),
+                    "pdfmux_chars": 0,
+                    "jaccard_overlap": 0.0,
+                    "pdfmux_confidence": 0.0,
+                    "recommendation": "review",
+                    "error": type(result).__name__ + ": " + str(result)[:120],
+                })
+                flagged += 1
+                continue
+
+            mine = other_text.get(path.name, "")
+            theirs = result.text
+            jacc = _jaccard(_tokens(mine), _tokens(theirs))
+            conf = result.confidence
+            should_review = (
+                jacc < overlap_threshold or conf < confidence_threshold
+            )
+            if should_review:
+                flagged += 1
+
+            rows.append({
+                "filename": path.name,
+                "my_extractor_chars": len(mine),
+                "pdfmux_chars": len(theirs),
+                "jaccard_overlap": round(jacc, 4),
+                "pdfmux_confidence": round(conf, 4),
+                "recommendation": "review" if should_review else "ok",
+                "error": "",
+            })
+
+    # ---- 4. write CSV ---------------------------------------------------
+    fields = [
+        "filename", "my_extractor_chars", "pdfmux_chars",
+        "jaccard_overlap", "pdfmux_confidence", "recommendation", "error",
+    ]
+    with output.open("w", newline="", encoding="utf-8") as f:
+        writer = _csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    # ---- 5. report ------------------------------------------------------
+    pct = (flagged / len(rows) * 100) if rows else 0.0
+    console.print()
+    console.print(f"  Audited:        [bold]{len(rows)}[/bold] documents")
+    if not_in_yours:
+        console.print(f"  In dir but not in --against: [yellow]{not_in_yours}[/yellow]")
+    if only_in_yours:
+        console.print(f"  In --against but not in dir: [yellow]{only_in_yours}[/yellow]")
+    console.print(f"  Flagged for review: [bold red]{flagged}[/bold red] ({pct:.1f}%)")
+    console.print(f"  Output: [bold]{output}[/bold]")
+    console.print()
+
+    if flagged:
+        console.print(
+            "[yellow]These are documents your current extractor and pdfmux disagree on, "
+            "OR pdfmux flagged as low confidence. Review the flagged rows in the CSV.[/yellow]"
+        )
+        sys.stderr.write(
+            f"pdfmux audit: {flagged} of {len(rows)} documents flagged for review "
+            f"({pct:.1f}% disagreement rate).\n"
+        )
+    console.print(
+        "[dim]Free 1,000 pages/mo + dashboard: https://pdfmux.com/cloud · "
+        "Verify with the open spec: https://verifiedextraction.org[/dim]"
+    )
+
+    # Non-zero exit if anything was flagged — same convention as --strict
+    if flagged > 0:
+        raise typer.Exit(3)
+
+
+@app.command()
 def version() -> None:
     """Show the version."""
     console.print(f"pdfmux {__version__}")
+
+
+def _maybe_print_funnel_upsell() -> None:
+    """Print the OSS→cloud upsell line on convert completion, when interactive.
+
+    Suppressed when stdout is piped or PDFMUX_NO_UPSELL=1 is set, so it never
+    pollutes CI logs or downstream pipes. Single line, dim styling.
+    """
+    import os
+    import sys
+
+    if os.environ.get("PDFMUX_NO_UPSELL") == "1":
+        return
+    if not sys.stdout.isatty():
+        return
+    console.print(
+        "[dim]💡 Free 1,000 pages/mo + audit dashboard: https://pdfmux.com/cloud · "
+        "Open spec: https://verifiedextraction.org "
+        "(set PDFMUX_NO_UPSELL=1 to silence)[/dim]"
+    )
 
 
 def _emit_low_confidence_warning(name: str, conf: float) -> None:
@@ -1175,6 +1423,10 @@ def _convert_file(
     # Emit machine-parseable stderr WARNING below 0.50 (always, regardless of --strict)
     _emit_low_confidence_warning(input_path.name, result.confidence)
 
+    # OSS → cloud funnel upsell line (TTY only, suppressed by PDFMUX_NO_UPSELL=1)
+    if not to_stdout:
+        _maybe_print_funnel_upsell()
+
     # --strict: fail the run if confidence < --min-confidence
     if strict and result.confidence < min_confidence:
         import sys
@@ -1311,6 +1563,9 @@ def _convert_directory(
         summary_line += f", {low_confidence} below --min-confidence {min_confidence:.2f}"
     summary_line += f" → {manifest_path.name}"
     console.print(summary_line)
+
+    # OSS → cloud funnel upsell line (TTY only)
+    _maybe_print_funnel_upsell()
 
     # --strict: fail the run if any document fell below --min-confidence
     if strict and low_confidence > 0:
