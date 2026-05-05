@@ -316,9 +316,13 @@ def serve(
         help="Port for HTTP transport (default: 8000). Only used with --http.",
     ),
     host: str = typer.Option(
-        "0.0.0.0",
+        "127.0.0.1",
         "--host",
-        help="Host to bind HTTP server to (default: 0.0.0.0). Only used with --http.",
+        help=(
+            "Host to bind HTTP server to (default: 127.0.0.1 — loopback only). "
+            "Set to 0.0.0.0 to expose on all interfaces (requires explicit opt-in). "
+            "Override default via PDFMUX_HTTP_HOST env var. Only used with --http."
+        ),
     ),
 ) -> None:
     """Start the MCP server for AI agent integration.

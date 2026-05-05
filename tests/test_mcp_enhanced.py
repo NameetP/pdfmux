@@ -21,7 +21,7 @@ class TestBatchConvertTool:
 
         from pdfmux.mcp_server import batch_convert
 
-        with patch("pdfmux.mcp_server.ALLOWED_DIRS", [Path("/nonexistent")]):
+        with patch("pdfmux.path_safety.ALLOWED_DIRS", [Path("/nonexistent")]):
             with pytest.raises(ValueError, match="Access denied"):
                 batch_convert(directory="/tmp")
 
@@ -41,7 +41,7 @@ class TestExtractStructuredTool:
 
         from pdfmux.mcp_server import extract_structured
 
-        with patch("pdfmux.mcp_server.ALLOWED_DIRS", [Path("/nonexistent")]):
+        with patch("pdfmux.path_safety.ALLOWED_DIRS", [Path("/nonexistent")]):
             with pytest.raises(ValueError, match="Access denied"):
                 extract_structured(file_path="/etc/passwd")
 

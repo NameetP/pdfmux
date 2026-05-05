@@ -25,8 +25,19 @@ RUN pip install --no-cache-dir /tmp/*.whl && \
 
 # Default: HTTP transport for Smithery / remote deployment
 ENV TRANSPORT=http
-ENV PDFMUX_ALLOWED_DIRS=/tmp
+
+# Allowed dirs are configurable at build time so deployments can point at
+# their own bind-mount without rebuilding the base image (P-N9).
+ARG ALLOWED_DIRS=/tmp
+ENV PDFMUX_ALLOWED_DIRS=$ALLOWED_DIRS
+
 EXPOSE 8000
+
+# Drop privileges — never run the server as root (P-L3).
+# /tmp is world-writable, so the default ALLOWED_DIRS works for the
+# unprivileged user without further chown'ing.
+RUN useradd -r -u 1001 -m pdfmux
+USER pdfmux
 
 # Health check for container orchestrators
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

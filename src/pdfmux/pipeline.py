@@ -42,9 +42,11 @@ OCR_BUDGET_RATIO = float(os.environ.get("PDFMUX_OCR_BUDGET", "0.30"))
 IMAGE_HEAVY_THRESHOLD = 0.50
 
 # --- Security limits ---
-MAX_FILE_SIZE_MB = int(os.environ.get("PDFMUX_MAX_FILE_SIZE_MB", "500"))
-MAX_PAGE_COUNT = int(os.environ.get("PDFMUX_MAX_PAGES", "10000"))
-EXTRACTION_TIMEOUT_S = int(os.environ.get("PDFMUX_TIMEOUT", "300"))
+# Clamp env-var inputs to >= 1 so a misconfigured value (zero, negative,
+# or noise) can't disable the limit entirely (P-L1 / P-N5).
+MAX_FILE_SIZE_MB = max(1, int(os.environ.get("PDFMUX_MAX_FILE_SIZE_MB", "500")))
+MAX_PAGE_COUNT = max(1, int(os.environ.get("PDFMUX_MAX_PAGES", "10000")))
+EXTRACTION_TIMEOUT_S = max(1, int(os.environ.get("PDFMUX_TIMEOUT", "300")))
 
 
 # ---------------------------------------------------------------------------

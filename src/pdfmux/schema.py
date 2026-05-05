@@ -5,8 +5,10 @@ Uses fuzzy string matching to map extracted keys to schema fields,
 then casts values to the schema's expected types.
 
 Usage:
-    schema = json.load(open("invoice.schema.json"))
-    result = map_to_schema(tables, key_values, schema)
+    Example:
+        with open("invoice.schema.json") as f:
+            schema = json.load(f)
+        result = map_to_schema(tables, key_values, schema)
 """
 
 from __future__ import annotations
@@ -204,48 +206,82 @@ def map_to_schema(
     return result
 
 
+def _validate_schema_structure(schema: object, source: str) -> dict:
+    """Best-effort structural validation of a loaded JSON schema (P-N7).
+
+    We avoid pulling in the ``jsonschema`` package — this is a cheap sanity
+    check that catches the obvious accidents (string/array as the root, no
+    ``type``/``properties`` at all). Real schema validation happens when we
+    consume the schema downstream.
+    """
+    if not isinstance(schema, dict):
+        raise ValueError(f"Schema must be a JSON object (loaded from {source})")
+    if "properties" not in schema and "type" not in schema:
+        raise ValueError(
+            f"Schema missing 'properties' or 'type' field (loaded from {source})"
+        )
+    return schema
+
+
 def load_schema(schema_path: str) -> dict:
     """Load a JSON schema from a file path or built-in preset name.
 
+    Path-traversal hardened: file paths are validated against
+    ``PDFMUX_ALLOWED_DIRS`` (P-M1 / P-N3), and preset names are confined
+    to the bundled ``schemas/`` directory via ``Path.resolve()`` +
+    ``is_relative_to`` (P-N10).
+
     Args:
-        schema_path: Path to .json file or a preset name.
+        schema_path: Path to a ``.json`` file or a preset name.
 
     Returns:
         Parsed JSON schema dict.
     """
     import os
+    from pathlib import Path
 
-    if os.path.isfile(schema_path):
-        with open(schema_path) as f:
-            return json.load(f)
+    from pdfmux.path_safety import check_path
 
-    # Check built-in presets from schema_validator
+    # 1) Built-in in-memory presets — pure name lookup, no filesystem.
     try:
         from pdfmux.schema_validator import PRESETS
 
         if schema_path in PRESETS:
-            return PRESETS[schema_path]
+            return _validate_schema_structure(PRESETS[schema_path], f"preset:{schema_path}")
     except ImportError:
         pass
 
-    # Legacy: check schemas/ directory
+    # 2) User-supplied file path. Validate against allowed dirs before opening
+    #    (P-M1 / P-N3).
+    if os.path.sep in schema_path or schema_path.endswith(".json"):
+        try:
+            validated = check_path(schema_path, label="schema_path")
+        except ValueError as e:
+            raise ValueError("Schema path outside allowed directories") from e
+
+        if validated.is_file():
+            with open(validated) as f:
+                data = json.load(f)
+            return _validate_schema_structure(data, str(validated))
+
+    # 3) Legacy: lookup in the bundled schemas/ directory by name. Resolve and
+    #    confine to that directory so a name like "../../etc/passwd" is rejected
+    #    (P-N10).
     presets_dir = os.path.join(os.path.dirname(__file__), "schemas")
     preset_path = os.path.join(presets_dir, f"{schema_path}.json")
-    if os.path.isfile(preset_path):
-        with open(preset_path) as f:
-            return json.load(f)
+    presets_root = Path(presets_dir).resolve()
+    resolved = Path(preset_path).resolve()
+    if not resolved.is_relative_to(presets_root):
+        raise ValueError(f"Invalid schema preset name: {schema_path}")
+    if resolved.is_file():
+        with open(resolved) as f:
+            data = json.load(f)
+        return _validate_schema_structure(data, str(resolved))
 
-    # List available presets in error message
-    try:
-        from pdfmux.schema_validator import get_preset_names
-
-        preset_names = ", ".join(get_preset_names())
-        raise FileNotFoundError(
-            f"Schema not found: {schema_path}. "
-            f"Available presets: {preset_names}. "
-            "Or provide a path to a JSON schema file."
-        )
-    except ImportError:
-        raise FileNotFoundError(
-            f"Schema not found: {schema_path}. Provide a file path or a built-in preset name."
-        )
+    # 4) Not found. Don't echo the available preset names back to the caller
+    #    (P-N8 — info disclosure to anonymous MCP callers). Programmatic
+    #    callers can still enumerate via ``schema_validator.get_preset_names``.
+    raise FileNotFoundError(
+        f"Schema not found: {schema_path}. "
+        "Provide a file path under PDFMUX_ALLOWED_DIRS or a built-in preset name."
+    )

@@ -19,12 +19,12 @@ class TestPathRestrictions:
         test_file = tmp_path / "test.pdf"
         test_file.touch()
 
-        with patch("pdfmux.mcp_server.ALLOWED_DIRS", [tmp_path.resolve()]):
+        with patch("pdfmux.path_safety.ALLOWED_DIRS", [tmp_path.resolve()]):
             assert _is_path_allowed(test_file)
 
     def test_path_outside_allowed_dir(self, tmp_path: Path) -> None:
         """Paths outside allowed dirs should be blocked."""
-        with patch("pdfmux.mcp_server.ALLOWED_DIRS", [tmp_path.resolve()]):
+        with patch("pdfmux.path_safety.ALLOWED_DIRS", [tmp_path.resolve()]):
             assert not _is_path_allowed(Path("/etc/passwd"))
 
     def test_is_path_allowed_returns_bool(self) -> None:
@@ -53,7 +53,7 @@ class TestConvertPdfTool:
 
         from pdfmux.mcp_server import convert_pdf
 
-        with patch("pdfmux.mcp_server.ALLOWED_DIRS", [Path("/nonexistent")]):
+        with patch("pdfmux.path_safety.ALLOWED_DIRS", [Path("/nonexistent")]):
             with pytest.raises(ValueError, match="Access denied"):
                 convert_pdf(file_path="/etc/passwd")
 
@@ -62,7 +62,7 @@ class TestConvertPdfTool:
         from pdfmux.mcp_server import convert_pdf
 
         with patch(
-            "pdfmux.mcp_server.ALLOWED_DIRS",
+            "pdfmux.path_safety.ALLOWED_DIRS",
             [digital_pdf.parent.resolve()],
         ):
             result = convert_pdf(file_path=str(digital_pdf))
@@ -86,6 +86,6 @@ class TestAnalyzePdfTool:
 
         from pdfmux.mcp_server import analyze_pdf
 
-        with patch("pdfmux.mcp_server.ALLOWED_DIRS", [Path("/nonexistent")]):
+        with patch("pdfmux.path_safety.ALLOWED_DIRS", [Path("/nonexistent")]):
             with pytest.raises(ValueError, match="Access denied"):
                 analyze_pdf(file_path="/etc/passwd")

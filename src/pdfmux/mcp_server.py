@@ -22,39 +22,24 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from pdfmux.path_safety import (
+    ALLOWED_DIRS,
+    check_path as _check_path,
+    is_path_allowed as _is_path_allowed,
+)
 from pdfmux.pipeline import process
 
-# Security: restrict file access to allowed directories.
-# Default: current working directory. Override via PDFMUX_ALLOWED_DIRS (colon-separated).
-_ALLOWED_DIRS_ENV = os.environ.get("PDFMUX_ALLOWED_DIRS", "")
-ALLOWED_DIRS: list[Path] = (
-    [Path(d).resolve() for d in _ALLOWED_DIRS_ENV.split(":") if d.strip()]
-    if _ALLOWED_DIRS_ENV
-    else [Path.cwd().resolve()]
-)
-
-
-def _is_path_allowed(file_path: Path) -> bool:
-    """Check if the given path is inside one of the allowed directories."""
-    resolved = file_path.resolve()
-    return any(resolved == d or d in resolved.parents for d in ALLOWED_DIRS)
-
-
-def _check_path(file_path: str, label: str = "file_path") -> Path:
-    """Validate and return a resolved Path, raising ValueError on access denial."""
-    if not file_path:
-        raise ValueError(f"{label} is required")
-    p = Path(file_path)
-    if not _is_path_allowed(p):
-        raise ValueError(
-            f"Access denied: {file_path} is outside allowed directories. "
-            "Set PDFMUX_ALLOWED_DIRS to configure access."
-        )
-    return p
+__all__ = [
+    "ALLOWED_DIRS",
+    "_check_path",
+    "_is_path_allowed",
+    "mcp",
+    "run_server",
+    "run_http_server",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -310,8 +295,16 @@ def run_server() -> None:
     mcp.run(transport="stdio")
 
 
-def run_http_server(host: str = "0.0.0.0", port: int = 8000) -> None:
-    """Run the MCP server over Streamable HTTP transport."""
+def run_http_server(host: str | None = None, port: int = 8000) -> None:
+    """Run the MCP server over Streamable HTTP transport.
+
+    Default bind host is loopback (``127.0.0.1``) — safer than ``0.0.0.0``.
+    Override via the ``host`` argument or the ``PDFMUX_HTTP_HOST`` env var.
+    Set ``PDFMUX_HTTP_HOST=0.0.0.0`` (or pass ``--host 0.0.0.0`` on the CLI)
+    when intentionally exposing the server to a non-loopback network.
+    """
+    if host is None:
+        host = os.environ.get("PDFMUX_HTTP_HOST", "127.0.0.1")
     mcp.settings.host = host
     mcp.settings.port = port
     mcp.run(transport="streamable-http")

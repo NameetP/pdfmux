@@ -49,12 +49,21 @@ def sample_pdf_with_table(tmp_path):
 def allow_tmp_dirs(tmp_path):
     """Allow access to tmp directories for all tests."""
     with patch.dict(os.environ, {"PDFMUX_ALLOWED_DIRS": str(tmp_path)}):
-        # Re-import to pick up new ALLOWED_DIRS
-        import importlib
+        # ALLOWED_DIRS is module-level, evaluated at first import. We override
+        # both the canonical binding (path_safety) and the re-exported alias
+        # (mcp_server) so existing tests that read either keep working.
         import pdfmux.mcp_server as mod
+        import pdfmux.path_safety as path_safety_mod
 
-        mod.ALLOWED_DIRS = [tmp_path.resolve()]
-        yield
+        original_path_safety = path_safety_mod.ALLOWED_DIRS
+        original_mcp = mod.ALLOWED_DIRS
+        path_safety_mod.ALLOWED_DIRS = [tmp_path.resolve()]
+        mod.ALLOWED_DIRS = path_safety_mod.ALLOWED_DIRS
+        try:
+            yield
+        finally:
+            path_safety_mod.ALLOWED_DIRS = original_path_safety
+            mod.ALLOWED_DIRS = original_mcp
 
 
 # ---------------------------------------------------------------------------
@@ -201,10 +210,11 @@ class TestBatchConvert:
 
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
-        # Need to allow this path
-        import pdfmux.mcp_server as mod
+        # Need to allow this path — append to the canonical binding so the
+        # _is_path_allowed check (which lives in path_safety) sees it.
+        import pdfmux.path_safety as path_safety_mod
 
-        mod.ALLOWED_DIRS.append(empty_dir.resolve())
+        path_safety_mod.ALLOWED_DIRS.append(empty_dir.resolve())
         result = batch_convert(str(empty_dir))
         assert "No PDF files found" in result
 
