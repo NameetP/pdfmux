@@ -170,16 +170,17 @@ def convert(
         "Explicit flags override profile values.",
     ),
     min_confidence: float = typer.Option(
-        0.0,
+        0.75,
         "--min-confidence",
         help="Minimum acceptable document confidence (0.0–1.0). Documents below this "
-        "threshold are flagged. Use with --strict to fail the run on low confidence. "
-        "Default 0.0 = warn only, never fail.",
+        "threshold are flagged. With --strict (default in 1.7+), the run exits 3 if "
+        "any document falls below. Default 0.75 since 1.7 (was 0.0 in 1.6.x).",
     ),
     strict: bool = typer.Option(
-        False,
-        "--strict",
+        True,
+        "--strict/--no-strict",
         help="Exit with code 3 if any document confidence falls below --min-confidence. "
+        "Default True since 1.7 — pass --no-strict to restore 1.6.x warn-only behaviour. "
         "Recommended for batch runs in CI where silent low-quality output is unacceptable.",
     ),
 ) -> None:

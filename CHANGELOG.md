@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.7.0 (2026-05-22) — BREAKING: strict is now default
+
+**This release changes default behaviour on `pdfmux convert`.** Existing pipelines that relied on warn-only confidence handling need one of: (a) pass `--no-strict` to restore 1.6.x behaviour, (b) raise extraction quality so all documents score ≥ 0.75 confidence, or (c) lower `--min-confidence` below the documents your real corpus produces.
+
+### Breaking
+
+- **`--strict` is now ON by default.** Pass `--no-strict` to opt out. `pdfmux convert ./docs/` now exits 3 if any document's confidence falls below `--min-confidence`. Previously this only happened with explicit `--strict`.
+- **`--min-confidence` default is now `0.75` (was `0.0`).** Combined with default `--strict`, this means: `pdfmux convert ./docs/` flips from "warn only, exit 0" to "fail the run if any document is below 0.75 confidence." Calibrated against the 50-fixture eval set at precision 1.00 (see release 1.6.3 notes).
+
+### Migration
+
+| Your 1.6.x command | 1.7.x equivalent |
+|---|---|
+| `pdfmux convert ./docs/` (warn-only) | `pdfmux convert ./docs/ --no-strict --min-confidence 0.0` |
+| `pdfmux convert ./docs/ --strict --min-confidence 0.75` | `pdfmux convert ./docs/` (now the default) |
+| CI: `pdfmux convert ./docs/ ; echo "exit=$?"` (always 0) | Same command now exits 3 on low-quality batches — fix at intake or pass `--no-strict` |
+
+### Why now
+
+The 433-PDF customer batch silent-failure incident (April 2026) that drove 1.6.1's `--strict` flag taught us that opt-in quality gates aren't enough — the failure mode is *forgetting to pass the flag*. 1.7 makes safe-by-default the actual default. Power users who want to ingest noisy corpora and triage downstream can still do that with one extra flag.
+
+The VEM (Verified Extraction Manifest) spec also assumes strict default behaviour as the reference implementation. Cloud-side enforcement in pdfmux-cloud's worker depends on it.
+
+### Unchanged
+
+- All other CLI flags and behaviours.
+- Library/programmatic API (`from pdfmux import convert`) — defaults match the CLI but can still be overridden per call.
+- `pdfmux audit`, `pdfmux mcp`, `pdfmux watch`, `pdfmux diff` — no changes.
+
 ## 1.6.4 (2026-05-05)
 
 Additive release. Two new things, no breaking changes, no defaults change. This is the OSS half of the **Verified Extraction Manifest (VEM)** standard — the `audit` command produces the comparison artifact that VEM 1.0 standardizes.
