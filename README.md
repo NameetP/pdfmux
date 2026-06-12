@@ -134,6 +134,36 @@ chunks = pdfmux.chunk("report.pdf", max_tokens=500)    # RAG-ready chunks
 
 > **Don't wrap pdfmux with your own pypdf/pdfplumber fallback.** pdfmux already routes per page through PyMuPDF → RapidOCR → vision LLM. PyMuPDF tolerates malformed PDFs that pypdf rejects ("Stream has ended unexpectedly"), so a downstream pypdf fallback turns recoverable PDFs into failures. Trust the router; check the confidence score on the result.
 
+## Integrations
+
+First-class loaders for both major RAG frameworks. Each returns one document per pdfmux chunk with `source`, `title`, `page_start`, `page_end`, `tokens`, and `confidence` in metadata — so you can drop or re-rank low-confidence chunks before they reach your index.
+
+**LangChain** — [`langchain-pdfmux`](https://pypi.org/project/langchain-pdfmux/)
+
+```bash
+pip install langchain-pdfmux
+```
+```python
+from langchain_pdfmux import PDFMuxLoader
+
+docs = PDFMuxLoader("report.pdf", quality="standard").load()
+for d in docs:
+    print(d.metadata["confidence"], d.metadata["title"])
+```
+
+Accepts a file or a directory (`glob="*.pdf"`). `lazy_load()` streams documents for large batches.
+
+**LlamaIndex** — [`llama-index-readers-pdfmux`](https://pypi.org/project/llama-index-readers-pdfmux/)
+
+```bash
+pip install llama-index-readers-pdfmux
+```
+```python
+from llama_index.readers.pdfmux import PDFMuxReader
+
+docs = PDFMuxReader(quality="standard").load_data("report.pdf")
+```
+
 ## Architecture
 
 ```
