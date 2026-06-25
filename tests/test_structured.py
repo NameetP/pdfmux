@@ -363,7 +363,7 @@ class TestJSONStructuredOutput:
             quality="fast",
         )
         data = json.loads(result.text)
-        assert data["schema_version"] == "1.1.0"
+        assert data["schema_version"] == "1.2.0"
 
         # Should have key_values if any were found
         if "key_values" in data:

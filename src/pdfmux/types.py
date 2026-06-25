@@ -98,6 +98,7 @@ class PageResult:
     key_values: tuple[KeyValuePair, ...] = ()
     cost_usd: float = 0.0
     tokens_used: int = 0
+    decision: "PageDecision | None" = None  # per-page decision trace (standard mode)
 
     @property
     def char_count(self) -> int:
@@ -154,6 +155,42 @@ class WeakRegion:
     page_num: int  # 0-indexed
     bbox: tuple[float, float, float, float]  # (x0, y0, x1, y1)
     reason: str  # why this region was flagged
+
+
+@dataclass(frozen=True)
+class RepairAttempt:
+    """One escalation/repair attempt on a page, recorded in the decision trace.
+
+    Captures both accepted and *rejected* repair candidates so the decision
+    trace is inspectable: which engine was tried, the audit score before and
+    after, whether the candidate was accepted, and why.
+    """
+
+    stage: str  # "region_ocr" | "full_ocr" | "vision" | ...
+    extractor: str  # engine that produced the candidate
+    score_before: float  # audit score of the page before this attempt
+    score_after: float  # audit score of the candidate
+    accepted: bool  # did the candidate replace/augment the page?
+    reason: str  # why accepted or rejected
+
+
+@dataclass(frozen=True)
+class PageDecision:
+    """Persisted per-page decision trace: audit -> budget -> cascade outcomes.
+
+    Records why each page was accepted as-is or escalated for reprocessing,
+    including budget eligibility and (when populated) each repair attempt's
+    accept/reject outcome. Emitted in the JSON output under ``decision_trace``.
+    """
+
+    page_num: int  # 0-indexed
+    audit_class: str  # "good" | "bad" | "empty" — the non-OCR audit class
+    audit_score: float  # 0.0-1.0 — the non-OCR audit confidence
+    budget_eligible: bool  # was this page within the recognition budget?
+    budget_reason: str  # why eligible / skipped
+    final_extractor: str  # engine that produced the page's final text
+    ocr_applied: bool  # did any recognition engine run on this page?
+    attempts: tuple[RepairAttempt, ...] = ()  # cascade attempts (accepted + rejected)
 
 
 @dataclass(frozen=True)

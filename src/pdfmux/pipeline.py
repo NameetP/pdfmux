@@ -16,7 +16,7 @@ import logging
 import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from pdfmux.audit import (
@@ -28,9 +28,11 @@ from pdfmux.detect import PDFClassification, classify
 from pdfmux.errors import FileError, FormatError, OCRTimeoutError
 from pdfmux.types import (
     OutputFormat,
+    PageDecision,
     PageQuality,
     PageResult,
     Quality,
+    RepairAttempt,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,6 +68,7 @@ class ConversionResult:
     warnings: list[str]
     classification: PDFClassification
     ocr_pages: list[int] = field(default_factory=list)
+    decision_trace: list = field(default_factory=list)  # per-page decision records (JSON-able dicts)
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +278,7 @@ def process(
                             extractor=p.extractor + "+image_ocr",
                             image_count=p.image_count,
                             tables=p.tables,
+                            decision=p.decision,
                         )
                         logger.info("Image table OCR: page %d", p.page_num)
                         break  # one table per page max
@@ -314,7 +318,11 @@ def process(
                     key_values=p.key_values,
                     cost_usd=p.cost_usd,
                     tokens_used=p.tokens_used,
+                    decision=p.decision,
                 )
+
+    # Step 3.7: Collect the per-page decision trace (audit → budget → outcome).
+    decision_trace = [asdict(p.decision) for p in pages if p.decision is not None]
 
     # Step 4: Build the merged text
     merged_text = "\n\n".join(p.text for p in pages if p.text.strip())
@@ -347,6 +355,7 @@ def process(
         tables=structured_tables,
         key_values=structured_kvs,
         structured=structured_output,
+        decision_trace=decision_trace,
     )
 
     # Cleanup: close cached PDF handles
@@ -366,6 +375,7 @@ def process(
         warnings=warnings,
         classification=classification,
         ocr_pages=ocr_pages,
+        decision_trace=decision_trace,
     )
 
     # Persist to the smart cache for next time.
@@ -933,10 +943,14 @@ def _multipass_extract(
     # Pass 1: Fast extract + audit
     audit = audit_document(file_path)
 
-    # Convert audit results to PageResult objects
+    # Convert audit results to PageResult objects, attaching a per-page
+    # decision trace (audit class + score). Budget/cascade outcomes are filled
+    # in below for flagged pages; "good" pages are final here, so the all-good
+    # fast-path return still carries a complete trace.
     fast_pages: list[PageResult] = []
     for pa in audit.pages:
         confidence = score_page(pa.text, pa.image_count)
+        is_good = pa.quality == "good"
         fast_pages.append(
             PageResult(
                 page_num=pa.page_num,
@@ -945,6 +959,19 @@ def _multipass_extract(
                 quality=PageQuality(pa.quality),
                 extractor="pymupdf4llm",
                 image_count=pa.image_count,
+                decision=PageDecision(
+                    page_num=pa.page_num,
+                    audit_class=pa.quality,
+                    audit_score=confidence,
+                    budget_eligible=is_good,
+                    budget_reason=(
+                        "good page — no escalation needed"
+                        if is_good
+                        else "flagged for reprocessing — pending budget"
+                    ),
+                    final_extractor="pymupdf4llm",
+                    ocr_applied=False,
+                ),
             )
         )
 
@@ -1101,24 +1128,70 @@ def _multipass_extract(
 
         _fitz_doc = _fitz.open(str(file_path))
 
+    flagged = set(audit.bad_pages) | set(audit.empty_pages)
+    eligible_set = set(pages_needing_ocr)
+
     for fp in fast_pages:
-        if fp.page_num in ocr_results:
-            ocr_text = ocr_results[fp.page_num]
-            if fp.page_num < len(_fitz_doc):
-                ocr_text = _inject_headings(ocr_text, _fitz_doc[fp.page_num])
+        pn = fp.page_num
+        cls = fp.quality.value
+        if pn not in flagged:
+            b_elig, b_reason = True, "good page — no escalation needed"
+        elif pn in eligible_set:
+            b_elig = True
+            b_reason = f"{cls} page — within OCR budget ({effective_budget:.0%})"
+        else:
+            b_elig = False
+            b_reason = f"{cls} page — dropped by OCR budget ({effective_budget:.0%})"
+
+        if pn in ocr_results:
+            ocr_text = ocr_results[pn]
+            if pn < len(_fitz_doc):
+                ocr_text = _inject_headings(ocr_text, _fitz_doc[pn])
+            new_conf = score_page(ocr_text, fp.image_count)
+            attempt = RepairAttempt(
+                stage="ocr",
+                extractor=ocr_name or "ocr",
+                score_before=fp.confidence,
+                score_after=new_conf,
+                accepted=True,
+                reason="recovered text via OCR",
+            )
             merged_pages.append(
                 PageResult(
-                    page_num=fp.page_num,
+                    page_num=pn,
                     text=ocr_text,
-                    confidence=score_page(ocr_text, fp.image_count),
+                    confidence=new_conf,
                     quality=PageQuality.GOOD,
                     extractor=ocr_name or "ocr",
                     image_count=fp.image_count,
                     ocr_applied=True,
+                    decision=PageDecision(
+                        page_num=pn,
+                        audit_class=cls,
+                        audit_score=fp.confidence,
+                        budget_eligible=b_elig,
+                        budget_reason=b_reason,
+                        final_extractor=ocr_name or "ocr",
+                        ocr_applied=True,
+                        attempts=(attempt,),
+                    ),
                 )
             )
         else:
-            merged_pages.append(fp)
+            merged_pages.append(
+                replace(
+                    fp,
+                    decision=PageDecision(
+                        page_num=pn,
+                        audit_class=cls,
+                        audit_score=fp.confidence,
+                        budget_eligible=b_elig,
+                        budget_reason=b_reason,
+                        final_extractor=fp.extractor,
+                        ocr_applied=False,
+                    ),
+                )
+            )
 
     # Build extractor name
     n_ocr = len(ocr_page_list)
@@ -1244,6 +1317,7 @@ def _format_output(
     tables: list[dict] | None = None,
     key_values: list[dict] | None = None,
     structured: dict | None = None,
+    decision_trace: list | None = None,
 ) -> str:
     """Format the processed text into the requested output format."""
     if output_format == OutputFormat.MARKDOWN:
@@ -1273,6 +1347,7 @@ def _format_output(
             tables=tables,
             key_values=key_values,
             structured=structured,
+            decision_trace=decision_trace,
         )
 
     if output_format == OutputFormat.LLM:

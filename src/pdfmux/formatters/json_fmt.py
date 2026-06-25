@@ -26,6 +26,7 @@ def format_json(
     tables: list | None = None,
     key_values: list | None = None,
     structured: dict | None = None,
+    decision_trace: list | None = None,
 ) -> str:
     """Format extracted text as structured JSON with locked schema.
 
@@ -57,7 +58,7 @@ def format_json(
         pages = [text]
 
     output: dict = {
-        "schema_version": "1.1.0",
+        "schema_version": "1.2.0",
         "source": source,
         "converter": "pdfmux",
         "extractor": extractor,
@@ -79,6 +80,11 @@ def format_json(
         output["key_values"] = key_values
     if structured:
         output["structured"] = structured
+
+    # Per-page decision trace (audit class/score → budget verdict → cascade
+    # outcomes, including rejected repair attempts). Additive since schema 1.2.0.
+    if decision_trace:
+        output["decision_trace"] = decision_trace
 
     return json.dumps(output, indent=2, ensure_ascii=False)
 
