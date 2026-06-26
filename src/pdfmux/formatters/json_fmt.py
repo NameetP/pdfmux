@@ -9,6 +9,13 @@ from __future__ import annotations
 import json
 import re
 
+# Single source of truth for the JSON output schema version. Bump this
+# whenever the JSON shape changes (new/renamed fields, changed semantics).
+# The result cache (src/pdfmux/result_cache.py) folds this value into its
+# cache key so a bump invalidates pre-bump entries instead of serving stale
+# results that carry the old schema_version or lack newly-added fields.
+SCHEMA_VERSION = "1.4.0"
+
 # Strip control characters except \n, \r, \t — these break JSON parsers
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
@@ -59,7 +66,7 @@ def format_json(
         pages = [text]
 
     output: dict = {
-        "schema_version": "1.4.0",
+        "schema_version": SCHEMA_VERSION,
         "source": source,
         "converter": "pdfmux",
         "policy_id": policy_id or "",

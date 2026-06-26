@@ -1,15 +1,21 @@
-"""Smart result cache — keyed by (file_hash, quality, format, schema).
+"""Smart result cache — keyed by (file_hash, quality, format, schema, schema_version).
 
 Avoids re-processing the same PDF when nothing has changed. The cache key
 includes the SHA-256 of the file contents plus the extraction parameters,
 so any change to the file or to the extraction request produces a fresh
 result.
 
+The key also folds in the JSON output ``schema_version`` (the single source
+of truth in ``pdfmux.formatters.json_fmt``). A schema bump (e.g. 1.2.0 →
+1.3.0) therefore invalidates every prior entry rather than serving a warm
+result that still carries the old schema_version or lacks newly-added
+fields (decision_trace, provenance_tier, …).
+
 Cache layout::
 
     ~/.cache/pdfmux/results/
-        <hash>__<quality>__<format>__<schema_hash>.json   ← entries
-        index.json                                        ← LRU + metadata
+        <hash>__<quality>__<format>__<schema_hash>__sv<ver_hash>.json  ← entries
+        index.json                                                    ← LRU + metadata
 
 Configuration via environment variables:
 
@@ -150,18 +156,44 @@ def _normalise_schema(schema: str | None) -> str:
     return "preset:" + schema
 
 
+def _schema_version() -> str:
+    """Current JSON output schema version (the single source of truth).
+
+    Read lazily from :mod:`pdfmux.formatters.json_fmt` so that bumping the
+    constant there automatically busts cached entries via the cache key,
+    with no second place to update. The import is local to keep cache
+    construction independent of formatter import order, and resilient: if
+    the constant is ever missing we fall back to ``"unknown"`` (which still
+    differs from any real version, so it errs toward a miss, never a stale
+    hit).
+    """
+    try:
+        from pdfmux.formatters.json_fmt import SCHEMA_VERSION
+
+        return str(SCHEMA_VERSION)
+    except Exception:  # pragma: no cover - defensive; formatter import shouldn't fail
+        return "unknown"
+
+
 def _build_key(
     *,
     pdf_hash: str,
     quality: str,
     output_format: str,
     schema: str | None,
+    schema_version: str,
 ) -> tuple[str, str]:
-    """Return (filename, composite_key_str) for an entry."""
+    """Return (filename, composite_key_str) for an entry.
+
+    ``schema_version`` is folded into both the composite lookup key and the
+    on-disk filename so that a schema bump produces a clean miss rather than
+    serving a pre-bump result.
+    """
     schema_token = _normalise_schema(schema)
-    composite = f"{pdf_hash}|{quality}|{output_format}|{schema_token}"
+    composite = f"{pdf_hash}|{quality}|{output_format}|{schema_token}|{schema_version}"
     short_schema = _hash_str(schema_token)[:8]
-    fname = f"{pdf_hash}__{quality}__{output_format}__{short_schema}.json"
+    short_version = _hash_str(schema_version)[:6]
+    fname = f"{pdf_hash}__{quality}__{output_format}__{short_schema}__sv{short_version}.json"
     return fname, composite
 
 
@@ -209,6 +241,7 @@ def _dict_to_result(data: dict[str, Any]) -> Any:
         warnings=list(data.get("warnings") or []),
         classification=classification,
         ocr_pages=list(data.get("ocr_pages") or []),
+        decision_trace=list(data.get("decision_trace") or []),
     )
 
 
@@ -228,6 +261,7 @@ class _Entry:
     size_bytes: int
     created_at: float
     last_used_at: float
+    schema_version: str = ""  # default keeps pre-bump index.json files loadable
     hits: int = 0
 
 
@@ -323,6 +357,7 @@ class ResultCache:
             quality=quality,
             output_format=output_format,
             schema=schema,
+            schema_version=_schema_version(),
         )
 
         with self._lock:
@@ -378,11 +413,13 @@ class ResultCache:
             pdf_hash = file_hash(file_path)
         except OSError:
             return
+        schema_version = _schema_version()
         fname, composite = _build_key(
             pdf_hash=pdf_hash,
             quality=quality,
             output_format=output_format,
             schema=schema,
+            schema_version=schema_version,
         )
 
         try:
@@ -414,6 +451,7 @@ class ResultCache:
                 size_bytes=size_bytes,
                 created_at=now,
                 last_used_at=now,
+                schema_version=schema_version,
                 hits=0,
             )
             self._enforce_size_limit()

@@ -13,7 +13,11 @@ from pdfmux.pipeline import ConversionResult
 from pdfmux.result_cache import ResultCache, file_hash, reset_default_cache
 
 
-def _make_result(text: str = "hello world", pages: int = 2) -> ConversionResult:
+def _make_result(
+    text: str = "hello world",
+    pages: int = 2,
+    decision_trace: list | None = None,
+) -> ConversionResult:
     return ConversionResult(
         text=text,
         format="markdown",
@@ -27,6 +31,7 @@ def _make_result(text: str = "hello world", pages: int = 2) -> ConversionResult:
             confidence=0.95,
         ),
         ocr_pages=[1],
+        decision_trace=decision_trace if decision_trace is not None else [],
     )
 
 
@@ -76,6 +81,26 @@ def test_get_put_roundtrip(cache: ResultCache, digital_pdf: Path) -> None:
     assert fetched.classification.page_count == result.classification.page_count
 
 
+def test_roundtrip_preserves_decision_trace(cache: ResultCache, digital_pdf: Path) -> None:
+    """A cache hit must preserve the per-page decision_trace.
+
+    ``_result_to_dict`` writes decision_trace to disk via ``asdict``, so a
+    cache hit that rebuilt the result without it would silently drop the
+    per-page decision/provenance records from JSON output.
+    """
+    trace = [
+        {"page": 1, "audit_class": "clean", "provenance_tier": "native", "cascade": []},
+        {"page": 2, "audit_class": "suspect", "provenance_tier": "region", "cascade": ["ocr"]},
+    ]
+    cache.put(
+        digital_pdf, "standard", "json", None, _make_result("with-trace", decision_trace=trace)
+    )
+
+    fetched = cache.get(digital_pdf, "standard", "json")
+    assert fetched is not None
+    assert fetched.decision_trace == trace
+
+
 def test_key_separates_quality_format_schema(cache: ResultCache, digital_pdf: Path) -> None:
     a = _make_result("A")
     b = _make_result("B")
@@ -91,6 +116,39 @@ def test_key_separates_quality_format_schema(cache: ResultCache, digital_pdf: Pa
     assert cache.get(digital_pdf, "fast", "markdown").text == "B"
     assert cache.get(digital_pdf, "standard", "json").text == "C"
     assert cache.get(digital_pdf, "standard", "markdown", "preset_x").text == "D"
+
+
+def test_cache_miss_on_schema_version_bump(
+    cache: ResultCache, digital_pdf: Path, monkeypatch
+) -> None:
+    """A JSON schema_version bump must invalidate warm entries.
+
+    The cache key folds in the current schema_version (single source of
+    truth: ``pdfmux.formatters.json_fmt.SCHEMA_VERSION``). Without this, a
+    user with a warm cache gets a pre-bump result served after a schema
+    change — wrong schema_version, missing new fields like decision_trace /
+    provenance_tier — which previously masked real behaviour in back-to-back
+    eval runs.
+    """
+    import pdfmux.formatters.json_fmt as json_fmt
+
+    # Warm the cache under the current schema.
+    monkeypatch.setattr(json_fmt, "SCHEMA_VERSION", "1.3.0")
+    cache.put(digital_pdf, "standard", "json", None, _make_result("schema-1.3"))
+    assert cache.get(digital_pdf, "standard", "json").text == "schema-1.3"
+
+    # Bump the schema (1.3.0 -> 1.4.0): the prior entry must now MISS.
+    monkeypatch.setattr(json_fmt, "SCHEMA_VERSION", "1.4.0")
+    assert cache.get(digital_pdf, "standard", "json") is None
+
+    # A fresh extraction is cached independently under the new schema...
+    cache.put(digital_pdf, "standard", "json", None, _make_result("schema-1.4"))
+    assert cache.get(digital_pdf, "standard", "json").text == "schema-1.4"
+
+    # ...and entries are keyed per-version, not overwritten: rolling the
+    # constant back returns the original 1.3.0 result, never the 1.4.0 one.
+    monkeypatch.setattr(json_fmt, "SCHEMA_VERSION", "1.3.0")
+    assert cache.get(digital_pdf, "standard", "json").text == "schema-1.3"
 
 
 def test_cache_miss_when_file_changes(cache: ResultCache, tmp_path: Path) -> None:
