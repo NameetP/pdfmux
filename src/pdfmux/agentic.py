@@ -18,6 +18,7 @@ import os
 import time
 from pathlib import Path
 
+from pdfmux.audit import accept_repair
 from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,20 @@ def agentic_improve(
         still_low = []
         for idx, original_page in low_confidence_pages:
             re_page = _find_page(re_extracted, original_page.page_num)
-            if re_page and re_page.confidence > original_page.confidence:
+            # Unified monotonic repair guard: the re-extraction is a full
+            # replacement, so it must clear the calibrated audit-delta gate
+            # (and not trip a hard-fail or the trusted-native bar). This is the
+            # same gate the multi-pass cascade uses — replacing the old raw
+            # confidence comparison that could disagree with text quality.
+            accepted = False
+            if re_page is not None:
+                accepted, _sb, _sa, _reason = accept_repair(
+                    original_page.text,
+                    re_page.text,
+                    image_count=original_page.image_count,
+                    additive=False,
+                )
+            if re_page is not None and accepted:
                 improved[idx] = re_page
                 logger.debug(
                     "Page %d improved: %.2f → %.2f (%s → %s)",

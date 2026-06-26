@@ -13,9 +13,20 @@ from pdfmux.agentic import (
 )
 from pdfmux.types import PageQuality, PageResult
 
+# The acceptance gate (accept_repair) re-scores text with the calibrated audit
+# scorer, so test pages need realistic text — not 1-word stubs — for the gate
+# to distinguish a good extraction from a bad one. GOOD_TEXT scores ~1.0;
+# GARBLED_TEXT (mojibake + low alpha ratio) scores low.
+GOOD_TEXT = (
+    "Introduction. This document describes the quarterly results in clear prose. "
+    "Revenue grew steadily across all regions and the team shipped on schedule. "
+    "The following sections detail the methodology and the supporting evidence."
+)
+GARBLED_TEXT = "â€™â€ Ã© 12 34 $$ %% â€™â€ Ã¨ 99 00 ## â€™ Ã© â€ 11 22 33 $$ %%%"
+
 
 def _make_page(
-    page_num: int, confidence: float, text: str = "Some text", extractor: str = "pymupdf"
+    page_num: int, confidence: float, text: str = GOOD_TEXT, extractor: str = "pymupdf"
 ) -> PageResult:
     return PageResult(
         page_num=page_num,
@@ -52,9 +63,9 @@ class TestAgenticImprove:
 
     def test_improves_low_confidence_page(self):
         """Should replace low-confidence page with better result."""
-        pages = [_make_page(0, 0.95), _make_page(1, 0.40, text="garbled")]
+        pages = [_make_page(0, 0.95), _make_page(1, 0.40, text=GARBLED_TEXT)]
 
-        better_page = _make_page(1, 0.88, text="clean text", extractor="docling")
+        better_page = _make_page(1, 0.88, text=GOOD_TEXT, extractor="docling")
 
         with (
             patch("pdfmux.agentic._get_fallback_extractors", return_value=["docling"]),
@@ -68,9 +79,9 @@ class TestAgenticImprove:
 
     def test_keeps_original_if_fallback_worse(self):
         """Don't replace if re-extraction is worse."""
-        pages = [_make_page(0, 0.60, text="somewhat ok")]
+        pages = [_make_page(0, 0.60, text=GOOD_TEXT)]
 
-        worse_page = _make_page(0, 0.30, text="worse", extractor="rapidocr")
+        worse_page = _make_page(0, 0.30, text=GARBLED_TEXT, extractor="rapidocr")
 
         with (
             patch("pdfmux.agentic._get_fallback_extractors", return_value=["rapidocr"]),
@@ -112,9 +123,9 @@ class TestAgenticImprove:
 
     def test_handles_fallback_failure(self):
         """Should continue to next fallback if one fails."""
-        pages = [_make_page(0, 0.40)]
+        pages = [_make_page(0, 0.40, text=GARBLED_TEXT)]
 
-        better = _make_page(0, 0.90, extractor="llm")
+        better = _make_page(0, 0.90, text=GOOD_TEXT, extractor="llm")
 
         def mock_extract(fp, ext_name, pn):
             if ext_name == "docling":
@@ -134,13 +145,13 @@ class TestAgenticImprove:
         """Only re-extracts pages that need it."""
         pages = [
             _make_page(0, 0.95),  # good
-            _make_page(1, 0.40),  # bad
+            _make_page(1, 0.40, text=GARBLED_TEXT),  # bad
             _make_page(2, 0.92),  # good
-            _make_page(3, 0.30),  # bad
+            _make_page(3, 0.30, text=GARBLED_TEXT),  # bad
         ]
 
         def mock_extract(fp, ext_name, page_nums):
-            return [_make_page(pn, 0.85, extractor="docling") for pn in page_nums]
+            return [_make_page(pn, 0.85, text=GOOD_TEXT, extractor="docling") for pn in page_nums]
 
         with (
             patch("pdfmux.agentic._get_fallback_extractors", return_value=["docling"]),

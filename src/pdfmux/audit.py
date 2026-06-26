@@ -14,6 +14,7 @@ Confidence scoring uses 5 concrete checks per page:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,20 @@ GOOD_TEXT_THRESHOLD = 200  # chars — above this, page is probably fine
 MINIMAL_TEXT_THRESHOLD = 50  # chars — below this with images = bad
 EMPTY_TEXT_THRESHOLD = 20  # chars — below this = empty regardless
 PAGE_WINDOW = 50  # pages per batch for windowed processing
+
+# --- Monotonic repair guard (§5.8) ---------------------------------------
+# A page's native text is "trusted" once its audit score clears this bar; a
+# trusted span may only be *augmented* (region OCR), never wholesale-replaced
+# by full-page OCR or an LLM — that path can only ever degrade good text.
+NATIVE_TRUST_THRESHOLD = float(os.environ.get("PDFMUX_NATIVE_TRUST", "0.80"))
+# A repair candidate is accepted only if it beats the original audit score by
+# more than this margin. Default 0.0 = strictly-better. Raise it to demand a
+# bigger improvement before disturbing the existing text.
+REPAIR_MARGIN = float(os.environ.get("PDFMUX_REPAIR_MARGIN", "0.0"))
+# Hard-fail tolerances — a candidate that trips any of these is rejected
+# regardless of its audit-score delta (it degraded a signal we trust).
+_ALPHA_COLLAPSE_DROP = 0.25  # alphabetic-ratio drop that signals OCR garbage
+_SUSPICIOUS_SHRINK_FRACTION = 0.50  # full replacement losing >50% of text
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +151,173 @@ def score_page(text: str, image_count: int = 0) -> float:
         score -= 0.05
 
     return max(0.0, min(1.0, score))
+
+
+# ---------------------------------------------------------------------------
+# Monotonic repair guard (§5.8) — the single accept/reject gate for every
+# re-extraction candidate (region OCR, full-page OCR, vision LLM, agentic).
+#
+# Three conjoined conditions, in order:
+#   1. Additive-patch-only for trusted native spans — a high-scoring native
+#      page may only be *augmented*, never wholesale-replaced.
+#   2. Hard-fail signals — reject if the candidate degrades a trusted signal
+#      (introduces mojibake, collapses the alpha ratio, suspiciously shortens,
+#      or loses headings/tables) regardless of the score delta.
+#   3. Calibrated audit-delta gate — accept only if the candidate's audit
+#      score strictly beats the original's by more than REPAIR_MARGIN.
+# Every call returns the before/after scores and a reason so the caller can
+# record the attempt in the decision trace, accepted or rejected.
+# ---------------------------------------------------------------------------
+
+_HEADING_RE = re.compile(r"^#+\s", re.MULTILINE)
+
+
+def _alpha_ratio(text: str) -> float:
+    """Fraction of non-whitespace characters that are letters (0.0 if none)."""
+    non_space = re.sub(r"\s", "", text)
+    if not non_space:
+        return 0.0
+    return sum(1 for c in non_space if c.isalpha()) / len(non_space)
+
+
+def _heading_count(text: str) -> int:
+    """Number of markdown heading lines."""
+    return len(_HEADING_RE.findall(text))
+
+
+def _pipe_table_rows(text: str) -> int:
+    """Number of markdown pipe-table rows (lines starting and ending with '|')."""
+    return sum(
+        1
+        for line in text.splitlines()
+        if line.strip().startswith("|") and line.strip().endswith("|")
+    )
+
+
+def repair_score_delta(before: str, after: str, image_count: int = 0) -> tuple[float, float]:
+    """Audit scores of the original and candidate text: ``(score_before, score_after)``.
+
+    The single calibrated signal both extraction paths now share — replacing
+    the old char-length and raw-confidence comparisons that could disagree.
+    """
+    return score_page(before, image_count), score_page(after, image_count)
+
+
+def _repair_hard_fail(before: str, after: str) -> str | None:
+    """Return a rejection reason if the candidate degrades a trusted signal, else None.
+
+    These checks fire regardless of the audit-score delta: a candidate can post
+    a higher score while still throwing away structure or injecting garbage, and
+    we never want that to overwrite the original.
+    """
+    before_s, after_s = before.strip(), after.strip()
+
+    # Introduces mojibake the original didn't have.
+    before_moji = len(_MOJIBAKE_RE.findall(before))
+    after_moji = len(_MOJIBAKE_RE.findall(after))
+    if after_moji > before_moji:
+        return f"candidate introduced mojibake ({before_moji} → {after_moji})"
+
+    # Collapses the alphabetic ratio — a hallmark of OCR garbage replacing prose.
+    before_alpha = _alpha_ratio(before)
+    after_alpha = _alpha_ratio(after)
+    if before_alpha > 0 and after_alpha < before_alpha - _ALPHA_COLLAPSE_DROP:
+        return f"candidate collapsed alpha ratio ({before_alpha:.2f} → {after_alpha:.2f})"
+
+    # Suspiciously shortens a non-trivial original (a full replacement that
+    # dropped most of the text is almost always a worse extraction).
+    if len(before_s) >= EMPTY_TEXT_THRESHOLD and len(after_s) < _SUSPICIOUS_SHRINK_FRACTION * len(
+        before_s
+    ):
+        return f"candidate dropped >{int((1 - _SUSPICIOUS_SHRINK_FRACTION) * 100)}% of text"
+
+    # Loses headings or tables the original had.
+    if _heading_count(after) < _heading_count(before):
+        return "candidate lost headings present in the original"
+    if _pipe_table_rows(after) < _pipe_table_rows(before):
+        return "candidate lost table rows present in the original"
+
+    return None
+
+
+def accept_repair(
+    original: str,
+    candidate: str,
+    *,
+    image_count: int = 0,
+    additive: bool = False,
+    margin: float = REPAIR_MARGIN,
+    trust_threshold: float = NATIVE_TRUST_THRESHOLD,
+) -> tuple[bool, float, float, str]:
+    """The monotonic repair guard. Returns ``(accepted, score_before, score_after, reason)``.
+
+    Args:
+        original: The page's current text.
+        candidate: The re-extraction candidate to consider.
+        image_count: Image count, forwarded to the audit scorer.
+        additive: True when the candidate *augments* the original (region OCR
+            appends recovered text and preserves the native span). Additive
+            candidates are exempt from the trusted-native replacement bar, since
+            they cannot overwrite good text — but they still face the hard-fail
+            and audit-delta checks.
+        margin: Minimum audit-score improvement required to accept.
+        trust_threshold: Audit score above which native text is "trusted" and a
+            full (non-additive) replacement is barred.
+    """
+    score_before, score_after = repair_score_delta(original, candidate, image_count)
+
+    if not candidate.strip():
+        return False, score_before, score_after, "candidate produced no text"
+
+    # (1) Trusted native span — augment only, never wholesale-replace.
+    if not additive and score_before >= trust_threshold:
+        return (
+            False,
+            score_before,
+            score_after,
+            f"trusted native span (score {score_before:.2f} ≥ {trust_threshold:.2f}) — "
+            f"full replacement barred",
+        )
+
+    # (2) Hard-fail signals — reject a degrading candidate outright.
+    hard_fail = _repair_hard_fail(original, candidate)
+    if hard_fail is not None:
+        return False, score_before, score_after, hard_fail
+
+    # (3) Calibrated audit-delta gate. Both arms are monotonic — quality never
+    # decreases. An additive patch (region OCR) appends recovered text without
+    # touching the native span, so it only needs to be non-decreasing; a full
+    # replacement must *strictly* beat the original by the margin to earn the
+    # right to discard the existing text.
+    if additive:
+        if score_after >= score_before:
+            return (
+                True,
+                score_before,
+                score_after,
+                f"additive patch preserved audit score ({score_before:.2f} → {score_after:.2f})",
+            )
+        return (
+            False,
+            score_before,
+            score_after,
+            f"additive patch reduced audit score ({score_before:.2f} → {score_after:.2f})",
+        )
+
+    if score_after > score_before + margin:
+        return (
+            True,
+            score_before,
+            score_after,
+            f"audit score improved {score_before:.2f} → {score_after:.2f}",
+        )
+    return (
+        False,
+        score_before,
+        score_after,
+        f"audit score not improved beyond margin {margin:.2f} "
+        f"({score_before:.2f} → {score_after:.2f})",
+    )
 
 
 def compute_document_confidence(

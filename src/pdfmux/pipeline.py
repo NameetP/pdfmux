@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from pdfmux.audit import (
+    accept_repair,
     audit_document,
     compute_document_confidence,
     score_page,
@@ -993,6 +994,10 @@ def _multipass_extract(
     # plus the sub-page geometry (region bboxes) when the tier is "region".
     tier_by_page: dict[int, str] = {}
     regions_by_page: dict[int, list[WeakRegion]] = {}
+    # Monotonic repair guard: every candidate considered for a page — accepted
+    # AND rejected — is recorded here and attached to the page's decision trace.
+    # Retaining rejected patches is the cleanest differentiator of the trace.
+    attempts_by_page: dict[int, list[RepairAttempt]] = {}
     ocr_name = ""
     budget_warnings: list[str] = []
 
@@ -1039,7 +1044,28 @@ def _multipass_extract(
                     page_num,
                     page_audit.text,
                 )
-                if n_regions > 0 and len(merged.strip()) > len(page_audit.text.strip()):
+                if n_regions == 0:
+                    continue
+                # Region OCR is additive: it appends recovered image text and
+                # preserves the native span, so it faces the non-decreasing
+                # arm of the monotonic guard (hard-fail still screens garbage).
+                accepted, sb, sa, reason = accept_repair(
+                    page_audit.text,
+                    merged,
+                    image_count=page_audit.image_count,
+                    additive=True,
+                )
+                attempts_by_page.setdefault(page_num, []).append(
+                    RepairAttempt(
+                        stage="region_ocr",
+                        extractor="rapidocr",
+                        score_before=sb,
+                        score_after=sa,
+                        accepted=accepted,
+                        reason=reason,
+                    )
+                )
+                if accepted:
                     ocr_results[page_num] = merged
                     tier_by_page[page_num] = "region"
                     regions_by_page[page_num] = recovered_regions
@@ -1066,15 +1092,25 @@ def _multipass_extract(
                     continue
                 ocr_text = page_ocr.text
                 page_audit = audit.pages[page_num]
-
-                if page_audit.quality == "empty":
-                    if len(ocr_text.strip()) > 10:
-                        ocr_results[page_num] = ocr_text
-                        tier_by_page[page_num] = "page"
-                elif page_audit.quality == "bad":
-                    if len(ocr_text.strip()) > len(page_audit.text.strip()):
-                        ocr_results[page_num] = ocr_text
-                        tier_by_page[page_num] = "page"
+                accepted, sb, sa, reason = accept_repair(
+                    page_audit.text,
+                    ocr_text,
+                    image_count=page_audit.image_count,
+                    additive=False,
+                )
+                attempts_by_page.setdefault(page_num, []).append(
+                    RepairAttempt(
+                        stage="full_ocr",
+                        extractor="rapidocr",
+                        score_before=sb,
+                        score_after=sa,
+                        accepted=accepted,
+                        reason=reason,
+                    )
+                )
+                if accepted:
+                    ocr_results[page_num] = ocr_text
+                    tier_by_page[page_num] = "page"
 
             ocr_name = "rapidocr"
     except Exception:
@@ -1088,15 +1124,25 @@ def _multipass_extract(
                     ocr_pages_result = list(ocr_legacy.extract(file_path, pages=[page_num]))
                     ocr_text = ocr_pages_result[0].text if ocr_pages_result else ""
                     page_audit = audit.pages[page_num]
-
-                    if page_audit.quality == "empty":
-                        if len(ocr_text.strip()) > 10:
-                            ocr_results[page_num] = ocr_text
-                            tier_by_page[page_num] = "page"
-                    elif page_audit.quality == "bad":
-                        if len(ocr_text.strip()) > len(page_audit.text.strip()):
-                            ocr_results[page_num] = ocr_text
-                            tier_by_page[page_num] = "page"
+                    accepted, sb, sa, reason = accept_repair(
+                        page_audit.text,
+                        ocr_text,
+                        image_count=page_audit.image_count,
+                        additive=False,
+                    )
+                    attempts_by_page.setdefault(page_num, []).append(
+                        RepairAttempt(
+                            stage="full_ocr",
+                            extractor="surya",
+                            score_before=sb,
+                            score_after=sa,
+                            accepted=accepted,
+                            reason=reason,
+                        )
+                    )
+                    if accepted:
+                        ocr_results[page_num] = ocr_text
+                        tier_by_page[page_num] = "page"
 
                 ocr_name = "surya"
         except Exception:
@@ -1114,15 +1160,25 @@ def _multipass_extract(
                     llm_pages = list(llm.extract(file_path, pages=[page_num]))
                     llm_text = llm_pages[0].text if llm_pages else ""
                     page_audit = audit.pages[page_num]
-
-                    if page_audit.quality == "empty":
-                        if len(llm_text.strip()) > 10:
-                            ocr_results[page_num] = llm_text
-                            tier_by_page[page_num] = "llm"
-                    elif page_audit.quality == "bad":
-                        if len(llm_text.strip()) > len(page_audit.text.strip()):
-                            ocr_results[page_num] = llm_text
-                            tier_by_page[page_num] = "llm"
+                    accepted, sb, sa, reason = accept_repair(
+                        page_audit.text,
+                        llm_text,
+                        image_count=page_audit.image_count,
+                        additive=False,
+                    )
+                    attempts_by_page.setdefault(page_num, []).append(
+                        RepairAttempt(
+                            stage="vision",
+                            extractor="gemini",
+                            score_before=sb,
+                            score_after=sa,
+                            accepted=accepted,
+                            reason=reason,
+                        )
+                    )
+                    if accepted:
+                        ocr_results[page_num] = llm_text
+                        tier_by_page[page_num] = "llm"
 
                 if not ocr_name:
                     ocr_name = "gemini"
@@ -1162,6 +1218,9 @@ def _multipass_extract(
             b_elig = False
             b_reason = f"{cls} page — dropped by OCR budget ({effective_budget:.0%})"
 
+        # Every candidate considered for this page — accepted and rejected.
+        page_attempts = tuple(attempts_by_page.get(pn, ()))
+
         if pn in ocr_results:
             ocr_text = ocr_results[pn]
             if pn < len(_fitz_doc):
@@ -1170,14 +1229,6 @@ def _multipass_extract(
             tier = tier_by_page.get(pn, "page")
             page_regions = tuple(regions_by_page.get(pn, ()))
             region_bboxes = tuple(r.bbox for r in page_regions)
-            attempt = RepairAttempt(
-                stage="ocr",
-                extractor=ocr_name or "ocr",
-                score_before=fp.confidence,
-                score_after=new_conf,
-                accepted=True,
-                reason="recovered text via OCR",
-            )
             merged_pages.append(
                 PageResult(
                     page_num=pn,
@@ -1197,7 +1248,7 @@ def _multipass_extract(
                         budget_reason=b_reason,
                         final_extractor=ocr_name or "ocr",
                         ocr_applied=True,
-                        attempts=(attempt,),
+                        attempts=page_attempts,
                         provenance_tier=tier,
                         region_bboxes=region_bboxes,
                     ),
@@ -1205,6 +1256,8 @@ def _multipass_extract(
             )
         else:
             # Native (or budget-dropped) page — text is the digital extraction.
+            # Any rejected repair attempts are still retained on the trace: the
+            # page kept its native text *because* every candidate was rejected.
             merged_pages.append(
                 replace(
                     fp,
@@ -1217,6 +1270,7 @@ def _multipass_extract(
                         budget_reason=b_reason,
                         final_extractor=fp.extractor,
                         ocr_applied=False,
+                        attempts=page_attempts,
                         provenance_tier="native",
                     ),
                 )
