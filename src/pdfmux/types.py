@@ -98,7 +98,16 @@ class PageResult:
     key_values: tuple[KeyValuePair, ...] = ()
     cost_usd: float = 0.0
     tokens_used: int = 0
-    decision: "PageDecision | None" = None  # per-page decision trace (standard mode)
+    decision: PageDecision | None = None  # per-page decision trace (standard mode)
+    # Tiered provenance: which recognition tier produced this page's final text.
+    #   "native" → digital text, exact glyph geometry available
+    #   "region" → native text + OCR of weak image regions (bboxes in ``regions``)
+    #   "page"   → full-page OCR, geometry is page-level only
+    #   "llm"    → vision LLM, geometry is page-level only
+    # Default "page" deliberately under-claims: a bare PageResult of unknown
+    # origin asserts only page-level provenance, never spurious glyph geometry.
+    provenance_tier: str = "page"
+    regions: tuple[WeakRegion, ...] = ()  # OCR'd weak regions (only for "region" tier)
 
     @property
     def char_count(self) -> int:
@@ -191,6 +200,12 @@ class PageDecision:
     final_extractor: str  # engine that produced the page's final text
     ocr_applied: bool  # did any recognition engine run on this page?
     attempts: tuple[RepairAttempt, ...] = ()  # cascade attempts (accepted + rejected)
+    # Tiered provenance for the page's final text (mirrors PageResult.provenance_tier):
+    # "native" | "region" | "page" | "llm". region_bboxes holds the (x0,y0,x1,y1)
+    # geometry of OCR'd weak regions when tier == "region" — the only tier with
+    # sub-page geometry. Emitted in the JSON ``decision_trace`` (additive, schema 1.3.0).
+    provenance_tier: str = "page"
+    region_bboxes: tuple[tuple[float, float, float, float], ...] = ()
 
 
 @dataclass(frozen=True)

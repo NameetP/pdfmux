@@ -179,7 +179,7 @@ def region_ocr_page(
     file_path: str | Path,
     page_num: int,
     page_text: str,
-) -> tuple[str, int]:
+) -> tuple[str, int, list[WeakRegion]]:
     """Run region OCR on a single page and merge results.
 
     Convenience function that combines detect → OCR → merge.
@@ -190,11 +190,15 @@ def region_ocr_page(
         page_text: Existing text from fast extraction.
 
     Returns:
-        (merged_text, region_count) tuple.
+        ``(merged_text, region_count, recovered_regions)`` — the merged page
+        text, the number of regions that yielded text, and the WeakRegions
+        that actually contributed text (so callers can attach their bboxes as
+        sub-page provenance for the "region" tier). ``recovered_regions`` is
+        empty when nothing was recovered.
     """
     regions = detect_weak_regions(file_path, page_num)
     if not regions:
-        return page_text, 0
+        return page_text, 0, []
 
     region_texts = []
     for region in regions:
@@ -202,14 +206,15 @@ def region_ocr_page(
         region_texts.append(text)
 
     merged = merge_region_text(page_text, regions, region_texts)
-    n_recovered = sum(1 for t in region_texts if t.strip())
+    recovered_regions = [r for r, t in zip(regions, region_texts) if t.strip()]
+    n_recovered = len(recovered_regions)
 
     logger.info(
         f"Page {page_num}: region OCR recovered text from "
         f"{n_recovered}/{len(regions)} image regions"
     )
 
-    return merged, n_recovered
+    return merged, n_recovered, recovered_regions
 
 
 def _get_image_bboxes(page: fitz.Page) -> list[fitz.Rect]:

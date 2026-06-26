@@ -58,7 +58,7 @@ def format_json(
         pages = [text]
 
     output: dict = {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "source": source,
         "converter": "pdfmux",
         "extractor": extractor,
@@ -82,7 +82,10 @@ def format_json(
         output["structured"] = structured
 
     # Per-page decision trace (audit class/score → budget verdict → cascade
-    # outcomes, including rejected repair attempts). Additive since schema 1.2.0.
+    # outcomes, including rejected repair attempts). Each entry also carries
+    # tiered provenance — provenance_tier ("native"|"region"|"page"|"llm") plus
+    # region_bboxes (sub-page geometry, "region" tier only). Additive since 1.2.0;
+    # provenance fields added in 1.3.0.
     if decision_trace:
         output["decision_trace"] = decision_trace
 

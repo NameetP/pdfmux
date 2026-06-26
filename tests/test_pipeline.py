@@ -118,4 +118,4 @@ def test_process_json_has_schema_version(digital_pdf: Path) -> None:
     """JSON format should include the current schema_version."""
     result = process(digital_pdf, output_format="json")
     data = json.loads(result.text)
-    assert data["schema_version"] == "1.2.0"
+    assert data["schema_version"] == "1.3.0"

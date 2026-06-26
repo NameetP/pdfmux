@@ -33,6 +33,7 @@ from pdfmux.types import (
     PageResult,
     Quality,
     RepairAttempt,
+    WeakRegion,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class ConversionResult:
     warnings: list[str]
     classification: PDFClassification
     ocr_pages: list[int] = field(default_factory=list)
-    decision_trace: list = field(default_factory=list)  # per-page decision records (JSON-able dicts)
+    decision_trace: list = field(default_factory=list)  # per-page decision records (JSON dicts)
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +280,8 @@ def process(
                             image_count=p.image_count,
                             tables=p.tables,
                             decision=p.decision,
+                            provenance_tier=p.provenance_tier,
+                            regions=p.regions,
                         )
                         logger.info("Image table OCR: page %d", p.page_num)
                         break  # one table per page max
@@ -319,6 +322,8 @@ def process(
                     cost_usd=p.cost_usd,
                     tokens_used=p.tokens_used,
                     decision=p.decision,
+                    provenance_tier=p.provenance_tier,
+                    regions=p.regions,
                 )
 
     # Step 3.7: Collect the per-page decision trace (audit → budget → outcome).
@@ -959,6 +964,7 @@ def _multipass_extract(
                 quality=PageQuality(pa.quality),
                 extractor="pymupdf4llm",
                 image_count=pa.image_count,
+                provenance_tier="native",
                 decision=PageDecision(
                     page_num=pa.page_num,
                     audit_class=pa.quality,
@@ -971,6 +977,7 @@ def _multipass_extract(
                     ),
                     final_extractor="pymupdf4llm",
                     ocr_applied=False,
+                    provenance_tier="native",
                 ),
             )
         )
@@ -982,6 +989,10 @@ def _multipass_extract(
     # Pass 2: Re-extract bad/empty pages with OCR
     all_pages_needing_ocr = audit.bad_pages + audit.empty_pages
     ocr_results: dict[int, str] = {}
+    # Tiered provenance: which recognition tier produced each recovered page,
+    # plus the sub-page geometry (region bboxes) when the tier is "region".
+    tier_by_page: dict[int, str] = {}
+    regions_by_page: dict[int, list[WeakRegion]] = {}
     ocr_name = ""
     budget_warnings: list[str] = []
 
@@ -1023,13 +1034,15 @@ def _multipass_extract(
 
             for page_num in region_ocr_pages:
                 page_audit = audit.pages[page_num]
-                merged, n_regions = region_ocr_page(
+                merged, n_regions, recovered_regions = region_ocr_page(
                     file_path,
                     page_num,
                     page_audit.text,
                 )
                 if n_regions > 0 and len(merged.strip()) > len(page_audit.text.strip()):
                     ocr_results[page_num] = merged
+                    tier_by_page[page_num] = "region"
+                    regions_by_page[page_num] = recovered_regions
                     logger.info(f"Region OCR page {page_num}: recovered {n_regions} regions")
         except ImportError:
             logger.debug("Region OCR requires RapidOCR — falling back to full-page OCR")
@@ -1057,9 +1070,11 @@ def _multipass_extract(
                 if page_audit.quality == "empty":
                     if len(ocr_text.strip()) > 10:
                         ocr_results[page_num] = ocr_text
+                        tier_by_page[page_num] = "page"
                 elif page_audit.quality == "bad":
                     if len(ocr_text.strip()) > len(page_audit.text.strip()):
                         ocr_results[page_num] = ocr_text
+                        tier_by_page[page_num] = "page"
 
             ocr_name = "rapidocr"
     except Exception:
@@ -1077,9 +1092,11 @@ def _multipass_extract(
                     if page_audit.quality == "empty":
                         if len(ocr_text.strip()) > 10:
                             ocr_results[page_num] = ocr_text
+                            tier_by_page[page_num] = "page"
                     elif page_audit.quality == "bad":
                         if len(ocr_text.strip()) > len(page_audit.text.strip()):
                             ocr_results[page_num] = ocr_text
+                            tier_by_page[page_num] = "page"
 
                 ocr_name = "surya"
         except Exception:
@@ -1101,9 +1118,11 @@ def _multipass_extract(
                     if page_audit.quality == "empty":
                         if len(llm_text.strip()) > 10:
                             ocr_results[page_num] = llm_text
+                            tier_by_page[page_num] = "llm"
                     elif page_audit.quality == "bad":
                         if len(llm_text.strip()) > len(page_audit.text.strip()):
                             ocr_results[page_num] = llm_text
+                            tier_by_page[page_num] = "llm"
 
                 if not ocr_name:
                     ocr_name = "gemini"
@@ -1148,6 +1167,9 @@ def _multipass_extract(
             if pn < len(_fitz_doc):
                 ocr_text = _inject_headings(ocr_text, _fitz_doc[pn])
             new_conf = score_page(ocr_text, fp.image_count)
+            tier = tier_by_page.get(pn, "page")
+            page_regions = tuple(regions_by_page.get(pn, ()))
+            region_bboxes = tuple(r.bbox for r in page_regions)
             attempt = RepairAttempt(
                 stage="ocr",
                 extractor=ocr_name or "ocr",
@@ -1165,6 +1187,8 @@ def _multipass_extract(
                     extractor=ocr_name or "ocr",
                     image_count=fp.image_count,
                     ocr_applied=True,
+                    provenance_tier=tier,
+                    regions=page_regions,
                     decision=PageDecision(
                         page_num=pn,
                         audit_class=cls,
@@ -1174,13 +1198,17 @@ def _multipass_extract(
                         final_extractor=ocr_name or "ocr",
                         ocr_applied=True,
                         attempts=(attempt,),
+                        provenance_tier=tier,
+                        region_bboxes=region_bboxes,
                     ),
                 )
             )
         else:
+            # Native (or budget-dropped) page — text is the digital extraction.
             merged_pages.append(
                 replace(
                     fp,
+                    provenance_tier="native",
                     decision=PageDecision(
                         page_num=pn,
                         audit_class=cls,
@@ -1189,6 +1217,7 @@ def _multipass_extract(
                         budget_reason=b_reason,
                         final_extractor=fp.extractor,
                         ocr_applied=False,
+                        provenance_tier="native",
                     ),
                 )
             )
