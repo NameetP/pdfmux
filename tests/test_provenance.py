@@ -97,7 +97,7 @@ class TestTieredProvenance:
             region_bboxes=((50.0, 100.0, 250.0, 300.0),),
         )
         out = json.loads(format_json("some text", decision_trace=[asdict(decision)]))
-        assert out["schema_version"] == "1.3.0"
+        assert out["schema_version"] == "1.4.0"
         entry = out["decision_trace"][0]
         assert entry["provenance_tier"] == "region"
         assert entry["region_bboxes"] == [[50.0, 100.0, 250.0, 300.0]]

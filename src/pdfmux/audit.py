@@ -14,36 +14,40 @@ Confidence scoring uses 5 concrete checks per page:
 from __future__ import annotations
 
 import logging
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import pymupdf4llm
 
+from pdfmux.policy import DEFAULT_POLICY, Policy, load_policy
 from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
 
-# --- Thresholds ---
-GOOD_TEXT_THRESHOLD = 200  # chars — above this, page is probably fine
-MINIMAL_TEXT_THRESHOLD = 50  # chars — below this with images = bad
-EMPTY_TEXT_THRESHOLD = 20  # chars — below this = empty regardless
-PAGE_WINDOW = 50  # pages per batch for windowed processing
+# Single source of truth for every tunable is the Policy object (policy.py).
+# These module names are kept as backwards-compatible aliases derived from the
+# default policy; env-sensitive ones reflect the env-overridden active policy.
+_ACTIVE_POLICY = load_policy()
+
+# --- Thresholds (aliases of DEFAULT_POLICY) ---
+GOOD_TEXT_THRESHOLD = DEFAULT_POLICY.good_text_threshold
+MINIMAL_TEXT_THRESHOLD = DEFAULT_POLICY.minimal_text_threshold
+EMPTY_TEXT_THRESHOLD = DEFAULT_POLICY.empty_text_threshold
+PAGE_WINDOW = DEFAULT_POLICY.page_window
 
 # --- Monotonic repair guard (§5.8) ---------------------------------------
 # A page's native text is "trusted" once its audit score clears this bar; a
 # trusted span may only be *augmented* (region OCR), never wholesale-replaced
 # by full-page OCR or an LLM — that path can only ever degrade good text.
-NATIVE_TRUST_THRESHOLD = float(os.environ.get("PDFMUX_NATIVE_TRUST", "0.80"))
-# A repair candidate is accepted only if it beats the original audit score by
-# more than this margin. Default 0.0 = strictly-better. Raise it to demand a
-# bigger improvement before disturbing the existing text.
-REPAIR_MARGIN = float(os.environ.get("PDFMUX_REPAIR_MARGIN", "0.0"))
+# Env-overridable via PDFMUX_NATIVE_TRUST / PDFMUX_REPAIR_MARGIN (folded into
+# the active policy at load time).
+NATIVE_TRUST_THRESHOLD = _ACTIVE_POLICY.native_trust_threshold
+REPAIR_MARGIN = _ACTIVE_POLICY.repair_margin
 # Hard-fail tolerances — a candidate that trips any of these is rejected
 # regardless of its audit-score delta (it degraded a signal we trust).
-_ALPHA_COLLAPSE_DROP = 0.25  # alphabetic-ratio drop that signals OCR garbage
-_SUSPICIOUS_SHRINK_FRACTION = 0.50  # full replacement losing >50% of text
+_ALPHA_COLLAPSE_DROP = DEFAULT_POLICY.repair_alpha_collapse_drop
+_SUSPICIOUS_SHRINK_FRACTION = DEFAULT_POLICY.repair_shrink_fraction
 
 
 # ---------------------------------------------------------------------------
@@ -95,10 +99,12 @@ class DocumentAudit:
 _MOJIBAKE_RE = re.compile(r"â€|Ã©|Ã¨|â€™|ï¿½")
 
 
-def score_page(text: str, image_count: int = 0) -> float:
+def score_page(text: str, image_count: int = 0, *, policy: Policy = DEFAULT_POLICY) -> float:
     """Compute a confidence score for a single page's text (0.0–1.0).
 
-    Five checks, each can subtract from a starting score of 1.0:
+    Five checks, each can subtract from a starting score of 1.0. Every band and
+    penalty is read from ``policy`` (policy-as-data); the default policy
+    reproduces the historical hardcoded values exactly.
 
     1. Character density — is there enough text?
     2. Alphabetic ratio — is it meaningful text or garbage?
@@ -114,41 +120,44 @@ def score_page(text: str, image_count: int = 0) -> float:
 
     # 1. Character density
     char_count = len(stripped)
-    if char_count < EMPTY_TEXT_THRESHOLD:
+    if char_count < policy.empty_text_threshold:
         return 0.0  # effectively empty
-    elif char_count < MINIMAL_TEXT_THRESHOLD:
-        score -= 0.3
-    elif char_count < GOOD_TEXT_THRESHOLD:
-        score -= 0.1 if image_count == 0 else 0.2
+    elif char_count < policy.minimal_text_threshold:
+        score -= policy.density_penalty_minimal
+    elif char_count < policy.good_text_threshold:
+        if image_count == 0:
+            score -= policy.density_penalty_good_noimg
+        else:
+            score -= policy.density_penalty_good_img
 
     # 2. Alphabetic ratio — what fraction of non-space chars are letters?
     non_space = re.sub(r"\s", "", stripped)
     if non_space:
         alpha_count = sum(1 for c in non_space if c.isalpha())
         alpha_ratio = alpha_count / len(non_space)
-        if alpha_ratio < 0.3:
-            score -= 0.25  # mostly numbers/symbols/garbage
-        elif alpha_ratio < 0.5:
-            score -= 0.1
+        if alpha_ratio < policy.alpha_ratio_low:
+            score -= policy.alpha_penalty_low  # mostly numbers/symbols/garbage
+        elif alpha_ratio < policy.alpha_ratio_mid:
+            score -= policy.alpha_penalty_mid
 
-    # 3. Word structure — average word length should be 2-20
+    # 3. Word structure — average word length in normal range
     words = stripped.split()
     if words:
         avg_word_len = sum(len(w) for w in words) / len(words)
-        if avg_word_len < 2 or avg_word_len > 25:
-            score -= 0.15  # single chars or concatenated garbage
+        if avg_word_len < policy.word_len_min or avg_word_len > policy.word_len_max:
+            score -= policy.word_len_penalty  # single chars or concatenated garbage
 
     # 4. Whitespace sanity — excessive runs of spaces
     wide_spaces = len(re.findall(r"  {5,}", text))
-    if wide_spaces > 10:
-        score -= 0.1
+    if wide_spaces > policy.whitespace_run_count:
+        score -= policy.whitespace_penalty
 
     # 5. Encoding quality — mojibake detection
     mojibake_count = len(_MOJIBAKE_RE.findall(text))
-    if mojibake_count > 5:
-        score -= 0.2
+    if mojibake_count > policy.mojibake_high:
+        score -= policy.mojibake_penalty_high
     elif mojibake_count > 0:
-        score -= 0.05
+        score -= policy.mojibake_penalty_low
 
     return max(0.0, min(1.0, score))
 
@@ -325,6 +334,7 @@ def compute_document_confidence(
     *,
     ocr_page_count: int = 0,
     unrecovered_count: int = 0,
+    policy: Policy = DEFAULT_POLICY,
 ) -> tuple[float, list[str]]:
     """Content-weighted document confidence + warnings.
 
@@ -350,7 +360,7 @@ def compute_document_confidence(
     # an HTML-as-PDF or a blank page sails through with confidence 1.0.
     page_scores: list[float] = []
     for p in pages:
-        page_scores.append(score_page(p.text, p.image_count))
+        page_scores.append(score_page(p.text, p.image_count, policy=policy))
 
     # Content-weighted average over the *re-scored* per-page numbers.
     # Pages with zero text count as 0 weight (used to be max(1, ...) which
@@ -397,7 +407,7 @@ def compute_document_confidence(
     # Structure bonus — if any page has markdown headings
     has_structure = any(re.search(r"^#+\s", p.text, re.MULTILINE) for p in pages)
     if has_structure:
-        score += 0.03
+        score += policy.structure_bonus
 
     return max(0.0, min(1.0, score)), warnings
 

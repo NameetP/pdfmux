@@ -27,6 +27,7 @@ from pdfmux.audit import (
 )
 from pdfmux.detect import PDFClassification, classify
 from pdfmux.errors import FileError, FormatError, OCRTimeoutError
+from pdfmux.policy import DEFAULT_POLICY, load_policy, load_policy_file
 from pdfmux.types import (
     OutputFormat,
     PageDecision,
@@ -39,11 +40,16 @@ from pdfmux.types import (
 
 logger = logging.getLogger(__name__)
 
-# OCR budget: cap at 30% of document pages in standard mode
-OCR_BUDGET_RATIO = float(os.environ.get("PDFMUX_OCR_BUDGET", "0.30"))
+# Active extraction policy (env overrides folded in). Single source of truth for
+# every tunable; see policy.py. The two names below stay as backwards-compatible
+# aliases used by existing callers/tests.
+_ACTIVE_POLICY = load_policy()
+
+# OCR budget: cap at 30% of document pages in standard mode (PDFMUX_OCR_BUDGET).
+OCR_BUDGET_RATIO = _ACTIVE_POLICY.ocr_budget_ratio
 
 # Dynamic OCR budget threshold: >50% graphical pages = OCR everything
-IMAGE_HEAVY_THRESHOLD = 0.50
+IMAGE_HEAVY_THRESHOLD = DEFAULT_POLICY.image_heavy_threshold
 
 # --- Security limits ---
 # Clamp env-var inputs to >= 1 so a misconfigured value (zero, negative,
@@ -71,6 +77,7 @@ class ConversionResult:
     classification: PDFClassification
     ocr_pages: list[int] = field(default_factory=list)
     decision_trace: list = field(default_factory=list)  # per-page decision records (JSON dicts)
+    policy_id: str = DEFAULT_POLICY.policy_id  # versioned policy that produced this result
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +169,12 @@ def process(
         valid = ", ".join(q.value for q in Quality)
         raise FormatError(f"Unknown quality preset: {quality}. Valid presets: {valid}")
 
+    # Active extraction policy for this run: a fitted policy file (if present)
+    # with PDFMUX_* env overrides folded in. policy_id is emitted in the output
+    # for reproducibility; policy.calibration (if any) maps the raw document
+    # confidence to a calibrated probability further down.
+    active_policy = load_policy_file()
+
     # Step 1: Classify the PDF
     classification = classify(file_path)
 
@@ -235,7 +248,22 @@ def process(
         pages,
         ocr_page_count=len(ocr_pages),
         unrecovered_count=unrecovered,
+        policy=active_policy,
     )
+
+    # Runtime calibration: map the raw heuristic confidence to a calibrated
+    # probability via the fitted policy map (closed loop calibrate→write→reload).
+    # No-op when no calibration is loaded (identity), so default behavior is
+    # unchanged until `pdfmux calibrate` writes a policy.
+    if active_policy.calibration is not None:
+        calibrated = active_policy.calibration.apply(confidence)
+        logger.debug(
+            "Calibrated confidence %.3f → %.3f (policy %s)",
+            confidence,
+            calibrated,
+            active_policy.policy_id,
+        )
+        confidence = round(calibrated, 6)
 
     # Step 3.5: Image table OCR — last resort for image-embedded tables
     # Only fires when: page has images, NO pipe tables found by any method,
@@ -362,6 +390,7 @@ def process(
         key_values=structured_kvs,
         structured=structured_output,
         decision_trace=decision_trace,
+        policy_id=active_policy.policy_id,
     )
 
     # Cleanup: close cached PDF handles
@@ -921,17 +950,18 @@ def _compute_ocr_budget(classification: PDFClassification) -> float:
         - If >25% graphical: budget = graphical_ratio + 0.10 (generous)
         - Otherwise: use default OCR_BUDGET_RATIO (0.30)
     """
+    policy = _ACTIVE_POLICY
     if classification.page_count == 0:
-        return OCR_BUDGET_RATIO
+        return policy.ocr_budget_ratio
 
     graphical_ratio = len(classification.graphical_pages) / classification.page_count
 
-    if graphical_ratio >= IMAGE_HEAVY_THRESHOLD:
+    if graphical_ratio >= policy.image_heavy_threshold:
         return 1.0
-    elif graphical_ratio > 0.25:
-        return min(1.0, graphical_ratio + 0.10)
+    elif graphical_ratio > policy.budget_lower_bound:
+        return min(1.0, graphical_ratio + policy.budget_offset)
     else:
-        return OCR_BUDGET_RATIO
+        return policy.ocr_budget_ratio
 
 
 def _multipass_extract(
@@ -1401,6 +1431,7 @@ def _format_output(
     key_values: list[dict] | None = None,
     structured: dict | None = None,
     decision_trace: list | None = None,
+    policy_id: str | None = None,
 ) -> str:
     """Format the processed text into the requested output format."""
     if output_format == OutputFormat.MARKDOWN:
@@ -1431,6 +1462,7 @@ def _format_output(
             key_values=key_values,
             structured=structured,
             decision_trace=decision_trace,
+            policy_id=policy_id,
         )
 
     if output_format == OutputFormat.LLM:

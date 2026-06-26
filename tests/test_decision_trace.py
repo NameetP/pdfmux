@@ -1,4 +1,4 @@
-"""Tests for the persisted per-page decision trace (JSON schema 1.3.0).
+"""Tests for the persisted per-page decision trace (JSON schema 1.4.0).
 
 The decision trace records, for each page: the non-OCR audit class and score,
 the recognition-budget verdict, the final extractor, and each repair attempt
@@ -69,11 +69,11 @@ class TestDecisionTraceTypes:
 
 
 class TestDecisionTraceInJSON:
-    """extract_json emits a per-page decision_trace under schema 1.3.0."""
+    """extract_json emits a per-page decision_trace under schema 1.4.0."""
 
     def test_schema_version_bumped(self, digital_pdf: Path) -> None:
         data = pdfmux.extract_json(digital_pdf)
-        assert data["schema_version"] == "1.3.0"
+        assert data["schema_version"] == "1.4.0"
 
     def test_json_includes_decision_trace(self, digital_pdf: Path) -> None:
         data = pdfmux.extract_json(digital_pdf)

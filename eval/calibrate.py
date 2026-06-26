@@ -154,6 +154,43 @@ def _per_category_breakdown(rows: list[dict]) -> dict[str, dict]:
     return out
 
 
+def _calibration_report(rows: list[dict]) -> dict:
+    """ECE of the raw confidence as a probability, and after an isotonic fit.
+
+    Uses the same ``pdfmux.calibration`` math that ``pdfmux calibrate`` writes
+    into a runtime policy — so the offline eval and the runtime loop agree.
+    """
+    try:
+        from pdfmux.calibration import expected_calibration_error, fit_calibration
+    except Exception:
+        return {"available": False}
+
+    scores: list[float] = []
+    labels: list[int] = []
+    for r in rows:
+        try:
+            conf = float(r["confidence"]) if r.get("confidence") else None
+        except ValueError:
+            conf = None
+        if conf is None or conf < 0:
+            continue
+        scores.append(conf)
+        labels.append(1 if r["label"] == "good" else 0)
+
+    if len(scores) < 5:
+        return {"available": False, "n": len(scores)}
+
+    ece_before = expected_calibration_error(scores, labels)
+    cal = fit_calibration(scores, labels, method="isotonic")
+    return {
+        "available": True,
+        "n": len(scores),
+        "method": "isotonic",
+        "ece_raw": round(ece_before, 4),
+        "ece_calibrated": round(cal.ece_after, 4),
+    }
+
+
 def main() -> int:
     if not SCORES_PATH.exists():
         print(f"raw_scores.csv not found at {SCORES_PATH}. Run eval/run_eval.py first.")
@@ -176,6 +213,11 @@ def main() -> int:
     strict_threshold, strict_metrics = _pick_threshold_at_precision(rows, 0.95)
     warning_threshold, warning_metrics = _pick_threshold_at_precision(rows, 0.80)
 
+    # Calibration ECE: how well does the raw confidence behave as a probability,
+    # and how much would an isotonic fit improve it? (Build #4 Part B — the same
+    # math `pdfmux calibrate` uses to write a runtime policy.)
+    calibration = _calibration_report(rows)
+
     by_category = _per_category_breakdown(rows)
 
     summary = {
@@ -196,6 +238,7 @@ def main() -> int:
                 "metrics": warning_metrics,
             },
         },
+        "calibration": calibration,
         "by_category": by_category,
     }
 
@@ -262,6 +305,17 @@ def main() -> int:
         md.append("- no threshold achieves P >= 0.80.")
     md.append("")
 
+    if calibration.get("available"):
+        md.append("## Calibration (ECE)\n")
+        md.append(
+            "How well the raw confidence behaves as a probability, and after an "
+            "isotonic fit (`pdfmux calibrate` writes this map into a runtime policy).\n"
+        )
+        md.append(f"- samples: {calibration['n']}")
+        md.append(f"- ECE raw: **{calibration['ece_raw']:.4f}**")
+        md.append(f"- ECE after isotonic: **{calibration['ece_calibrated']:.4f}**")
+        md.append("")
+
     md.append("## By category\n")
     md.append("Mean confidence per fixture category. Categories where mean confidence ")
     md.append("contradicts the label are systematic gaps to investigate.\n")
@@ -287,6 +341,11 @@ def main() -> int:
     REPORT_PATH.write_text("\n".join(md), encoding="utf-8")
     print(f"Wrote calibration report → {REPORT_PATH}")
     print(f"Wrote summary JSON       → {SUMMARY_PATH}")
+    if calibration.get("available"):
+        print(
+            f"Calibration ECE: raw {calibration['ece_raw']:.4f} → "
+            f"isotonic {calibration['ece_calibrated']:.4f} (n={calibration['n']})"
+        )
     print()
     if strict_threshold is not None:
         print(

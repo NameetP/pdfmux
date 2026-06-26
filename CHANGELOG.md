@@ -2,13 +2,14 @@
 
 ## Unreleased — ⚠️ HELD FOR PATENT FILING, DO NOT PUBLISH
 
-These three changes embody the patent's strongest, never-disclosed claims
-(persisted decision trace + monotonic repair guard + tiered provenance). They
-are local-only by design. **Do not push to the public repo, cut a PyPI release,
-or write about them until the US provisional is filed** — publishing destroys
-the still-alive foreign patent rights. After filing, ship freely.
+These changes embody the patent's strongest, never-disclosed claims (persisted
+decision trace + monotonic repair guard + tiered provenance + policy-as-data and
+the closed-loop calibration). They are local-only by design. **Do not push to
+the public repo, cut a PyPI release, or write about them until the US provisional
+is filed** — publishing destroys the still-alive foreign patent rights. After
+filing, ship freely.
 
-### Added — JSON schema 1.2.0 → 1.3.0 (additive, backwards-compatible)
+### Added — JSON schema 1.2.0 → 1.4.0 (additive, backwards-compatible)
 
 - **Persisted per-page decision trace** (`decision_trace` in JSON output, schema
   1.2.0). For every page: the non-OCR audit class and score, the recognition-
@@ -31,8 +32,26 @@ the still-alive foreign patent rights. After filing, ship freely.
   ratio, suspicious shortening, lost headings/tables), and (c) strictly beats the
   original audit score by `PDFMUX_REPAIR_MARGIN` (default 0.0; additive patches need
   only be non-decreasing). Both arms are monotonic — extraction quality never drops.
-- Calibration unchanged: the 50-fixture eval is byte-identical before/after; the
+- No quality regression: the 50-fixture eval is byte-identical before/after; the
   strict gate holds at 0.75 / precision 1.000 / recall 0.893.
+
+### Added — versioned policy object + calibration loop (schema 1.4.0)
+
+- **Versioned policy object** (`policy.py`). Every extraction tunable — audit
+  thresholds and penalties, OCR-budget params, script + table thresholds, strict
+  gate, repair margin/trust — now lives in one frozen `Policy` with a `policy_id`,
+  emitted in JSON output (`policy_id`) for reproducibility. `PDFMUX_*` env
+  overrides are folded in at load time; an override suffixes the id with a short
+  hash so a tuned run never claims to be the canonical policy. Default policy
+  reproduces the historical constants exactly (behavior-neutral).
+- **Runtime calibration loop** (`calibration.py` + `pdfmux calibrate`). Fit an
+  isotonic (PAVA) or Platt map from the raw audit score to a calibrated
+  probability over a labelled set, report the reliability table + Expected
+  Calibration Error before/after, and write a versioned policy file the runtime
+  reloads — so reported `confidence` becomes a calibrated probability. Closed
+  loop: `calibrate → write policy → reload`. No-op until a policy is written
+  (identity calibration), so default behavior is unchanged. On the 50-fixture set
+  an isotonic fit cuts in-sample ECE 0.133 → 0.000.
 
 ### New environment variables
 
@@ -40,6 +59,15 @@ the still-alive foreign patent rights. After filing, ship freely.
   trusted and protected from full replacement.
 - `PDFMUX_REPAIR_MARGIN` (default `0.0`) — minimum audit-score improvement a full
   replacement must clear to be accepted.
+- `PDFMUX_STRICT_GATE` (default `0.75`) — strict-gate confidence, now policy-backed.
+- `PDFMUX_POLICY_FILE` — path to a fitted policy JSON (default
+  `~/.config/pdfmux/policy.json`); written by `pdfmux calibrate`, loaded at runtime.
+
+### New commands
+
+- **`pdfmux calibrate <labelled-dir>`** — `--method isotonic|platt`,
+  `--target balanced|high_precision`, `--out <policy.json>`. Fits and writes the
+  calibration policy described above.
 
 ## 1.7.0 (2026-05-22) — BREAKING: strict is now default
 

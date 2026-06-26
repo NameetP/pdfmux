@@ -2128,5 +2128,200 @@ def diff(
     console.print()
 
 
+@app.command()
+def calibrate(
+    labelled_dir: Path = typer.Argument(
+        ...,
+        help="Directory of labelled PDFs containing labels.csv "
+        "(columns: filename,label — label is good|bad or 1|0).",
+        exists=True,
+        file_okay=False,
+    ),
+    method: str = typer.Option(
+        "isotonic", "--method", help="Calibration method: isotonic | platt."
+    ),
+    target: str = typer.Option(
+        "balanced",
+        "--target",
+        help="Recommended-gate target: balanced (best F1) | high_precision (P≥0.95).",
+    ),
+    output: Path = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="Policy file to write. Default: ~/.config/pdfmux/policy.json",
+    ),
+    quality: str = typer.Option(
+        "standard", "--quality", "-q", help="pdfmux quality preset for scoring."
+    ),
+) -> None:
+    """Fit a calibration map (raw audit score → calibrated probability), write a policy.
+
+    Reads ``<labelled-dir>/labels.csv``, runs pdfmux on each PDF to collect its
+    RAW confidence, fits an isotonic or Platt map of P(good) against that score,
+    reports the reliability table + Expected Calibration Error before/after, and
+    writes a versioned policy file. The runtime loads that policy so reported
+    ``confidence`` becomes a calibrated probability — closing the loop
+    calibrate → write policy → reload.
+
+    Example::
+
+        pdfmux calibrate ./labelled-pdfs/ --method isotonic --out ./policy.json
+    """
+    import csv
+    import json as _json
+    from dataclasses import replace as _replace
+
+    from pdfmux.calibration import fit_calibration
+    from pdfmux.policy import DEFAULT_POLICY, default_policy_path, policy_to_dict
+
+    labels_csv = labelled_dir / "labels.csv"
+    if not labels_csv.exists():
+        console.print(f"[red]No labels.csv in {labelled_dir} (need columns filename,label).[/red]")
+        raise typer.Exit(code=2)
+
+    rows: list[tuple[str, int]] = []
+    with labels_csv.open(newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            fname = r.get("filename") or r.get("fixture") or r.get("file")
+            label_raw = (r.get("label") or "").strip().lower()
+            if not fname:
+                continue
+            rows.append((fname, 1 if label_raw in ("good", "1", "true", "yes") else 0))
+
+    if not rows:
+        console.print("[red]labels.csv had no usable rows.[/red]")
+        raise typer.Exit(code=2)
+
+    # Collect RAW confidences: disable any existing calibration for the fit by
+    # pointing the policy file at a guaranteed-absent path.
+    prev_policy_env = os.environ.get("PDFMUX_POLICY_FILE")
+    os.environ["PDFMUX_POLICY_FILE"] = str(labelled_dir / ".__pdfmux_no_policy__.json")
+    scores: list[float] = []
+    labels: list[int] = []
+    skipped = 0
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(f"Scoring {len(rows)} labelled PDFs…", total=None)
+            for fname, label in rows:
+                pdf = labelled_dir / fname
+                if not pdf.exists():
+                    skipped += 1
+                    continue
+                try:
+                    result = process(
+                        file_path=pdf,
+                        output_format="json",
+                        quality=quality,
+                        use_cache=False,
+                    )
+                    scores.append(float(result.confidence))
+                    labels.append(label)
+                except Exception:
+                    skipped += 1
+            progress.remove_task(task)
+    finally:
+        if prev_policy_env is None:
+            os.environ.pop("PDFMUX_POLICY_FILE", None)
+        else:
+            os.environ["PDFMUX_POLICY_FILE"] = prev_policy_env
+
+    if len(scores) < 5:
+        console.print(f"[red]Only {len(scores)} usable samples — need ≥5 to calibrate.[/red]")
+        raise typer.Exit(code=2)
+
+    cal = fit_calibration(
+        scores, labels, method=method, fitted_on=f"{labels_csv} ({len(scores)} pdfs)"
+    )
+
+    console.print()
+    console.print(
+        f"[bold]Calibration fit[/bold]  method=[cyan]{cal.method}[/cyan]  n={cal.n_samples}"
+    )
+    if skipped:
+        console.print(f"  [dim]{skipped} files skipped (missing or failed extraction)[/dim]")
+    console.print(f"  ECE before (raw):   {cal.ece_before:.4f}")
+    console.print(f"  ECE after (fitted): {cal.ece_after:.4f}")
+    if cal.ece_after <= cal.ece_before + 1e-9:
+        console.print("  [green]✓ calibration reduces (or holds) ECE[/green]")
+    else:
+        console.print("  [yellow]⚠ no ECE improvement on this set — collect more data[/yellow]")
+
+    # Reliability table (raw band → observed accuracy → mean calibrated prob).
+    table = Table(title="Reliability by raw-score band")
+    table.add_column("raw band")
+    table.add_column("n", justify="right")
+    table.add_column("acc(good)", justify="right")
+    table.add_column("mean calibrated", justify="right")
+    bins: dict[int, list[tuple[float, int]]] = {}
+    for s, label in zip(scores, labels, strict=True):
+        bins.setdefault(min(9, int(s * 10)), []).append((s, label))
+    for b in sorted(bins):
+        grp = bins[b]
+        acc = sum(label for _, label in grp) / len(grp)
+        mean_cal = sum(cal.apply(s) for s, _ in grp) / len(grp)
+        table.add_row(
+            f"{b / 10:.1f}–{(b + 1) / 10:.1f}", str(len(grp)), f"{acc:.2f}", f"{mean_cal:.2f}"
+        )
+    console.print(table)
+
+    # Recommended gate on the CALIBRATED probability, per --target.
+    probs = [cal.apply(s) for s in scores]
+    rec_t, rec_p, rec_r = _recommend_gate(probs, labels, target)
+    if rec_t is not None:
+        console.print(
+            f"\n[bold]Recommended --min-confidence ({target})[/bold]: "
+            f"{rec_t:.2f}  (precision {rec_p:.2f}, recall {rec_r:.2f})"
+        )
+    else:
+        console.print(f"\n[yellow]No threshold met the {target} target on this set.[/yellow]")
+
+    out_path = output or default_policy_path()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # A fitted policy is a distinct policy — mark its id so the emitted
+    # policy_id never claims to be the uncalibrated canonical policy.
+    policy = _replace(
+        DEFAULT_POLICY,
+        policy_id=f"{DEFAULT_POLICY.policy_id}-cal-{cal.method}-n{cal.n_samples}",
+        calibration=cal,
+    )
+    out_path.write_text(_json.dumps(policy_to_dict(policy), indent=2), encoding="utf-8")
+    console.print()
+    console.print(f"[green]Wrote calibrated policy → {out_path}[/green]")
+    console.print(
+        f"[dim]policy_id {policy.policy_id} — runtime now reports calibrated confidence "
+        f"(set PDFMUX_POLICY_FILE to override the path).[/dim]"
+    )
+
+
+def _recommend_gate(
+    probs: list[float], labels: list[int], target: str
+) -> tuple[float | None, float, float]:
+    """Pick a threshold over calibrated probs: high_precision (P≥0.95) or best-F1."""
+    best: tuple[float | None, float, float] = (None, 0.0, 0.0)
+    best_f1 = -1.0
+    candidates = sorted({round(p, 3) for p in probs} | {i / 20 for i in range(21)})
+    for t in candidates:
+        tp = sum(1 for p, label in zip(probs, labels, strict=True) if p >= t and label == 1)
+        fp = sum(1 for p, label in zip(probs, labels, strict=True) if p >= t and label == 0)
+        fn = sum(1 for p, label in zip(probs, labels, strict=True) if p < t and label == 1)
+        if tp + fp == 0:
+            continue
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+        if target == "high_precision":
+            if precision >= 0.95:
+                return t, precision, recall  # lowest such threshold (candidates ascending)
+        elif f1 > best_f1:
+            best_f1 = f1
+            best = (t, precision, recall)
+    return best
+
+
 if __name__ == "__main__":
     app()

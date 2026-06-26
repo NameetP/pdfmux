@@ -27,6 +27,7 @@ def format_json(
     key_values: list | None = None,
     structured: dict | None = None,
     decision_trace: list | None = None,
+    policy_id: str | None = None,
 ) -> str:
     """Format extracted text as structured JSON with locked schema.
 
@@ -58,9 +59,10 @@ def format_json(
         pages = [text]
 
     output: dict = {
-        "schema_version": "1.3.0",
+        "schema_version": "1.4.0",
         "source": source,
         "converter": "pdfmux",
+        "policy_id": policy_id or "",
         "extractor": extractor,
         "page_count": page_count,
         "confidence": round(confidence, 3),

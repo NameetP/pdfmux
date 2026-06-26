@@ -18,6 +18,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from pdfmux.errors import FileError
+from pdfmux.policy import DEFAULT_POLICY
 
 
 @dataclass
@@ -80,7 +81,7 @@ def classify(file_path: str | Path) -> PDFClassification:
 
     # Sample only the first ~20 pages for Arabic detection on huge docs.
     # Logistics PDFs typically have Arabic on every page if at all.
-    arabic_sample_limit = min(len(doc), 20)
+    arabic_sample_limit = min(len(doc), DEFAULT_POLICY.arabic_sample_limit)
 
     for page_num in range(len(doc)):
         page = doc[page_num]
@@ -106,7 +107,7 @@ def classify(file_path: str | Path) -> PDFClassification:
         # Arabic detection — flag pages where >5% of non-whitespace chars
         # are Arabic. Small threshold catches docs with Arabic headers + LTR body.
         if page_num < arabic_sample_limit and text_len > 0:
-            if arabic_ratio(text) > 0.05:
+            if arabic_ratio(text) > DEFAULT_POLICY.arabic_ratio_threshold:
                 arabic_pages.append(page_num)
 
     result.digital_pages = digital_pages
@@ -158,7 +159,7 @@ def classify(file_path: str | Path) -> PDFClassification:
 
 # --- Table detection constants ---
 _TABLE_SAMPLE_PAGES = 20
-_TABLE_SCORE_THRESHOLD = 2
+_TABLE_SCORE_THRESHOLD = DEFAULT_POLICY.table_score_threshold
 _NUMBER_DENSE_THRESHOLD = 0.30
 _ALIGNED_COLUMN_MIN_LINES = 4
 
