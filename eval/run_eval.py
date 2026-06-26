@@ -51,6 +51,13 @@ def main() -> int:
 
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
+    # --no-cache must be honoured BEFORE importing pdfmux: extract_json doesn't
+    # accept a use_cache argument, so the only lever is the PDFMUX_NO_CACHE env
+    # var, which the result cache reads at construction. Without this the flag
+    # was a silent no-op and back-to-back runs returned stale cached scores.
+    if args.no_cache:
+        os.environ["PDFMUX_NO_CACHE"] = "1"
+
     # Suppress upstream library noise so the run output is readable.
     os.environ.setdefault("PYTHONWARNINGS", "ignore")
 
