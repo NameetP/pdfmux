@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased — ⚠️ HELD FOR PATENT FILING, DO NOT PUBLISH
+
+These three changes embody the patent's strongest, never-disclosed claims
+(persisted decision trace + monotonic repair guard + tiered provenance). They
+are local-only by design. **Do not push to the public repo, cut a PyPI release,
+or write about them until the US provisional is filed** — publishing destroys
+the still-alive foreign patent rights. After filing, ship freely.
+
+### Added — JSON schema 1.2.0 → 1.3.0 (additive, backwards-compatible)
+
+- **Persisted per-page decision trace** (`decision_trace` in JSON output, schema
+  1.2.0). For every page: the non-OCR audit class and score, the recognition-
+  budget verdict, the final extractor, and every repair attempt — accepted *and*
+  rejected. No prior extraction system retains rejected decisions.
+- **Tiered provenance** (schema 1.3.0). Each `decision_trace` entry now carries
+  `provenance_tier` (`native` | `region` | `page` | `llm`) and, for the `region`
+  tier only, `region_bboxes` — honest sub-page geometry where it exists and
+  page-level provenance everywhere else (no spurious glyph bboxes through OCR/LLM
+  engines). Clean digital pages report `native` with no region geometry.
+
+### Changed — monotonic repair guard
+
+- **One calibrated accept/reject gate for every re-extraction path** (region OCR,
+  full-page OCR, vision LLM, agentic re-extraction), replacing the previous mix of
+  character-length and raw-confidence comparisons that could disagree. A repair is
+  accepted only if it (a) does not wholesale-replace a *trusted* native span
+  (audit score ≥ `PDFMUX_NATIVE_TRUST`, default 0.80 — region augmentation is still
+  allowed), (b) trips no hard-fail signal (introduced mojibake, collapsed alpha
+  ratio, suspicious shortening, lost headings/tables), and (c) strictly beats the
+  original audit score by `PDFMUX_REPAIR_MARGIN` (default 0.0; additive patches need
+  only be non-decreasing). Both arms are monotonic — extraction quality never drops.
+- Calibration unchanged: the 50-fixture eval is byte-identical before/after; the
+  strict gate holds at 0.75 / precision 1.000 / recall 0.893.
+
+### New environment variables
+
+- `PDFMUX_NATIVE_TRUST` (default `0.80`) — audit score above which native text is
+  trusted and protected from full replacement.
+- `PDFMUX_REPAIR_MARGIN` (default `0.0`) — minimum audit-score improvement a full
+  replacement must clear to be accepted.
+
 ## 1.7.0 (2026-05-22) — BREAKING: strict is now default
 
 **This release changes default behaviour on `pdfmux convert`.** Existing pipelines that relied on warn-only confidence handling need one of: (a) pass `--no-strict` to restore 1.6.x behaviour, (b) raise extraction quality so all documents score ≥ 0.75 confidence, or (c) lower `--min-confidence` below the documents your real corpus produces.
