@@ -85,6 +85,7 @@ dev = [
 
 [project.scripts]
 pdfmux = "pdfmux.cli:app"
+pdfmux-extract = "pdfmux.mcp_extract:run_server"
 
 [project.urls]
 Homepage = "https://pdfmux.com"
@@ -109,6 +110,7 @@ select = ["E", "F", "I", "N", "W", "UP"]
 "src/pdfmux/cli.py" = ["E501"]  # CLI help text is user-facing
 "src/pdfmux/headings.py" = ["E501"]  # regex patterns for date matching
 "src/pdfmux/image_table_ocr.py" = ["E741"]  # short loop variables
+"eval/ab_models.py" = ["E501"]  # report tables + example commands are presentation strings
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
