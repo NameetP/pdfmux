@@ -18,7 +18,15 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e ".[dev]" pip-audit safety
+        # Two audit-hygiene fixes (2026-07-07):
+        # 1. Dropped 'safety' — it was installed but never run (pip-audit is the scanner) and it
+        #    transitively pulled nltk>=3.9, whose only release (3.9.4) has an UNFIXABLE path-traversal
+        #    advisory (PYSEC-2026-597, no patched version). nltk is not a pdfmux dep; pdfmux never calls it.
+        # 2. Upgrade pip first so the runner's own pip is current — resolves fixable pip advisories
+        #    (e.g. PYSEC-2026-196, fixed in 26.1.2) at the root instead of accumulating --ignore-vuln.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pip-audit
 
       - name: pip-audit (known vulnerabilities)
         # --skip-editable: skip the local pdfmux package itself (not on PyPI at push time)
