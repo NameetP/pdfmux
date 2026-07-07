@@ -18,7 +18,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Checkout the release tag if triggered by release, else the workflow input, else the default branch
           ref: ${{ github.event.release.tag_name || inputs.version || '' }}
