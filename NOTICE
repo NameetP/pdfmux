@@ -1,0 +1,18 @@
+pdfmux
+Copyright (c) 2026 Nameet Potnis
+
+The source code in this repository is licensed under the MIT License (see LICENSE).
+
+PATENT NOTICE
+-------------
+The confidence-budgeted "decision-trace" extraction method — the persisted
+per-page decision trace (including retained rejected candidates), the monotonic
+repair guard, and the runtime calibration loop, alone and in combination — is
+patent-pending: US Provisional Patent Application No. 64/106,302, priority date
+2026-07-07.
+
+That method is provided under a separate license in pdfmux Cloud/Pro and is NOT
+part of the MIT grant in this repository. The MIT License conveys no patent
+license to that method.
+
+See LICENSING.md for details.

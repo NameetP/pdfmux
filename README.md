@@ -640,7 +640,9 @@ ruff format src/ tests/
 
 ## License
 
-[MIT](LICENSE)
+The pdfmux library and MCP server in this repository are **[MIT](LICENSE)** licensed — free for any use, and every released version stays MIT.
+
+The confidence-budgeted **decision-trace** method (persisted per-page decision trace, monotonic repair guard, runtime calibration) is **patent-pending** (US Provisional App No. 64/106,302) and ships separately in pdfmux Cloud/Pro — it is not part of the MIT grant. See **[LICENSING.md](LICENSING.md)** and **[NOTICE](NOTICE)**.
 
 <!-- mcp-name: io.github.NameetP/pdfmux -->
 
