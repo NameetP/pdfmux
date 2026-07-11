@@ -79,6 +79,7 @@ def main() -> int:
             data = pdfmux.extract_json(
                 str(path),
                 quality=args.quality,
+                use_cache=not args.no_cache,
             )
             confidence = float(data.get("confidence", 0.0))
             char_count = len((data.get("content") or "").strip())

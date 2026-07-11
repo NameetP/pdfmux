@@ -219,3 +219,31 @@ def test_pipeline_use_cache_false(monkeypatch, tmp_path, digital_pdf: Path) -> N
 
     cache = result_cache_module.get_default_cache()
     assert cache.get(digital_pdf, "fast", "markdown") is None
+
+
+def test_extract_json_forwards_use_cache(monkeypatch) -> None:
+    """`pdfmux.extract_json` threads ``use_cache`` through to ``pipeline.process``.
+
+    Regression: the flag was silently dropped, so callers relying on it (e.g.
+    ``eval/run_eval.py --no-cache``) hit the smart result cache instead of
+    re-extracting — measuring cached bytes rather than a real run.
+    """
+    import pdfmux
+    import pdfmux.pipeline as pipeline_module
+
+    seen: dict = {}
+
+    class _FakeResult:
+        text = "{}"
+
+    def _fake_process(**kwargs):
+        seen["use_cache"] = kwargs.get("use_cache")
+        return _FakeResult()
+
+    monkeypatch.setattr(pipeline_module, "process", _fake_process)
+
+    pdfmux.extract_json("dummy.pdf")
+    assert seen["use_cache"] is True  # default preserved
+
+    pdfmux.extract_json("dummy.pdf", use_cache=False)
+    assert seen["use_cache"] is False  # explicitly forwarded
