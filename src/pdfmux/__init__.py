@@ -143,9 +143,7 @@ def extract_json(
 
     from pdfmux.pipeline import process
 
-    result = process(
-        file_path=path, output_format="json", quality=quality, use_cache=use_cache
-    )
+    result = process(file_path=path, output_format="json", quality=quality, use_cache=use_cache)
     return json.loads(result.text)
 
 
