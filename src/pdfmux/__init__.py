@@ -38,6 +38,12 @@ __all__ = [
     "load_llm_context",
     "chunk",
     "batch_extract",
+    # Certify Anything — audit any engine's extraction
+    "verify_extraction",
+    "verify_batch",
+    "CertificationManifest",
+    "PageVerification",
+    "BatchCertification",
     # Types
     "Quality",
     "OutputFormat",
@@ -76,6 +82,13 @@ from pdfmux.types import (  # noqa: E402, F401
     PageResult,
     Quality,
     WeakRegion,
+)
+from pdfmux.verifier import (  # noqa: E402, F401
+    BatchCertification,
+    CertificationManifest,
+    PageVerification,
+    verify_batch,
+    verify_extraction,
 )
 
 

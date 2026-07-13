@@ -1267,6 +1267,286 @@ def audit(
 
 
 @app.command()
+def verify(
+    source: Path = typer.Option(
+        ...,
+        "--source",
+        "-s",
+        help="Source PDF (the ground truth). A directory enables batch mode.",
+        exists=True,
+    ),
+    extracted: Path | None = typer.Option(
+        None,
+        "--extracted",
+        "-e",
+        help="External extraction to certify (.json/.md/.txt). A directory in "
+        "batch mode. Mutually exclusive with --engine.",
+    ),
+    engine: str | None = typer.Option(
+        None,
+        "--engine",
+        help="Run this engine on the source, then certify its output "
+        "(pdfmux live; reducto/mistral/llamaparse are documented stubs). "
+        "Mutually exclusive with --extracted.",
+    ),
+    engine_name: str = typer.Option(
+        "external",
+        "--engine-name",
+        help="Label for the engine under audit in the manifest (with --extracted).",
+    ),
+    fmt: str = typer.Option(
+        "auto",
+        "--extracted-format",
+        help="Extraction format hint: auto | json | markdown | text.",
+    ),
+    output: Path | None = typer.Option(
+        None, "-o", "--output", help="Write the certification manifest JSON here."
+    ),
+    report: Path | None = typer.Option(
+        None, "--report", help="Write a human-readable Markdown report here."
+    ),
+    out_format: str = typer.Option(
+        "table", "--format", "-f", help="Console output: table | json | markdown."
+    ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit 3 unless the overall verdict is PASS (for CI gating).",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show INFO logs."),
+    quiet: bool = typer.Option(False, "--quiet", help="Errors only."),
+) -> None:
+    """Certify ANY extraction engine's output against the source PDF.
+
+    Point it at a source PDF plus an external extraction (from Reducto, Mistral
+    OCR, LlamaParse, Docling, your own parser — anything) and get a certification
+    manifest: per-page confidence, silent-drop detection, table/heading
+    integrity, hallucination-risk, and a PASS/REVIEW/FAIL verdict.
+
+    Examples::
+
+        pdfmux verify --source doc.pdf --extracted reducto.json --engine-name reducto
+        pdfmux verify --source doc.pdf --engine pdfmux           # call + certify
+        pdfmux verify --source ./pdfs/ --extracted ./outputs/ -o report.json  # batch
+
+    Exit codes: 0 = ran (see verdict); 2 = usage error; 3 = --strict gate failed.
+    """
+    _configure_logging(verbose=verbose, quiet=quiet)
+
+    from pdfmux.verifier import (
+        verify_batch,
+        verify_extraction,
+        verify_with_engine,
+    )
+
+    if extracted is not None and engine is not None:
+        console.print("[red]Error:[/red] pass either --extracted or --engine, not both.")
+        raise typer.Exit(2)
+    if extracted is None and engine is None:
+        console.print("[red]Error:[/red] one of --extracted or --engine is required.")
+        raise typer.Exit(2)
+
+    # --- Batch mode: --source is a directory. ---
+    if source.is_dir():
+        if engine is not None:
+            console.print("[red]Error:[/red] batch mode requires --extracted <dir>, not --engine.")
+            raise typer.Exit(2)
+        if extracted is None or not extracted.is_dir():
+            console.print("[red]Error:[/red] batch mode needs --extracted to be a directory.")
+            raise typer.Exit(2)
+
+        pairs = _match_verify_pairs(source, extracted)
+        if not pairs:
+            console.print("[red]Error:[/red] no (PDF, extraction) pairs matched by stem.")
+            raise typer.Exit(2)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            progress.add_task(f"Certifying {len(pairs)} documents…", total=None)
+            batch = verify_batch(pairs, engine=engine_name, fmt=fmt)
+
+        if out_format == "json":
+            console.print_json(batch.to_json())
+        elif out_format == "markdown":
+            console.print(batch.to_markdown())
+        else:
+            _render_batch_table(batch)
+
+        if output is not None:
+            output.write_text(batch.to_json(), encoding="utf-8")
+            console.print(f"[dim]Manifest written to {output}[/dim]")
+        if report is not None:
+            report.write_text(batch.to_markdown(), encoding="utf-8")
+            console.print(f"[dim]Report written to {report}[/dim]")
+
+        failed = len(batch.docs_failed) > 0
+        if strict and (failed or batch.docs_review):
+            raise typer.Exit(3)
+        return
+
+    # --- Single-document mode. ---
+    try:
+        if engine is not None:
+            manifest = verify_with_engine(source, engine)
+        else:
+            assert extracted is not None
+            if not extracted.exists():
+                console.print(f"[red]Error:[/red] extraction not found: {extracted}")
+                raise typer.Exit(2)
+            manifest = verify_extraction(source, extracted, engine=engine_name, fmt=fmt)
+    except NotImplementedError as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
+        raise typer.Exit(2) from exc
+    except (KeyError, FileNotFoundError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(2) from exc
+
+    if out_format == "json":
+        console.print_json(manifest.to_json())
+    elif out_format == "markdown":
+        console.print(manifest.to_markdown())
+    else:
+        _render_manifest_table(manifest)
+
+    if output is not None:
+        output.write_text(manifest.to_json(), encoding="utf-8")
+        console.print(f"[dim]Manifest written to {output}[/dim]")
+    if report is not None:
+        report.write_text(manifest.to_markdown(), encoding="utf-8")
+        console.print(f"[dim]Report written to {report}[/dim]")
+
+    if strict and manifest.verdict != "PASS":
+        raise typer.Exit(3)
+
+
+def _match_verify_pairs(pdf_dir: Path, ext_dir: Path) -> list[tuple[Path, Path]]:
+    """Match source PDFs to extraction files by filename stem."""
+    ext_by_stem: dict[str, Path] = {}
+    for p in sorted(ext_dir.iterdir()):
+        if p.suffix.lower() in {".json", ".md", ".markdown", ".txt"}:
+            ext_by_stem.setdefault(p.stem, p)
+    pairs: list[tuple[Path, Path]] = []
+    for pdf in sorted(pdf_dir.glob("*.pdf")):
+        match = ext_by_stem.get(pdf.stem)
+        if match is not None:
+            pairs.append((pdf, match))
+    return pairs
+
+
+_VERIFY_VERDICT_STYLE = {
+    "PASS": "bold green",
+    "REVIEW": "bold yellow",
+    "FAIL": "bold red",
+    "pass": "green",
+    "review": "yellow",
+    "fail": "red",
+    "unverifiable": "dim",
+}
+
+
+def _render_manifest_table(manifest) -> None:
+    """Rich console rendering of a single-document certification manifest."""
+    from rich.panel import Panel
+
+    style = _VERIFY_VERDICT_STYLE.get(manifest.verdict, "white")
+    console.print()
+    console.print(
+        Panel(
+            f"[{style}]{manifest.verdict}[/{style}]  "
+            f"confidence [bold]{manifest.confidence:.0%}[/bold] · "
+            f"coverage [bold]{manifest.coverage:.0%}[/bold]\n"
+            f"[dim]{manifest.summary}[/dim]",
+            title=f"pdfmux verify — {rich_escape(manifest.source)} · engine: {rich_escape(manifest.engine)}",
+            expand=False,
+        )
+    )
+
+    if manifest.page_aligned:
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Page", justify="right", min_width=5)
+        table.add_column("Verdict", min_width=12)
+        table.add_column("Conf", justify="right")
+        table.add_column("Cover", justify="right")
+        table.add_column("Align", justify="right")
+        table.add_column("Halluc", justify="right")
+        table.add_column("Src ch", justify="right")
+        table.add_column("Ext ch", justify="right")
+        table.add_column("Flags")
+        for p in manifest.pages:
+            pstyle = _VERIFY_VERDICT_STYLE.get(p.verdict, "white")
+            flags = ", ".join(p.flags) if p.flags else "—"
+            table.add_row(
+                str(p.page_num + 1),
+                f"[{pstyle}]{p.verdict}[/{pstyle}]",
+                f"{p.confidence:.0%}",
+                f"{p.coverage:.0%}",
+                f"{p.alignment:.0%}",
+                f"{p.hallucination_risk:.0%}",
+                str(p.source_chars),
+                str(p.extracted_chars),
+                rich_escape(flags),
+            )
+        console.print(table)
+
+    if manifest.silent_drops:
+        drops = ", ".join(str(p) for p in manifest.silent_drops)
+        console.print(
+            f"[bold red]❌ {len(manifest.silent_drops)} page(s) SILENTLY DROPPED:[/bold red] {drops}"
+        )
+    console.print(f"[dim]signature: {manifest.signature}[/dim]")
+    console.print()
+
+
+def _render_batch_table(batch) -> None:
+    """Rich console rendering of a batch certification — the killer report."""
+    from rich.panel import Panel
+
+    console.print()
+    console.print(
+        Panel(
+            f"Ran [bold]{rich_escape(batch.engine)}[/bold] through pdfmux's certifier on "
+            f"[bold]{batch.doc_count}[/bold] documents ({batch.total_pages} pages)\n"
+            f"[bold red]❌ {batch.total_silent_drops} pages silently dropped[/bold red] · "
+            f"[yellow]⚠️  {batch.total_low_confidence} low-confidence[/yellow]\n"
+            f"[green]{len(batch.docs_passed)} PASS[/green] · "
+            f"[yellow]{len(batch.docs_review)} REVIEW[/yellow] · "
+            f"[red]{len(batch.docs_failed)} FAIL[/red]",
+            title="Certification Report",
+            expand=False,
+        )
+    )
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Document", min_width=16)
+    table.add_column("Verdict", min_width=10)
+    table.add_column("Conf", justify="right")
+    table.add_column("Cover", justify="right")
+    table.add_column("Silent drops", justify="right")
+    table.add_column("Review", justify="right")
+    table.add_column("Pages", justify="right")
+    for m in batch.manifests:
+        mstyle = _VERIFY_VERDICT_STYLE.get(m.verdict, "white")
+        table.add_row(
+            rich_escape(m.source),
+            f"[{mstyle}]{m.verdict}[/{mstyle}]",
+            f"{m.confidence:.0%}",
+            f"{m.coverage:.0%}",
+            str(len(m.silent_drops)),
+            str(len(m.review_pages)),
+            str(m.page_count),
+        )
+    console.print(table)
+    if batch.errors:
+        console.print(f"[red]{len(batch.errors)} document(s) errored:[/red]")
+        for name, err in batch.errors:
+            console.print(f"  [dim]{rich_escape(name)}: {rich_escape(err)}[/dim]")
+    console.print()
+
+
+@app.command()
 def version() -> None:
     """Show the version."""
     console.print(f"pdfmux {__version__}")
