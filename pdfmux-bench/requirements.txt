@@ -1,0 +1,13 @@
+# pdfmux-bench dependencies.
+#
+# Core harness + scoring have ZERO third-party deps (stdlib only) so scoring is
+# always reproducible. Engines add optional deps, installed only if you run them.
+
+# --- Closed-API engines (need an API key AND this HTTP client) ---
+requests>=2.31        # reducto, llamaparse, mistral_ocr adapters
+
+# --- Open-source local engines (heavy; install only what you benchmark) ---
+# pdfmux>=1.7          # reference engine (recommended: always benchmark against it)
+# docling>=2.0         # IBM Docling
+# marker-pdf>=1.0      # Marker (downloads model weights on first run)
+# mineru>=1.0          # MinerU CLI (downloads model weights on first run)

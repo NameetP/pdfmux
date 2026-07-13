@@ -1,0 +1,108 @@
+name: bench
+
+# Runs the OSS/local engines on the public corpus and regenerates the
+# leaderboard. Closed-API engines (Reducto, LlamaParse, Mistral OCR) are NOT run
+# in CI — they need paid keys and are executed by maintainers / contributors with
+# keys, then folded into the published board. Skipped engines are listed on the
+# leaderboard as "not run", never assigned a fabricated number.
+
+on:
+  push:
+    paths:
+      - "pdfmux-bench/**"
+      - ".github/workflows/bench.yml"
+  pull_request:
+    paths:
+      - "pdfmux-bench/**"
+  schedule:
+    # Quarterly refresh: 06:00 UTC on the 1st of Jan/Apr/Jul/Oct.
+    - cron: "0 6 1 1,4,7,10 *"
+  workflow_dispatch:
+    inputs:
+      marker_in_ci:
+        description: "Run Marker (heavy model download)"
+        default: "0"
+      mineru_in_ci:
+        description: "Run MinerU (heavy model download)"
+        default: "0"
+
+defaults:
+  run:
+    working-directory: pdfmux-bench
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate manifest.json
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          m = json.loads(pathlib.Path("corpus/manifest.json").read_text())
+          ids = [d["id"] for d in m["documents"]]
+          assert len(ids) == len(set(ids)), "duplicate document ids in manifest"
+          required = {"id","category","title","license","redistributable","needs_pin","gt_status"}
+          for d in m["documents"]:
+              missing = required - d.keys()
+              assert not missing, f"{d.get('id')} missing keys: {missing}"
+              if not d.get("needs_pin"):
+                  assert d.get("url"), f"{d['id']} is pinned but has no url"
+          print(f"manifest OK: {len(ids)} documents")
+          PY
+      - name: Scoring self-check (deterministic, dependency-free)
+        run: |
+          python - <<'PY'
+          import scoring
+          # Identical text scores 1.0; disjoint text scores low. Guards metric drift.
+          gt = "# Title\n\nHello world, this is a paragraph with enough length to count."
+          assert scoring.score_document(gt, gt)["overall"] > 0.99, "identity should score ~1.0"
+          bad = scoring.score_document("completely unrelated gibberish tokens zzz", gt)
+          assert bad["overall"] < 0.6, "disjoint text should score low"
+          # Table TEDS sanity.
+          t = "| a | b |\n|---|---|\n| 1 | 2 |"
+          assert scoring.table_teds(t, t) > 0.99
+          print("scoring self-check OK")
+          PY
+
+  bench-oss:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install harness + OSS engines
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pdfmux docling            # light, CI-safe OSS engines
+          # Marker / MinerU download heavy weights — opt in via workflow_dispatch.
+          if [ "${{ github.event.inputs.marker_in_ci }}" = "1" ]; then pip install marker-pdf; fi
+          if [ "${{ github.event.inputs.mineru_in_ci }}" = "1" ]; then pip install mineru; fi
+      - name: Fetch public corpus
+        run: python corpus/fetch_corpus.py || true   # needs_pin/network gaps must not fail CI
+      - name: Run OSS engines
+        run: python run_bench.py --oss-only
+      - name: Regenerate leaderboard
+        run: python leaderboard.py --results results/latest.json
+      - name: Upload results + leaderboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfmux-bench-results
+          path: |
+            pdfmux-bench/results/latest.json
+            pdfmux-bench/results/leaderboard.json
+            pdfmux-bench/LEADERBOARD.md
+      - name: Commit refreshed leaderboard (scheduled runs only)
+        if: github.event_name == 'schedule'
+        run: |
+          git config user.name "pdfmux-bench-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add LEADERBOARD.md results/leaderboard.json
+          git commit -m "bench: quarterly leaderboard refresh [auto]" || echo "no changes"
+          git push || echo "push skipped (no write token)"

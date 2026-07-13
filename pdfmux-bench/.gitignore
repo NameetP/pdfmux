@@ -1,0 +1,8 @@
+results/*.json
+!results/.gitkeep
+__pycache__/
+*.pyc
+corpus/**/*.pdf
+corpus/cache/
+.venv/
+.DS_Store
