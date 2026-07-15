@@ -1,0 +1,38 @@
+# pdfmux provider config — copy to ~/.pdfmux/providers.yaml (or ./.pdfmux.yaml),
+# set the referenced API-key env vars, and pdfmux auto-discovers these providers
+# with zero code changes (see src/pdfmux/providers/_discovery.py).
+#
+# Select one at runtime for the model A/B:
+#   PDFMUX_LLM_PROVIDER=glm  PDFMUX_LLM_MODEL=<model-id>  python eval/ab_models.py ...
+#
+# ⚠️  CONFIRM the model `id`, `base_url`, and pricing against each vendor's
+#     current model list before trusting cost numbers — the values below are
+#     the wiring shape, not verified vendor constants. Pricing feeds the
+#     cost×quality ranking, so a wrong number skews the winner.
+
+providers:
+  # GLM-5.2 (Zhipu AI) — open-weight, OpenAI-compatible endpoint.
+  glm:
+    type: openai_compatible
+    base_url: https://open.bigmodel.cn/api/paas/v4   # CONFIRM
+    api_key_env: ZHIPU_API_KEY                        # export your Zhipu key here
+    default_model: glm-5.2                            # CONFIRM exact vision-capable id
+    models:
+      - id: glm-5.2                                   # CONFIRM
+        capabilities: [ocr, tables, structured]
+        supports_vision: true
+        input_cost_per_mtok: 0.6                      # CONFIRM
+        output_cost_per_mtok: 2.2                     # CONFIRM
+
+  # Kimi K2.7 (Moonshot) — open-weight, OpenAI-compatible endpoint.
+  kimi:
+    type: openai_compatible
+    base_url: https://api.moonshot.cn/v1              # CONFIRM (.cn vs .ai)
+    api_key_env: MOONSHOT_API_KEY                     # export your Moonshot key here
+    default_model: kimi-k2.7                          # CONFIRM exact vision-capable id
+    models:
+      - id: kimi-k2.7                                 # CONFIRM
+        capabilities: [ocr, tables, structured]
+        supports_vision: true
+        input_cost_per_mtok: 0.15                     # CONFIRM
+        output_cost_per_mtok: 2.5                     # CONFIRM
