@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.8.0 (unreleased) — one-tool MCP extraction + CLI accuracy fixes
+
+Additive release. No breaking changes, no defaults change.
+
+### Added
+
+- **`extract_pdf` MCP server** (`pdfmux-extract`, `src/pdfmux/mcp_extract.py`) — a single-tool MCP surface that takes a PDF path and returns extracted text, so MCP hosts can call one tool instead of composing several. Documented in `integrations/mcp-extract-pdf/README.md`.
+- **Model cost × quality A/B harness** (`eval/ab_models.py`, `eval/build_ab_dataset.py`, `eval/ab_datasets/`) — compares extraction models on a fixed 20-document ground-truth set and reports accuracy against cost per MTok, so model selection is measured rather than assumed.
+- **`use_cache` parameter on `extract_json()`** — set `use_cache=False` to force a real re-extraction and bypass the smart result cache.
+
+### Fixed
+
+- **`eval/run_eval.py --no-cache` was a dead flag.** It silently returned cached results, so an "uncached" eval run could complete in ~0.1s and report stale numbers. `use_cache` is now threaded through `extract_json()` into `process()`, and `--no-cache` forces a genuine re-run.
+- **CLI advertised a free tier 10× larger than the real one.** The `audit` summary and the post-convert upsell both printed "Free 1,000 pages/mo"; the actual free-tier quota is **100 pages/month** (enforced in the Cloud API). Corrected to 100 in both places.
+- **CLI pointed at a dead URL.** Both lines linked to `https://pdfmux.com/cloud`, which returns 404. Now `https://app.pdfmux.com`.
+
+### Licensing
+
+This release remains **MIT in full**, consistent with `LICENSING.md`. The patent-pending decision-trace method — the persisted per-page decision trace (including retained rejected candidates), the monotonic repair guard, and the runtime calibration loop — is **deliberately not included** in this repository and ships only in pdfmux Cloud / Pro under a separate commercial license.
+
 ## 1.7.0 (2026-05-22) — BREAKING: strict is now default
 
 **This release changes default behaviour on `pdfmux convert`.** Existing pipelines that relied on warn-only confidence handling need one of: (a) pass `--no-strict` to restore 1.6.x behaviour, (b) raise extraction quality so all documents score ≥ 0.75 confidence, or (c) lower `--min-confidence` below the documents your real corpus produces.

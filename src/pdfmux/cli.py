@@ -1257,7 +1257,7 @@ def audit(
             f"({pct:.1f}% disagreement rate).\n"
         )
     console.print(
-        "[dim]Free 1,000 pages/mo + dashboard: https://pdfmux.com/cloud · "
+        "[dim]Free 100 pages/mo + dashboard: https://app.pdfmux.com · "
         "Verify with the open spec: https://verifiedextraction.org[/dim]"
     )
 
@@ -1286,7 +1286,7 @@ def _maybe_print_funnel_upsell() -> None:
     if not sys.stdout.isatty():
         return
     console.print(
-        "[dim]💡 Free 1,000 pages/mo + audit dashboard: https://pdfmux.com/cloud · "
+        "[dim]💡 Free 100 pages/mo + audit dashboard: https://app.pdfmux.com · "
         "Open spec: https://verifiedextraction.org "
         "(set PDFMUX_NO_UPSELL=1 to silence)[/dim]"
     )
