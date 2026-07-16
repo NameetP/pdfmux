@@ -1,6 +1,10 @@
 # Changelog
 
-## 1.8.1 (unreleased) — Certify Anything: audit any engine's extraction
+## 1.8.2 (2026-07-16) — docs: honest positioning
+
+Docs-only release (no code changes). Corrects the README / PyPI description: removes an unverified "#2 on opendataloader-bench" benchmark claim; replaces it with the real, git-dated 433-document customer batch (naive v1: 16 silently dropped, 11 with no log line → rebuilt: 433/433, 0 silent); aligns the patent-pending method description with `LICENSING.md` (drops the not-built "runtime calibration"; "ships in" → "reserved for"); and seeds the expanded proposition — Certify Anything: audit **any** extractor's output for silently-dropped pages.
+
+## 1.8.1 (2026-07-16) — Certify Anything: audit any engine's extraction
 
 Additive release. No breaking changes, no defaults change. Builds on 1.8.0.
 
