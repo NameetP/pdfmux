@@ -266,4 +266,124 @@ class TestServerSetup:
         assert "analyze_pdf" in tool_names
         assert "batch_convert" in tool_names
         assert "extract_structured" in tool_names
+        assert "extract_streaming" in tool_names
         assert "get_pdf_metadata" in tool_names
+        assert "verify_extraction" in tool_names
+
+
+# ---------------------------------------------------------------------------
+# verify_extraction tests (Certify Anything — the 7th tool)
+# ---------------------------------------------------------------------------
+
+
+def _page1_lines() -> list[str]:
+    # Distinct vocabulary from page 2, and comfortably over the 200-char
+    # GOOD_TEXT_THRESHOLD so a dropped page reads as a genuine silent drop.
+    return [
+        f"Q1 revenue recognition and deferred income schedule row {i} totalling material amounts."
+        for i in range(6)
+    ]
+
+
+def _page2_lines() -> list[str]:
+    return [
+        f"Appendix regulatory compliance attestation signature counterparty disclosure item {i}."
+        for i in range(6)
+    ]
+
+
+@pytest.fixture
+def two_page_pdf(tmp_path):
+    """A 2-page PDF whose pages carry distinct, >200-char content each."""
+    import fitz
+
+    doc = fitz.open()
+    for lines in (_page1_lines(), _page2_lines()):
+        page = doc.new_page(width=612, height=792)
+        y = 72
+        for line in lines:
+            page.insert_text((72, y), line, fontsize=11)
+            y += 20
+    pdf_path = tmp_path / "twopage.pdf"
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+class TestVerifyExtraction:
+    _STATUSES = {"usable", "silently-empty", "recovered", "review", "fail", "unverifiable"}
+
+    def test_self_audit_shape(self, sample_pdf):
+        """No extraction supplied → pdfmux certifies its own read; assert shape."""
+        from pdfmux.mcp_server import verify_extraction
+
+        report = json.loads(verify_extraction(str(sample_pdf)))
+
+        assert report["engine"] == "pdfmux"
+        assert report["verdict"] in ("PASS", "REVIEW", "FAIL")
+        assert report["page_count"] == 1
+        assert "silently dropped" in report["headline"]
+        assert isinstance(report["silently_dropped_pages"], list)
+        assert isinstance(report["pages_silently_dropped"], int)
+        assert isinstance(report["pages"], list) and len(report["pages"]) == 1
+        page = report["pages"][0]
+        assert page["page"] == 1
+        assert page["status"] in self._STATUSES
+        assert set(page) >= {"page", "status", "coverage", "confidence", "alignment"}
+        assert isinstance(report["summary"], str) and report["summary"]
+        assert report["signature"].startswith("sha256:")
+        assert isinstance(report["limitations"], list) and report["limitations"]
+
+    def test_detects_silent_drop(self, two_page_pdf):
+        """A page-aligned extraction that keeps page 1 but drops page 2."""
+        from pdfmux.mcp_server import verify_extraction
+
+        extracted = json.dumps(
+            [
+                {"page": 1, "text": "\n".join(_page1_lines())},
+                {"page": 2, "text": ""},
+            ]
+        )
+        report = json.loads(
+            verify_extraction(str(two_page_pdf), extracted_text=extracted, engine="reducto")
+        )
+
+        assert report["engine"] == "reducto"
+        assert report["page_count"] == 2
+        assert report["pages_silently_dropped"] >= 1
+        assert 2 in report["silently_dropped_pages"]
+        page2 = next(p for p in report["pages"] if p["page"] == 2)
+        assert page2["status"] == "silently-empty"
+        assert report["verdict"] == "FAIL"
+        assert report["headline"].startswith(str(report["pages_silently_dropped"]))
+
+    def test_clean_extraction_no_drops(self, two_page_pdf):
+        """Both pages present → nothing silently dropped."""
+        from pdfmux.mcp_server import verify_extraction
+
+        extracted = json.dumps(
+            [
+                {"page": 1, "text": "\n".join(_page1_lines())},
+                {"page": 2, "text": "\n".join(_page2_lines())},
+            ]
+        )
+        report = json.loads(
+            verify_extraction(str(two_page_pdf), extracted_text=extracted, engine="llamaparse")
+        )
+
+        assert report["engine"] == "llamaparse"
+        assert report["page_count"] == 2
+        assert report["pages_silently_dropped"] == 0
+        assert report["silently_dropped_pages"] == []
+
+    def test_access_denied(self):
+        from pdfmux.mcp_server import verify_extraction
+
+        with pytest.raises(ValueError, match="Access denied"):
+            verify_extraction("/etc/passwd")
+
+    def test_file_not_found(self, tmp_path):
+        from pdfmux.mcp_server import verify_extraction
+
+        with pytest.raises(ValueError, match="File not found"):
+            verify_extraction(str(tmp_path / "nonexistent.pdf"))

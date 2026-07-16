@@ -15,7 +15,9 @@ Tools:
     analyze_pdf        — quick triage: classify + audit without full extraction
     batch_convert      — convert all PDFs in a directory
     extract_structured — tables, key-values, schema mapping
+    extract_streaming  — page-by-page NDJSON for large documents
     get_pdf_metadata   — page count, file size, type detection (instant, no extraction)
+    verify_extraction  — audit ANY engine's extraction for silently-dropped pages
 """
 
 from __future__ import annotations
@@ -56,7 +58,8 @@ mcp = FastMCP(
         "pdfmux converts PDFs to AI-readable Markdown. "
         "Use convert_pdf for full extraction, analyze_pdf for quick triage, "
         "batch_convert for directories, extract_structured for tables/key-values, "
-        "and extract_streaming for page-by-page NDJSON streaming on large docs."
+        "extract_streaming for page-by-page NDJSON streaming on large docs, "
+        "and verify_extraction to audit any engine's extraction for silently-dropped pages."
     ),
 )
 
@@ -287,6 +290,83 @@ def extract_streaming(
     for ev in process_streaming(str(p), quality=quality):
         lines.append(json.dumps(ev.to_dict(), ensure_ascii=False))
     return "\n".join(lines)
+
+
+@mcp.tool()
+def verify_extraction(
+    file_path: str,
+    extracted_text: str | None = None,
+    engine: str = "external",
+    fmt: str = "auto",
+) -> str:
+    """Audit an extraction of a PDF for silently-dropped pages — the failure where an extractor returns nothing for a page that has real text while reporting success. Pass extracted_text with another engine's output (Reducto, Mistral OCR, LlamaParse, Docling, an in-house parser — as JSON, Markdown, or plain text) to certify THAT engine against the source PDF; omit it to have pdfmux extract the document itself and certify its own read. Returns the per-page audit — each page marked usable / silently-empty / recovered / review / unverifiable — the "N of M pages silently dropped" headline, and an overall PASS/REVIEW/FAIL verdict with a tamper-evident signature. Reuses pdfmux's own audit pass as the ground truth."""
+    p = _check_path(file_path)
+
+    if not p.exists():
+        raise ValueError(f"File not found: {file_path}")
+
+    from pdfmux import verify_extraction as _verify_extraction
+
+    if extracted_text is not None and extracted_text.strip():
+        engine_label = engine
+        extracted: str = extracted_text
+        fmt_hint = fmt
+    else:
+        # No external extraction supplied — audit pdfmux's own read of the doc.
+        engine_label = "pdfmux" if engine == "external" else engine
+        extracted = process(
+            file_path=str(p),
+            output_format="json",
+            quality="standard",
+        ).text
+        fmt_hint = "json"
+
+    manifest = _verify_extraction(str(p), extracted, engine=engine_label, fmt=fmt_hint)
+    manifest_dict = manifest.to_dict()
+
+    def _status(page: dict) -> str:
+        if page.get("silent_drop"):
+            return "silently-empty"
+        if "content_off_page" in page.get("flags", []):
+            return "recovered"
+        verdict = page.get("verdict")
+        return "usable" if verdict == "pass" else verdict
+
+    pages = []
+    for pv in manifest.pages:
+        row = pv.to_dict()
+        pages.append(
+            {
+                "page": row["page"],
+                "status": _status(row),
+                "coverage": row["coverage"],
+                "confidence": row["confidence"],
+                "alignment": row["alignment"],
+                "hallucination_risk": row["hallucination_risk"],
+                "flags": row["flags"],
+            }
+        )
+
+    n_dropped = len(manifest.silent_drops)
+    report = {
+        "source": manifest.source,
+        "engine": manifest.engine,
+        "verdict": manifest.verdict,
+        "page_count": manifest.page_count,
+        "page_aligned": manifest.page_aligned,
+        "pages_silently_dropped": n_dropped,
+        "silently_dropped_pages": list(manifest.silent_drops),
+        "headline": f"{n_dropped} of {manifest.page_count} page(s) silently dropped",
+        "summary": manifest.summary,
+        "overall_confidence": manifest.confidence,
+        "overall_coverage": manifest.coverage,
+        "pages": pages,
+        "signature": manifest.signature,
+        "tool": manifest.tool,
+        "limitations": manifest_dict["limitations"],
+    }
+
+    return json.dumps(report, indent=2)
 
 
 # ---------------------------------------------------------------------------
