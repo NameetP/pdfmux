@@ -70,20 +70,22 @@ Labels are set by *construction* in `build_fixtures.py`, not by running pdfmux. 
 
 If a target precision can't be achieved on the eval set, `calibrate.py` reports the best precision observed and recommends expanding the dataset rather than locking a number that doesn't generalize.
 
-## The May 2026 calibration run
+## Calibration run (2026-07-16, `quality=standard` + `pdfmux[ocr]`)
 
-First end-to-end run on these 50 fixtures (`quality=fast`, no OCR):
+Genuine uncached run over the 50 fixtures (28 good / 22 bad):
 
 | Threshold | Precision | Recall | F1 | Accuracy |
 |---:|---:|---:|---:|---:|
-| 0.10 | 0.821 | 0.821 | 0.821 | 0.800 |
-| 0.50 | 0.821 | 0.821 | 0.821 | 0.800 |
-| **0.75** | **1.000** | **0.714** | **0.833** | **0.840** |
-| 0.80 | 1.000 | 0.714 | 0.833 | 0.840 |
+| 0.00 | 0.683 | 1.000 | 0.812 | 0.740 |
+| 0.10–0.70 | 0.849 | 1.000 | 0.918 | 0.900 |
+| **0.75** | **1.000** | **1.000** | **1.000** | **1.000** |
+| 0.90 | 1.000 | 0.821 | 0.902 | 0.900 |
 
-**Recommended `--min-confidence` for 1.7 strict gate: 0.75** (precision 1.00, recall 0.71).
+**Recommended `--min-confidence` for the 1.7+ strict gate: 0.75** — precision 1.00, recall 1.00 (tp=28 fp=0 tn=22 fn=0).
 
-The 8 false-negatives at this threshold are all `image_only` fixtures at `quality=fast` (no OCR backend). With `--quality standard` and `pdfmux[ocr]` installed, those documents would extract via RapidOCR and score above 0.75.
+**Read this honestly.** This is a small **internal regression guard** — ~7 distinct document shapes across 50 synthetic fixtures — not a competitive benchmark. Its job is to catch a regression in the confidence gate, not to prove field accuracy. The separation is currently clean, but the margin is thin: the `html_as_pdf` counterfeit sits at **0.730** against the 0.75 gate (0.02 of headroom). **Don't cite these numbers as a headline result** — the real, external proof point is the ARK 433-document customer batch (naive v1: 16 silently dropped / 11 with no log line → v4: 433/433, 0 silent). Expand the set (below) before leaning on it.
+
+> *History: an earlier run reported **recall 0.714** here — an artifact of a broken Arabic fixture whose generator silently emitted `U+00B7` middle-dots instead of Arabic (PyMuPDF's default font substitutes rather than raising, so the `try/except` fallback was dead code). Fixed 2026-07-16: `_make_arabic` in `build_fixtures.py` now renders with a real Arabic font and **self-verifies** the glyphs survive extraction, raising rather than shipping garbage. Recall corrected 0.714 → 1.000; the Arabic category's mean confidence went 0.65 → 0.90.*
 
 ## A real bug surfaced by the first run
 
@@ -108,6 +110,6 @@ The 50 programmatic fixtures cover the failure modes we already knew about. To s
 
 1. Add real customer PDFs as labeled fixtures (with explicit consent and PII redaction). Drop the file in `fixtures/` and add a row to `labels.csv` with the right label.
 2. Add fixtures that hit the audit's individual penalties (mojibake, excessive whitespace, single-letter words, etc.) so the threshold sweep has more signal.
-3. For Arabic / RTL: build fixtures with embedded fonts that render Arabic glyphs cleanly so `pymupdf4llm` extracts a fair representation. The Helvetica fallback in the current generator under-scores Arabic at confidence 0.65, which understates real-world performance.
+3. For Arabic / RTL: `_make_arabic` now embeds a real Arabic font and self-verifies the rendered glyphs (raising if none survive), so the fixture is a fair test rather than silent middle-dots. Add more RTL shapes — mixed LTR/RTL, ligature-heavy scripts — to broaden coverage.
 
 Treat `labels.csv` as the source of truth and re-run all three scripts after any change.

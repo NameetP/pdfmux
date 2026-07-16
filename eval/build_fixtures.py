@@ -111,14 +111,56 @@ def _make_html_as_pdf(path: Path) -> None:
     )
 
 
+_ARABIC_FONT_CANDIDATES = [
+    # macOS
+    "/System/Library/Fonts/SFArabic.ttf",
+    "/System/Library/Fonts/GeezaPro.ttc",
+    "/System/Library/Fonts/NotoNastaliq.ttc",
+    # Linux (Debian/Ubuntu, Fedora/Noto)
+    "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+    "/usr/share/fonts/google-noto/NotoSansArabic-Regular.ttf",
+    "/usr/share/fonts/noto/NotoSansArabic-Regular.ttf",
+]
+
+
 def _make_arabic(path: Path) -> None:
+    """Build a genuine Arabic-text PDF and VERIFY the glyphs survive extraction.
+
+    PyMuPDF's default font (Helvetica) has no Arabic coverage and, rather than
+    raising, silently substitutes notdef glyphs (U+00B7 MIDDLE DOT). The old
+    try/except was dead code: the fixture claimed to test Arabic while
+    containing zero Arabic codepoints, so pdfmux correctly scored it low and the
+    eval mislabelled that as a false negative. We now locate an Arabic-capable
+    font, render with it, then re-extract and assert real Arabic is present —
+    and RAISE if we cannot, instead of silently shipping a broken fixture (the
+    exact silent-failure class pdfmux exists to catch).
+    """
+    fontfile = next(
+        (
+            f
+            for f in _ARABIC_FONT_CANDIDATES
+            if Path(f).exists() and fitz.Font(fontfile=f).has_glyph(0x0627)  # ALEF
+        ),
+        None,
+    )
+    if fontfile is None:
+        raise RuntimeError(
+            "No Arabic-capable font found — cannot build a valid Arabic fixture. "
+            "Install Noto Sans Arabic (Linux: fonts-noto-core) or run on macOS. "
+            "Refusing to write a silently-broken fixture."
+        )
+
     doc = fitz.open()
     page = doc.new_page()
-    try:
-        page.insert_text((72, 72), ARABIC_TEXT, fontsize=14)
-    except Exception:
-        # PyMuPDF default font may reject some glyphs; fall back to ASCII.
-        page.insert_text((72, 72), "fallback content for arabic fixture", fontsize=11)
+    page.insert_text((72, 72), ARABIC_TEXT, fontsize=14, fontname="ar", fontfile=fontfile)
+
+    extracted = page.get_text()
+    arabic_cp = sum(1 for ch in extracted if "؀" <= ch <= "ۿ")
+    if arabic_cp < 10:
+        raise RuntimeError(
+            f"Arabic fixture verification failed: only {arabic_cp} Arabic codepoints "
+            f"extracted using {fontfile}. Refusing to write garbage."
+        )
     doc.save(str(path))
     doc.close()
 

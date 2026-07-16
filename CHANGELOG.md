@@ -101,10 +101,12 @@ After the audit fix, on the 50-fixture eval set:
 
 | Threshold | Precision | Recall | F1 |
 |---:|---:|---:|---:|
-| 0.50 | 0.821 | 0.821 | 0.821 |
-| **0.75** | **1.000** | **0.714** | **0.833** |
+| 0.50 | 0.849 | 1.000 | 0.918 |
+| **0.75** | **1.000** | **1.000** | **1.000** |
 
 `0.75` is the recommended default for `--min-confidence` when 1.7 ships breaking-default-strict on `pdfmux convert <dir>`. Not enabled by default in this release.
+
+> Corrected 2026-07-16: the recall originally reported here (0.71) was an artifact of a broken Arabic test fixture whose generator silently emitted middle-dots instead of Arabic; `build_fixtures.py` now renders real Arabic and self-verifies. Numbers above are the corrected values. This is a small internal regression set, not a benchmark — see `eval/README.md`.
 
 ## 1.6.2 (2026-05-01)
 
