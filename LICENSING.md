@@ -14,9 +14,9 @@ Use it commercially, fork it, embed it — the MIT terms are the whole agreement
 
 ## What's patent-pending and licensed separately — not in this repo
 
-The **decision-trace** extraction method — the persisted per-page decision trace (including retained rejected candidates), the monotonic repair guard, and the runtime calibration loop, alone and in combination — is **patent-pending**: US Provisional Patent Application **No. 64/106,302** (priority date 2026-07-07).
+The **decision-trace** extraction method — the persisted per-page decision trace (including retained rejected candidates) and the monotonic repair guard, alone and in combination — is **patent-pending**: US Provisional Patent Application **No. 64/106,302** (priority date 2026-07-07).
 
-That method is **not included in this MIT repository.** It ships in **pdfmux Cloud / Pro** under a separate commercial license. The MIT License above covers only the code in this repository and does **not** grant any license — patent or copyright — to the decision-trace method.
+That method is **not included in this MIT repository** and is **not licensed under MIT.** It is reserved for **pdfmux Cloud / Pro** under a separate commercial license. The MIT License above covers only the code in this repository and does **not** grant any license — patent or copyright — to the decision-trace method.
 
 ## Why the split
 
