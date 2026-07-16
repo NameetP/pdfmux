@@ -6,9 +6,14 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://img.shields.io/pypi/dm/pdfmux)](https://pypi.org/project/pdfmux/)
 
-**Self-healing PDF extraction with per-page confidence scoring.** Open-source LlamaParse alternative for RAG pipelines, MCP server for Claude Desktop, LangChain + LlamaIndex loaders. Ranked #2 on opendataloader-bench (0.900).
+**Self-healing PDF extraction that flags the pages it can't read instead of dropping them — and now certifies any extractor's output for silent drops.** Open-source LlamaParse alternative for RAG pipelines, MCP server for Claude Desktop, LangChain + LlamaIndex loaders.
 
-The only PDF extractor that audits its own output. Catches blank pages, scrambled columns, broken tables — re-extracts them with a stronger backend. So your LLM gets clean data, not silent garbage. Routes each page to the best of 5 rule-based backends + BYOK LLM fallback (Gemini / Claude / GPT-4o / Ollama). One CLI. One API. Zero config.
+> pdfmux extracts PDFs and checks its own work — and now certifies any extractor's, telling you which pages it silently dropped. Free, MIT. Patent-pending method. `pip install pdfmux`.
+
+**Two jobs, one tool:**
+
+- **Self-healing extraction.** The only PDF extractor that audits its own output. Catches blank pages, scrambled columns, broken tables — re-extracts them with a stronger backend, and flags what it still can't read instead of silently dropping it. So your LLM gets clean data, not silent garbage. Routes each page to the best of 7 built-in extraction backends + BYOK LLM fallback (Gemini / Claude / GPT-4o / Ollama). One CLI. One API. Zero config.
+- **[Certify Anything](#certify-anything) — new in v1.8.1.** `pdfmux verify` audits *any* extraction engine's output against the source PDF — Reducto, Mistral OCR, LlamaParse, Docling, your in-house parser — and tells you which pages it silently dropped. Free, MIT, patent-clean.
 
 <p align="center">
   <img src="demo.svg" alt="pdfmux terminal demo" width="700" />
@@ -133,6 +138,71 @@ chunks = pdfmux.chunk("report.pdf", max_tokens=500)    # RAG-ready chunks
 ```
 
 > **Don't wrap pdfmux with your own pypdf/pdfplumber fallback.** pdfmux already routes per page through PyMuPDF → RapidOCR → vision LLM. PyMuPDF tolerates malformed PDFs that pypdf rejects ("Stream has ended unexpectedly"), so a downstream pypdf fallback turns recoverable PDFs into failures. Trust the router; check the confidence score on the result.
+
+## Certify Anything
+
+`pdfmux verify` audits **any extraction engine's output** against the source PDF and tells you which pages it silently dropped — not just pdfmux's own extraction. Point it at the output of Reducto, Mistral OCR, LlamaParse, Docling, or your in-house parser and it re-derives the source text with pdfmux's own audit pass, aligns the extraction to it, and scores every page.
+
+**The failure it catches:** a page where the source has real text but the engine returned nothing — while reporting success. That "silent drop" is the exact failure that poisons a RAG index without a single error in the logs.
+
+```bash
+# Certify pdfmux's own extraction of a document
+pdfmux verify --source report.pdf --engine pdfmux
+
+# Certify ANOTHER engine's output (JSON / Markdown / text)
+pdfmux verify --source report.pdf --extracted reducto.json --engine-name reducto
+
+# Batch a whole directory — the "M pages silently dropped across N docs" report
+pdfmux verify --source ./pdfs/ --extracted ./engine-outputs/ -o certification.json
+
+# CI gate: exit non-zero unless the overall verdict is PASS
+pdfmux verify --source report.pdf --extracted out.json --strict
+```
+
+Every run prints a `PASS` / `REVIEW` / `FAIL` verdict, overall confidence and coverage, and — when it finds them — the silently dropped pages by number:
+
+```
+pdfmux verify — report.pdf · engine: reducto
+  FAIL   confidence 71% · coverage 68%
+  reducto: FAIL; 3 page(s) SILENTLY DROPPED (pages 7, 12, 31); overall
+  confidence 71%, coverage 68% across 40 page(s).
+
+❌ 3 page(s) SILENTLY DROPPED: 7, 12, 31
+```
+
+Per page you get a verdict (`pass` / `review` / `fail`), confidence, coverage, alignment, hallucination-risk, and table/heading integrity. Batch mode rolls that up into a single **"N pages silently dropped across M documents"** line — the report you run on 100 of your own PDFs to find the silent failures already in your pipeline.
+
+### It works on any engine's output
+
+`--extracted` accepts JSON, Markdown, or plain text (`--extracted-format auto | json | markdown | text`). When the extraction exposes real per-page structure, pdfmux compares page-by-page; when it's a single blob, it falls back to content-presence checks so it never fabricates a "silent drop" from a pagination mismatch.
+
+### Python API
+
+```python
+from pdfmux import verify_extraction, verify_batch
+
+# Single document → a CertificationManifest
+manifest = verify_extraction("report.pdf", "reducto.json", engine="reducto")
+print(manifest.verdict)        # "PASS" | "REVIEW" | "FAIL"
+print(manifest.silent_drops)   # e.g. (7, 12, 31)  — 1-indexed page numbers
+print(manifest.coverage)       # 0.0–1.0
+
+# Many documents → a BatchCertification ("M pages dropped across N docs")
+batch = verify_batch([("a.pdf", "a.json"), ("b.pdf", "b.json")], engine="llamaparse")
+print(batch.total_silent_drops, "pages dropped across", batch.doc_count, "docs")
+```
+
+Each manifest carries a tamper-evident SHA-256 content signature over its canonical body and an embedded, honest limitations list: the certifier is **lexical, not linguistic** — it detects missing and garbled content, not faithful paraphrase or translation.
+
+### MCP
+
+`verify_extraction` is exposed as an MCP tool (the 7th — see [MCP Server](#mcp-server-ai-agents)), so an agent can certify an engine's output in the same session it extracts.
+
+### Free, MIT, patent-clean
+
+Certify Anything reuses only pdfmux's shipped MIT audit layer. It does **not** include, and does not require, the patent-pending decision-trace method — that stays in [pdfmux Cloud/Pro](#license). `pip install pdfmux` gives you the full `verify` command at no cost.
+
+Full reference: **[docs/CERTIFY-ANYTHING.md](docs/CERTIFY-ANYTHING.md)**.
 
 ## Architecture
 
@@ -541,20 +611,13 @@ visual = fix_bidi_order(text)
 indexable = normalize_arabic("أَحْمَدْ")  # → "احمد"
 ```
 
-## Benchmark
+## Proof: a real customer batch
 
-Tested on [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench) -- 200 real-world PDFs across financial reports, legal filings, academic papers, and scanned documents.
+We measured pdfmux on **433 real customer documents** — technical and safety data sheets, mixed digital and scanned, some encoding-corrupted. Run the naive way first (an early pdfmux CLI in a subprocess, pypdf fallback, no OCR), the pipeline **silently dropped 16 documents — 11 of them with no log line at all.** That was our own tool failing at the exact thing it promises.
 
-| Engine | Overall | Reading Order | Tables (TEDS) | Headings | Requires |
-|--------|---------|---------------|---------------|----------|----------|
-| opendataloader hybrid | 0.909 | 0.935 | 0.928 | 0.828 | API calls ($) |
-| **pdfmux** | **0.905** | **0.920** | **0.911** | **0.852** | **CPU only, $0** |
-| docling | 0.877 | 0.900 | 0.887 | 0.802 | ~500MB models |
-| marker | 0.861 | 0.890 | 0.808 | 0.796 | GPU recommended |
-| opendataloader local | 0.844 | 0.913 | 0.494 | 0.761 | CPU only |
-| mineru | 0.831 | 0.857 | 0.873 | 0.743 | GPU + ~2GB models |
+Rebuilt with the per-page audit + budgeted OCR cascade: **433 of 433 processed, zero silent failures.** Every unrecoverable page is flagged, not dropped.
 
-#2 overall, #1 among free tools. 99.5% of the paid #1 score at zero cost per page. Best heading detection of any engine tested. Image table OCR extracts tables embedded as images.
+*(A small internal confidence-calibration set also ships under `eval/` — it's a regression guard on the confidence gate, not a competitive benchmark; see [`eval/README.md`](eval/README.md).)*
 
 ## Smart Result Cache
 
@@ -642,7 +705,7 @@ ruff format src/ tests/
 
 The pdfmux library and MCP server in this repository are **[MIT](LICENSE)** licensed — free for any use, and every released version stays MIT.
 
-The confidence-budgeted **decision-trace** method (persisted per-page decision trace, monotonic repair guard, runtime calibration) is **patent-pending** (US Provisional App No. 64/106,302) and ships separately in pdfmux Cloud/Pro — it is not part of the MIT grant. See **[LICENSING.md](LICENSING.md)** and **[NOTICE](NOTICE)**.
+The confidence-budgeted **decision-trace** method (the persisted per-page decision trace with retained rejected candidates, and the monotonic repair guard) is **patent-pending** (US Provisional App No. 64/106,302) and is reserved for pdfmux Cloud/Pro under a separate commercial license — it is not part of the MIT grant. See **[LICENSING.md](LICENSING.md)** and **[NOTICE](NOTICE)**.
 
 <!-- mcp-name: io.github.NameetP/pdfmux -->
 
