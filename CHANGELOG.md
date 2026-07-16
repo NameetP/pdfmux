@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.8.1 (unreleased) — Certify Anything: audit any engine's extraction
+
+Additive release. No breaking changes, no defaults change. Builds on 1.8.0.
+
+### Added
+
+- **`pdfmux verify` — Certify Anything.** Audit ANY extraction engine's output against the source PDF, not just pdfmux's own. Point it at a source PDF plus an external extraction (Reducto, Mistral OCR, LlamaParse, Docling, an in-house parser — anything) and it re-derives the source text with pdfmux's own audit pass, aligns the extraction to it, and scores every page for coverage, confidence, alignment, hallucination risk, table/heading integrity, and **silent drops** — the failure where the source page has real text but the engine returned nothing while reporting success.
+  - **Public API** (`src/pdfmux/verifier.py`): `verify_extraction()` returns a single-document `CertificationManifest`; `verify_batch()` returns a `BatchCertification` — the "M pages silently dropped across N docs" report. Both re-exported from the top-level package.
+  - **CLI** (`pdfmux verify`): single-doc and batch, table/json/markdown output, `--strict` CI gate (exits non-zero unless PASS), manifest + report file output.
+  - **MCP tool** (`verify_extraction`, 7th tool in `pdfmux serve`): given a document path and an engine's extracted text, returns the per-page usable / silently-empty / recovered audit plus the "N of M pages silently dropped" summary.
+  - Each manifest carries a tamper-evident SHA-256 content signature over its canonical body and an embedded, honest LIMITATIONS list (the certifier is lexical, not linguistic — it does not detect faithful paraphrase or translation).
+
+### Fixed (honesty / hygiene, from the pre-launch pass)
+
+- **`eval/build_fixtures.py` silently shipped a garbage Arabic fixture** — PyMuPDF's default font substituted notdef glyphs (middle-dots) instead of raising, so the "Arabic" fixture held zero Arabic codepoints and the eval reported success anyway (the exact failure pdfmux exists to catch). The generator now renders with a real Arabic font and self-verifies the glyphs survive extraction, raising rather than shipping garbage. The 3 regenerated Arabic PDFs are committed so CI needs no Arabic font.
+- **`eval/README.md` + CHANGELOG published stale eval numbers** beside the broken harness. Corrected to the real current table, with an explicit caveat that the internal eval set is a small regression guard, **not** a benchmark — the sanctioned proof is the ARK 433-document batch.
+- **`LICENSING.md` overclaimed.** It said the patent-pending decision-trace method "ships in pdfmux Cloud / Pro" (it ships nowhere yet) — corrected to "reserved for" — and listed a "runtime calibration loop" that exists in no product — removed. The MIT / patent boundary is unchanged.
+
+### Licensing
+
+This release remains **MIT in full**, consistent with `LICENSING.md`. Certify Anything reuses only pdfmux's shipped MIT audit layer (`score_page`, `audit_document`). The patent-pending decision-trace method — the persisted per-page decision trace, the monotonic repair guard, and the runtime calibration loop — is **deliberately not included** in this repository and is reserved for a separate commercial license.
+
 ## 1.8.0 (unreleased) — one-tool MCP extraction + CLI accuracy fixes
 
 Additive release. No breaking changes, no defaults change.
