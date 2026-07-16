@@ -36,6 +36,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from pdfmux import __version__
+from pdfmux.manifest_verify import DEFAULT_PUBKEY_URL as _PUBKEY_URL
 from pdfmux.pipeline import process, process_batch
 
 app = typer.Typer(
@@ -2406,6 +2407,145 @@ def diff(
     else:
         console.print("\n[dim]Same headings on both files.[/dim]")
     console.print()
+
+
+@app.command(name="verify-manifest")
+def verify_manifest(
+    manifest_file: Path = typer.Argument(
+        ...,
+        help="Signed manifest to verify: a GET /v1/jobs/{id} response "
+        '({"manifest": {...}, "signature": "..."}) or a bare manifest object '
+        "(pass the signature with --signature). Use '-' to read from stdin.",
+    ),
+    pubkey: Path | None = typer.Option(
+        None,
+        "--pubkey",
+        "-k",
+        help="Path to the pdfmux public key (PEM). Offline verification — no "
+        "network. Fetch it once from the /.well-known URL and cache it.",
+    ),
+    online: bool = typer.Option(
+        False,
+        "--online",
+        "-o",
+        help="Fetch the public key over the network instead of using --pubkey "
+        f"(default source: {_PUBKEY_URL}). Offline is the default and the point.",
+    ),
+    pubkey_url: str = typer.Option(
+        _PUBKEY_URL,
+        "--pubkey-url",
+        help="URL to fetch the public key from when --online is set.",
+    ),
+    signature: str | None = typer.Option(
+        None,
+        "--signature",
+        "-s",
+        help="Base64 signature, if it isn't already in the manifest file.",
+    ),
+    out_format: str = typer.Option(
+        "text", "--format", "-f", help="Output: text | json."
+    ),
+) -> None:
+    """Verify a pdfmux Cloud signed manifest OFFLINE — no account, no API call.
+
+    Every paid (Verified / Verified Pro) extraction ships an Ed25519 signature
+    over its manifest. pdfmux signs with a private key it never discloses; you
+    verify with the published public key. If verification passes, the manifest is
+    byte-for-byte what pdfmux signed — alter any field (a page count, a filename,
+    the extracted text, the tier) and it fails.
+
+    Generating a signed manifest is the paid product; verifying one is free and
+    open — that asymmetry is the point.
+
+    Examples::
+
+        pdfmux verify-manifest job.json --pubkey pdfmux.pem
+        curl .../v1/jobs/ID | pdfmux verify-manifest - --pubkey-url
+        pdfmux verify-manifest manifest.json -s "<b64sig>" -k key.pem --format json
+
+    Exit codes: 0 = valid signed manifest; 4 = invalid/unsigned; 2 = usage error.
+    """
+    import json as _json
+    import sys
+
+    from pdfmux.manifest_verify import (
+        ManifestVerificationError,
+        VerifyResult,
+        fetch_public_key,
+        verify_payload,
+    )
+
+    # --- load the manifest payload ---
+    try:
+        raw = sys.stdin.read() if str(manifest_file) == "-" else manifest_file.read_text()
+        payload = _json.loads(raw)
+    except FileNotFoundError:
+        console.print(f"[red]Manifest file not found:[/red] {rich_escape(str(manifest_file))}")
+        raise typer.Exit(2)
+    except _json.JSONDecodeError as exc:
+        console.print(f"[red]Manifest is not valid JSON:[/red] {rich_escape(str(exc))}")
+        raise typer.Exit(2)
+    if not isinstance(payload, dict):
+        console.print("[red]Manifest must be a JSON object.[/red]")
+        raise typer.Exit(2)
+
+    # --- resolve the public key ---
+    if pubkey is not None and online:
+        console.print("[red]Pass only one of --pubkey / --online.[/red]")
+        raise typer.Exit(2)
+    try:
+        if pubkey is not None:
+            pubkey_pem = pubkey.read_text()
+        elif online:
+            pubkey_pem = fetch_public_key(pubkey_url)
+        else:
+            console.print(
+                "[red]No public key.[/red] Pass --pubkey <file.pem> (offline, "
+                "preferred) or --online to fetch it. Get the key once from\n"
+                f"  {_PUBKEY_URL}"
+            )
+            raise typer.Exit(2)
+    except FileNotFoundError:
+        console.print(f"[red]Public key file not found:[/red] {rich_escape(str(pubkey))}")
+        raise typer.Exit(2)
+    except ManifestVerificationError as exc:
+        console.print(f"[red]Could not fetch/parse public key:[/red] {rich_escape(str(exc))}")
+        raise typer.Exit(2)
+
+    # --- verify ---
+    try:
+        result: VerifyResult = verify_payload(payload, pubkey_pem, signature_override=signature)
+    except ManifestVerificationError as exc:
+        console.print(f"[red]Verification error:[/red] {rich_escape(str(exc))}")
+        raise typer.Exit(2)
+
+    if out_format == "json":
+        # Plain stdout (not rich) so the JSON is machine-parseable — no ANSI,
+        # no syntax highlighting, no reflow.
+        typer.echo(
+            _json.dumps(
+                {
+                    "valid": result.valid,
+                    "signed": result.signed,
+                    "tier": result.tier,
+                    "verified": result.verified_flag,
+                    "reason": result.reason,
+                },
+                indent=2,
+            )
+        )
+    elif result.valid:
+        console.print("[bold green]✓ VERIFIED[/bold green] — signature is valid.")
+        console.print(f"  tier: [bold]{rich_escape(str(result.tier))}[/bold]  ·  {result.reason}")
+    elif not result.signed:
+        console.print("[yellow]○ UNSIGNED[/yellow] — nothing to verify.")
+        console.print(f"  {result.reason}")
+    else:
+        console.print("[bold red]✗ INVALID[/bold red] — verification FAILED.")
+        console.print(f"  {result.reason}")
+
+    if not result.valid:
+        raise typer.Exit(4)
 
 
 if __name__ == "__main__":
