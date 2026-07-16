@@ -619,6 +619,20 @@ Rebuilt with the per-page audit + budgeted OCR cascade: **433 of 433 processed, 
 
 *(A small internal confidence-calibration set also ships under `eval/` — it's a regression guard on the confidence gate, not a competitive benchmark; see [`eval/README.md`](eval/README.md).)*
 
+## Benchmark
+
+On [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench) — 200 real-world PDFs (financial filings, academic papers, legal contracts, government reports) — pdfmux scores **0.905 overall: #2 of all tools, and #1 among free / open-source libraries**, behind only the paid LlamaParse. Re-run 2026-05-19.
+
+| Rank | Library | Overall | Reading order | Tables (TEDS) | License | GPU |
+|---:|---|---:|---:|---:|---|---|
+| 1 | LlamaParse (paid) | 0.910 | 0.921 | 0.901 | Commercial | Cloud |
+| **2** | **pdfmux** | **0.905** | **0.918** | **0.887** | **MIT** | **No** |
+| 3 | Docling | 0.877 | 0.900 | 0.887 | MIT | Optional |
+| 4 | marker | 0.861 | 0.890 | 0.808 | GPL | Recommended |
+| 5 | mineru | 0.831 | 0.857 | 0.873 | AGPL | Yes |
+
+Full per-document scores: the [200-PDF head-to-head](https://pdfmux.com/blog/pdfmux-vs-pymupdf-vs-marker-vs-docling/) · methodology: [best PDF extraction library, benchmarked](https://pdfmux.com/blog/best-pdf-extraction-library-python/).
+
 ## Smart Result Cache
 
 Re-running the same extraction is instant. pdfmux hashes every input PDF
