@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pdfmux"
 version = "1.8.2"
-description = "Self-healing PDF extraction for RAG. Per-page confidence scoring, auto re-extracts bad pages, MCP server, LangChain/LlamaIndex loaders. LlamaParse alternative, #2 on opendataloader-bench."
+description = "Self-healing PDF extraction for RAG that flags pages it can't read instead of dropping them — and certifies any extractor's output for silent drops. Per-page confidence scoring, 7-tool MCP server, LangChain/LlamaIndex loaders. LlamaParse alternative."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
