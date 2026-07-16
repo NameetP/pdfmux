@@ -58,6 +58,7 @@ dependencies = [
     "pymupdf4llm>=0.0.10",
     "rich>=13.0.0",
     "python-bidi>=0.6.0",  # BiDi algorithm for Arabic/Hebrew RTL text reordering
+    "cryptography>=42.0",  # offline Ed25519 verification of Cloud signed manifests (pdfmux verify-manifest)
 ]
 
 [project.optional-dependencies]
