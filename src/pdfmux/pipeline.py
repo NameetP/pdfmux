@@ -168,20 +168,26 @@ def process(
             code="PDF_TOO_LARGE",
         )
 
-    # Step 2: Route to the best extractor, get page results (with timeout)
+    # Step 2: Route to the best extractor, get page results (under a hard
+    # timeout). This runs native code (PyMuPDF, ONNX/OCR, Docling) that can wedge
+    # on a malformed page; run_with_timeout isolates it so the deadline actually
+    # returns control — SIGKILL-ing a forked child on Linux, abandoning a daemon
+    # thread elsewhere. A plain ThreadPoolExecutor could not: it cannot cancel a
+    # running thread and blocks the caller on executor shutdown. See _timeout.py.
     if EXTRACTION_TIMEOUT_S > 0:
-        from concurrent.futures import TimeoutError as FuturesTimeout
+        from pdfmux._timeout import HardTimeoutError, run_with_timeout
 
-        with ThreadPoolExecutor(max_workers=1) as _timeout_pool:
-            _fut = _timeout_pool.submit(_route_and_extract, file_path, classification, qual)
-            try:
-                pages, extractor_name, ocr_pages = _fut.result(timeout=EXTRACTION_TIMEOUT_S)
-            except FuturesTimeout:
-                _fut.cancel()
-                raise OCRTimeoutError(
-                    f"Extraction timed out after {EXTRACTION_TIMEOUT_S}s. "
-                    "Set PDFMUX_TIMEOUT to increase the limit."
-                )
+        try:
+            pages, extractor_name, ocr_pages = run_with_timeout(
+                _route_and_extract,
+                (file_path, classification, qual),
+                EXTRACTION_TIMEOUT_S,
+            )
+        except HardTimeoutError:
+            raise OCRTimeoutError(
+                f"Extraction timed out after {EXTRACTION_TIMEOUT_S}s. "
+                "Set PDFMUX_TIMEOUT to increase the limit."
+            )
     else:
         pages, extractor_name, ocr_pages = _route_and_extract(file_path, classification, qual)
 

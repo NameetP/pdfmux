@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Extraction timeout now hard-terminates a wedged extractor.** `PDFMUX_TIMEOUT` (default 300s) previously raised on schedule but could still hang the caller: a `ThreadPoolExecutor` cannot cancel a thread that is already running, and its context-exit blocks on `shutdown(wait=True)` until the native call returns — which, for a wedged PyMuPDF / OCR / Docling page, may be never. Extraction now runs under `pdfmux._timeout.run_with_timeout`: on Linux it forks a child and escalates `SIGTERM`→`SIGKILL` at the deadline (the wedged extractor is actually killed and its memory reclaimed — the path the cloud worker runs); on macOS / Windows, where forking after native libraries load is unsafe or unavailable, it falls back to a daemon thread so the caller is freed immediately and process exit is never blocked. Override with `PDFMUX_TIMEOUT_ISOLATION` (`auto` | `process` | `thread` | `off`). Still surfaces as the existing `OCRTimeoutError`. Resolves the portfolio-audit P1 finding.
+
 ## 1.8.2 (2026-07-16) — docs: honest positioning
 
 Docs-only release (no code changes). Corrects the README / PyPI description: removes an unverified "#2 on opendataloader-bench" benchmark claim; replaces it with the real, git-dated 433-document customer batch (naive v1: 16 silently dropped, 11 with no log line → rebuilt: 433/433, 0 silent); aligns the patent-pending method description with `LICENSING.md` (drops the not-built "runtime calibration"; "ships in" → "reserved for"); and seeds the expanded proposition — Certify Anything: audit **any** extractor's output for silently-dropped pages.
