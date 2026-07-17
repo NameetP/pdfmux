@@ -1,0 +1,2695 @@
+[
+  {
+    "doc_id": "irs-f1040",
+    "category": "forms",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 111734
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0536,
+        "min_alignment": 0.0345,
+        "flagged": true,
+        "is_fp": true
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9435,
+        "min_alignment": 0.9923,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0473,
+        "min_alignment": 0.0311,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "rows_removed": 3,
+          "rows_total": 7
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:inject_offsource": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.1361,
+        "min_alignment": 0.0372,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 111
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss",
+          "table_dropped"
+        ],
+        "min_coverage": 0.0054,
+        "min_alignment": 0.0041,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "irs-fw9",
+    "category": "forms",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 9148
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "table_dropped"
+        ],
+        "min_coverage": 0.6477,
+        "min_alignment": 0.5837,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "table_dropped"
+        ],
+        "min_coverage": 0.6339,
+        "min_alignment": 0.5772,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "table_dropped"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.5978,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 124
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss",
+          "table_dropped"
+        ],
+        "min_coverage": 0.0647,
+        "min_alignment": 0.063,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "irs-fw4",
+    "category": "forms",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 15477
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "table_dropped"
+        ],
+        "min_coverage": 0.3174,
+        "min_alignment": 0.2709,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "table_dropped"
+        ],
+        "min_coverage": 0.3072,
+        "min_alignment": 0.2677,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_alignment",
+          "table_dropped"
+        ],
+        "min_coverage": 0.9301,
+        "min_alignment": 0.2758,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 109
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss",
+          "table_dropped"
+        ],
+        "min_coverage": 0.0317,
+        "min_alignment": 0.028,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "arxiv-1706.03762-attention",
+    "category": "academic",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 3013,
+      "1": 4321
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9635,
+        "min_alignment": 0.9828,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1,
+          2
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "content_off_page",
+          "hallucination_risk"
+        ],
+        "min_coverage": 0.9778,
+        "min_alignment": 0.9778,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          2
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 2,
+          "n_pages": 2
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          2
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 0.9635,
+        "min_alignment": 0.9828,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 2,
+          "sentences_injected": 86
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0959,
+        "min_alignment": 0.0967,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "arxiv-1810.04805-bert",
+    "category": "academic",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 3955
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9972,
+        "min_alignment": 0.9876,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9876,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.9876,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 83
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0996,
+        "min_alignment": 0.0965,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "arxiv-1512.03385-resnet",
+    "category": "academic",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 4522
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9124,
+        "min_alignment": 0.9136,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9047,
+        "min_alignment": 0.9,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.9182,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 89
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0909,
+        "min_alignment": 0.0909,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "arxiv-2203.02155-instructgpt",
+    "category": "complex-tables",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 3460
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9624,
+        "min_alignment": 0.9608,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "rows_removed": 1,
+          "rows_total": 3
+        },
+        "is_fn": true,
+        "detected": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 77
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0997,
+        "min_alignment": 0.0964,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "bls-empsit",
+    "category": "complex-tables",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 1820
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9363,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.7522,
+        "min_alignment": 0.8066,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "rows_removed": 4,
+          "rows_total": 9
+        },
+        "is_fn": true,
+        "detected": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 36
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0934,
+        "min_alignment": 0.0773,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "gao-24-106214",
+    "category": "complex-tables",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 3411
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 1.0,
+        "min_alignment": 0.997,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 1.0,
+        "min_alignment": 0.9733,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.8766,
+        "min_alignment": 0.8487,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "rows_removed": 2,
+          "rows_total": 4
+        },
+        "is_fn": true,
+        "detected": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.997,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 70
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0997,
+        "min_alignment": 0.095,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "rfc1951-deflate",
+    "category": "digital-native",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 1575,
+      "1": 3214
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          2
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_coverage"
+        ],
+        "min_coverage": 0.4984,
+        "min_alignment": 0.9648,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1,
+          2
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "content_off_page",
+          "hallucination_risk"
+        ],
+        "min_coverage": 0.913,
+        "min_alignment": 0.8592,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [
+          2
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_coverage",
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 2
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1,
+          2
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_coverage"
+        ],
+        "min_coverage": 0.4984,
+        "min_alignment": 0.9648,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 34
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0495,
+        "min_alignment": 0.1014,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "rfc2616-http",
+    "category": "digital-native",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 1587
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9534,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9364,
+        "min_alignment": 0.9865,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 32
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "headings_dropped",
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0951,
+        "min_alignment": 0.1149,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "rfc9110-http-semantics",
+    "category": "digital-native",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 39
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_confidence",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 35
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_alignment"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.1667,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "ar-morocco-petitions-44-14",
+    "category": "rtl",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 73
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_alignment"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.3333,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "headings_dropped",
+          "low_alignment"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "headings_dropped",
+          "low_alignment",
+          "low_confidence",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_alignment"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.3333,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 6
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "headings_dropped",
+          "low_alignment",
+          "low_coverage"
+        ],
+        "min_coverage": 0.5753,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "ar-morocco-langculture-04-16",
+    "category": "rtl",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 137
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_alignment"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.5,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "headings_dropped",
+          "low_alignment"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.1429,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "headings_dropped",
+          "low_alignment",
+          "low_confidence",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_alignment"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.5,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 6
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk",
+          "low_alignment"
+        ],
+        "min_coverage": 0.8175,
+        "min_alignment": 0.5,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "he-declaration-commentary",
+    "category": "rtl",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 2039
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9951,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9966,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 6
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0991,
+        "min_alignment": 0.1667,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "telegram-garfield-1881",
+    "category": "scanned",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 0
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "blank_page"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": false
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 20
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "ndl-treaty-report",
+    "category": "scanned",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 0
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "blank_page"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": false
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 43
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "ndl-hainan-memo",
+    "category": "scanned",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 0
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "blank_page"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": false
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 30
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "letter-peabody-1863",
+    "category": "handwriting",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 0
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "blank_page"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": false
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 23
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "letter-beloved-friend-garrison",
+    "category": "handwriting",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 0
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "blank_page"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": false
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 23
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "letter-dear-friend-garrison",
+    "category": "handwriting",
+    "source_verifiable": false,
+    "source_chars": {
+      "0": 0
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "blank_page"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": false
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 18
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [
+          1
+        ],
+        "flags": [
+          "source_no_text_layer"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "statute-1-1789",
+    "category": "degraded",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 2964
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 1.0,
+        "min_alignment": 0.9838,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9997,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.9838,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 70
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.1002,
+        "min_alignment": 0.0972,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "usgs-bul-0002",
+    "category": "degraded",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 3543
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9842,
+        "min_alignment": 0.9367,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9969,
+        "min_alignment": 1.0,
+        "flagged": false,
+        "is_fp": false
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "applicable": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.9367,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 81
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0982,
+        "min_alignment": 0.0813,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  },
+  {
+    "doc_id": "irish-census-1926",
+    "category": "degraded",
+    "source_verifiable": true,
+    "source_chars": {
+      "0": 6131
+    },
+    "cases": {
+      "clean-gt": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.9168,
+        "min_alignment": 0.6928,
+        "flagged": false,
+        "is_fp": false
+      },
+      "clean-pdfmux": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.2204,
+        "min_alignment": 0.199,
+        "flagged": true,
+        "is_fp": true
+      },
+      "defect:drop_page": {
+        "verdict": "FAIL",
+        "silent_drops": [
+          1
+        ],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "silent_drop"
+        ],
+        "min_coverage": 0.0,
+        "min_alignment": 0.0,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "dropped_page": 1,
+          "n_pages": 1
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:truncate_table": {
+        "verdict": "PASS",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [],
+        "min_coverage": 0.8703,
+        "min_alignment": 0.6928,
+        "flagged": false,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "rows_removed": 2,
+          "rows_total": 5
+        },
+        "is_fn": true,
+        "detected": false
+      },
+      "defect:inject_offsource": {
+        "verdict": "REVIEW",
+        "silent_drops": [],
+        "review_pages": [
+          1
+        ],
+        "unverifiable_pages": [],
+        "flags": [
+          "hallucination_risk"
+        ],
+        "min_coverage": 1.0,
+        "min_alignment": 0.6998,
+        "flagged": true,
+        "is_fp": false,
+        "applicable": true,
+        "expected": "flag",
+        "meta": {
+          "page": 1,
+          "sentences_injected": 115
+        },
+        "is_fn": false,
+        "detected": true
+      },
+      "defect:severe_loss": {
+        "verdict": "FAIL",
+        "silent_drops": [],
+        "review_pages": [],
+        "unverifiable_pages": [],
+        "flags": [
+          "low_alignment",
+          "low_coverage",
+          "severe_content_loss"
+        ],
+        "min_coverage": 0.0917,
+        "min_alignment": 0.0803,
+        "flagged": true,
+        "is_fp": true,
+        "applicable": true,
+        "expected": "fail",
+        "meta": {
+          "fraction_kept": 0.1
+        },
+        "is_fn": false,
+        "detected": true
+      }
+    }
+  }
+]

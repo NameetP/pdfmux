@@ -47,7 +47,7 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-from pdfmux.audit import GOOD_TEXT_THRESHOLD
+from pdfmux.audit import EMPTY_TEXT_THRESHOLD, GOOD_TEXT_THRESHOLD
 from pdfmux.verifier import CertificationManifest, run_engine, verify_extraction
 
 # ---------------------------------------------------------------------------
@@ -212,6 +212,7 @@ class DocResult:
     doc_id: str
     category: str
     source_verifiable: bool
+    source_tier: str  # "verifiable" | "no-text" (image-only) | "underread"
     source_chars: dict[int, int]
     gt_chars: int = 0
     source_total: int = 0
@@ -253,12 +254,20 @@ def run_doc(rec: dict, corpus: Path, with_pdfmux: bool) -> DocResult:
     try:
         source_pages = _source_page_text(clipped)
         src_chars = {i: len(t.strip()) for i, t in source_pages.items()}
-        verifiable = any(c >= GOOD_TEXT_THRESHOLD for c in src_chars.values())
+        maxsrc = max(src_chars.values()) if src_chars else 0
+        verifiable = maxsrc >= GOOD_TEXT_THRESHOLD
+        if verifiable:
+            tier = "verifiable"
+        elif maxsrc < EMPTY_TEXT_THRESHOLD:
+            tier = "no-text"  # pure image-only scan -> verifier verdict "unverifiable"
+        else:
+            tier = "underread"  # text PDF, but pdfmux's fast audit extracted < GOOD chars
 
         res = DocResult(
             rec["id"],
             cat,
             verifiable,
+            tier,
             src_chars,
             gt_chars=sum(len(t.strip()) for t in gt_pages.values()),
             source_total=sum(src_chars.values()),
@@ -313,7 +322,8 @@ _CATEGORIES = [
 
 def build_report(results: list[DocResult], manifest_sha: str, with_pdfmux: bool) -> str:  # noqa: C901
     verifiable = [r for r in results if r.source_verifiable]
-    unverifiable = [r for r in results if not r.source_verifiable]
+    no_text = [r for r in results if r.source_tier == "no-text"]
+    underread = [r for r in results if r.source_tier == "underread"]
 
     # ---- false positives (clean cases) ----
     clean_types = ["clean-gt"] + (["clean-pdfmux"] if with_pdfmux else [])
@@ -445,10 +455,13 @@ def build_report(results: list[DocResult], manifest_sha: str, with_pdfmux: bool)
     )
     lines.append("")
     lines.append(
-        f"Of the {len(results)} documents, **{len(verifiable)} have a digital text layer the "
-        f'verifier can re-derive** ("verifiable") and **{len(unverifiable)} are pure image-only '
-        f"scans** the verifier declines to certify (`unverifiable`). FP and FN are measured only "
-        f"on verifiable documents; the image-only scans are reported as the `unverifiable` rate."
+        f"Of the {len(results)} documents, pdfmux's fast audit re-derives a usable source text "
+        f"layer (≥ {GOOD_TEXT_THRESHOLD} chars) for **{len(verifiable)} (\"verifiable\")**. The "
+        f"rest split into **{len(no_text)} pure image-only scans** (source < "
+        f"{EMPTY_TEXT_THRESHOLD} chars → verifier verdict `unverifiable`, an honest refusal) and "
+        f"**{len(underread)} text PDFs the audit under-reads** (a valid text layer, but pdfmux's "
+        f"cheap re-derivation extracted only a handful of chars — see §6). FP and FN are measured "
+        f"only on the verifiable documents."
     )
     lines.append("")
 
@@ -532,7 +545,7 @@ def build_report(results: list[DocResult], manifest_sha: str, with_pdfmux: bool)
     lines.append("## 4. Per-category breakdown")
     lines.append("")
     lines.append(
-        "| Category | Docs | Verifiable | Image-only src | clean-gt FP | "
+        "| Category | Docs | Verifiable | Non-verifiable src | clean-gt FP | "
         "clean-gt REVIEW | Defect FN | Defects applied |"
     )
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
@@ -544,19 +557,27 @@ def build_report(results: list[DocResult], manifest_sha: str, with_pdfmux: bool)
         )
     lines.append("")
 
-    lines.append("## 5. `unverifiable` rate")
+    lines.append("## 5. `unverifiable` rate and source re-derivation failures")
     lines.append("")
     rate = (unver_clean_cases / total_clean_cases) if total_clean_cases else 0.0
     lines.append(
-        f"- **Documents with an image-only source (no text layer):** {len(unverifiable)} / "
-        f"{len(results)} ({len(unverifiable) / len(results):.1%})."
+        f"- **Pure image-only scans (source < {EMPTY_TEXT_THRESHOLD} chars → verifier verdict "
+        f"`unverifiable`):** {len(no_text)} / {len(results)} "
+        f"({len(no_text) / len(results):.1%})."
     )
     lines.append(
         f"- **Clean verification cases that hit at least one `unverifiable` page:** "
         f"{unver_clean_cases} / {total_clean_cases} ({rate:.1%})."
     )
-    img_ids = ", ".join(f"`{r.doc_id}`" for r in unverifiable)
-    lines.append("- Image-only documents: " + img_ids + ".")
+    lines.append("- Image-only documents: " + ", ".join(f"`{r.doc_id}`" for r in no_text) + ".")
+    if underread:
+        ur = ", ".join(f"`{r.doc_id}` ({max(r.source_chars.values())} chars)" for r in underread)
+        lines.append(
+            f"- **Audit under-read (valid text PDF, but pdfmux's fast re-derivation extracted "
+            f"< {GOOD_TEXT_THRESHOLD} chars):** {len(underread)} / {len(results)} — {ur}. These "
+            "are NOT image-only; the text layer is present and correct, but pdfmux's audit could "
+            "not read it (see §6)."
+        )
     lines.append("")
 
     lines.append("## 6. Findings & caveats (reported, never patched)")
@@ -590,10 +611,10 @@ def build_report(results: list[DocResult], manifest_sha: str, with_pdfmux: bool)
     if cg["review_ids"]:
         lines.append(
             f"- **Over-flagging: {cg['n_soft_review']} correct extractions drew a soft `REVIEW`** "
-            f"({', '.join('`' + i + '`' for i in cg['review_ids'])}) — forms, an RFC title "
-            "page, and the RTL/Wikipedia infobox pages, where low character-coverage or "
-            "bidi/monospace re-derivation nudges a *correct* extraction below a threshold. These "
-            "are non-fatal (REVIEW, not FAIL) but would show as amber on a public /audit tool."
+            f"({', '.join('`' + i + '`' for i in cg['review_ids'])}) — short / boxed-form / "
+            "monospace pages where a correct extraction's character-coverage or alignment lands "
+            "just under a threshold. Non-fatal (REVIEW, not FAIL), but they would show as amber on "
+            "a public /audit tool rather than a clean pass."
         )
     if with_pdfmux:
         cp = next(r for r in fp_rows if r["case"] == "clean-pdfmux")
@@ -603,10 +624,10 @@ def build_report(results: list[DocResult], manifest_sha: str, with_pdfmux: bool)
                 f"- **clean-pdfmux hard-FP rate = {cp['fp_rate']:.1%}** "
                 f"({cp['n_fp']}/{cp['n_verifiable']}), plus {cp['n_soft_review']} soft `REVIEW`s. "
                 f"pdfmux verifying pdfmux is **not** a free pass: the production self-audit path "
-                f"hard-`FAIL`s its OWN correct extraction of {ids} (RTL Arabic + the landscape "
-                "multi-column census schedule), because the cheap source re-derivation disagrees "
-                "with the full extraction on bidi / rotated layouts. This is the single most "
-                "important thing to fix before shipping /audit against real customer files."
+                f"hard-`FAIL`s its OWN correct extraction of {ids} (the landscape multi-column "
+                "census schedule), because the cheap fast-pass source re-derivation disagrees with "
+                "its own full extraction on that geometry. On a self-audit, the two passes should "
+                "never diverge this far — worth understanding before shipping /audit on real files."
             )
         else:
             lines.append(
@@ -636,6 +657,20 @@ def build_report(results: list[DocResult], manifest_sha: str, with_pdfmux: bool)
         "image-only scans (telegram, tribunal typescripts, cursive letters) never receive a false "
         "PASS or a false FAIL — the verifier declines to certify what it cannot re-derive."
     )
+    if underread:
+        ur_ids = ", ".join(f"`{r.doc_id}`" for r in underread)
+        lines.append(
+            f"- **Source re-derivation fails on Arabic RTL and some subsetted-font PDFs "
+            f"({ur_ids}).** These are valid, correct text PDFs, but pdfmux's fast audit pass "
+            "(pymupdf4llm + column-reorder + heading-injection) extracted only tens of characters "
+            "from a full page — Arabic right-to-left text and the RFC 9110 font subset defeat it. "
+            "Because the re-derived 'source truth' is nearly empty, the verifier cannot judge "
+            "these documents at all: it neither certifies nor faults them, but a downstream "
+            "/audit user would get an unhelpful near-empty comparison. A calibration gap to "
+            "disclose alongside the scan limitation — the certifier's blind spot is not only "
+            "pixels; it is "
+            "any text the fast pass can't read (RTL, exotic font encodings)."
+        )
     lines.append(
         "- **All five decision thresholds remain the hand-set v1.8.2 constants** "
         "(`LOW_COVERAGE_THRESHOLD=0.60`, `LOW_ALIGNMENT_THRESHOLD=0.55`, "
