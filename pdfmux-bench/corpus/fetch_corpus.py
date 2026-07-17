@@ -64,7 +64,9 @@ def fetch_one(doc: dict) -> tuple[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--category", help="only this category")
     p.add_argument("--list", action="store_true", help="print status, download nothing")
     args = p.parse_args(argv)
@@ -78,7 +80,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'id':38s} {'category':16s} {'gt':8s} {'pinned':7s} url")
         for d in docs:
             pinned = "no" if (d.get("needs_pin") or not d.get("url")) else "yes"
-            print(f"{d['id']:38s} {d['category']:16s} {d.get('gt_status','?'):8s} {pinned:7s} {d.get('url') or '(needs pin)'}")
+            print(
+                f"{d['id']:38s} {d['category']:16s} {d.get('gt_status', '?'):8s} "
+                f"{pinned:7s} {d.get('url') or '(needs pin)'}"
+            )
         return 0
 
     counts = {"ok": 0, "exists": 0, "skip": 0, "error": 0}
@@ -93,7 +98,10 @@ def main(argv: list[str] | None = None) -> int:
         f"{counts['skip']} need pinning, {counts['error']} errors."
     )
     if counts["skip"]:
-        print("Records that need pinning name a real source — finalize the exact URL + sha256 and set needs_pin=false. See corpus/README.md.")
+        print(
+            "Records that need pinning name a real source — finalize the exact URL + "
+            "sha256 and set needs_pin=false. See corpus/README.md."
+        )
     return 1 if counts["error"] else 0
 
 

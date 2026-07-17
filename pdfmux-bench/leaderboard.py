@@ -101,7 +101,11 @@ def render_markdown(payload: dict) -> str:
     )
 
     # Overall table
-    header = "| Rank | Engine | " + " | ".join(lbl for _, lbl in METRIC_ORDER) + " | Docs (ok/err/empty) | Avg ms |"
+    header = (
+        "| Rank | Engine | "
+        + " | ".join(lbl for _, lbl in METRIC_ORDER)
+        + " | Docs (ok/err/empty) | Avg ms |"
+    )
     sep = "|---:|---|" + "".join("--:|" for _ in METRIC_ORDER) + "---|--:|"
     lines.append("## Overall\n")
     lines.append(header)
@@ -112,7 +116,9 @@ def render_markdown(payload: dict) -> str:
         cov = f"{a['n_ok']}/{a['n_error']}/{a['n_empty']}"
         ms = str(a["avg_latency_ms"]) if a["avg_latency_ms"] is not None else "—"
         lines.append(
-            f"| {i} | **{ENGINE_LABELS.get(eng, eng)}** | " + " | ".join(cells) + f" | {cov} | {ms} |"
+            f"| {i} | **{ENGINE_LABELS.get(eng, eng)}** | "
+            + " | ".join(cells)
+            + f" | {cov} | {ms} |"
         )
     lines.append("")
 
@@ -172,7 +178,9 @@ def render_json(payload: dict) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--results", default=str(HERE / "results" / "latest.json"))
     p.add_argument("--out", default=str(HERE / "LEADERBOARD.md"))
     p.add_argument("--json-out", default=str(HERE / "results" / "leaderboard.json"))

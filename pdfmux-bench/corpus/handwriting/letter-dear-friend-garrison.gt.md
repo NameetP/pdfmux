@@ -1,0 +1,3 @@
+# Manuscript letter — "Dear friend Love" (page 2)
+
+could leave Trenton on Monday morning, Nov. 30th, and spend the night in New York; next morning, Tuesday, Dec. 1st, leave for Philadelphia, and give the desired lecture that evening, or the next. I should prefer — other things being equal — to speak on Tuesday evening, because we shall probably want Wednesday evening for a consultation meeting of friends to arrange matters for the Decade Commemoration. Should the lecture be given, (the state of the country, of course, must be my theme, hardly anything else at present interesting a popular audience,) it would be a good opportunity to advertise the Decade meetings of Thursday and Friday, in a comprehensive manner and to the right people.

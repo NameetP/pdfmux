@@ -26,7 +26,7 @@ import json
 import sys
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import scoring
@@ -65,13 +65,17 @@ def discover_corpus(corpus_dir: Path, category: str | None) -> list[tuple[Path, 
 
 
 def run(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--engines", help="comma-separated engine names (default: all registered)")
     p.add_argument("--oss-only", action="store_true", help="only local no-key engines (CI-safe)")
     p.add_argument("--category", help="restrict to one corpus category (subdir name)")
     p.add_argument("--corpus", default=str(HERE / "corpus"), help="corpus directory")
     p.add_argument("--out", default=str(HERE / "results"), help="results output directory")
-    p.add_argument("--quality", default="standard", help="pdfmux quality preset (fast|standard|high)")
+    p.add_argument(
+        "--quality", default="standard", help="pdfmux quality preset (fast|standard|high)"
+    )
     args = p.parse_args(argv)
 
     corpus_dir = Path(args.corpus)
@@ -133,14 +137,14 @@ def run(argv: list[str] | None = None) -> int:
     payload = {
         "schema_version": "1.0",
         "bench_version": _bench_version(),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "corpus_dir": str(corpus_dir),
         "n_documents": len(docs),
         "engines_run": ran_engines,
         "metric_weights": scoring.DEFAULT_WEIGHTS,
         "results": [asdict(r) for r in results],
     }
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = out_dir / f"bench-{stamp}.json"
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     latest = out_dir / "latest.json"
