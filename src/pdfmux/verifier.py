@@ -363,8 +363,11 @@ def _parse_json_extraction(data: Any) -> tuple[dict[int, str], bool]:
             }
             if numeric:
                 seen_zero = 0 in numeric
-                pages = {_normalize_page_index(k, seen_zero): v for k, v in numeric.items()}
-                return pages, True
+                # Distinct name from the `pages: dict[int, list[str]]` accumulator
+                # below — reusing it makes the declared type dict[int, list[str]]
+                # for the whole function scope and fails typecheck.
+                flat_pages = {_normalize_page_index(k, seen_zero): v for k, v in numeric.items()}
+                return flat_pages, True
 
         # Shape: single flat text field on the top-level object.
         if not records:

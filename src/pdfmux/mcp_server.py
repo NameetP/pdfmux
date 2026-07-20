@@ -330,7 +330,9 @@ def verify_extraction(
         if "content_off_page" in page.get("flags", []):
             return "recovered"
         verdict = page.get("verdict")
-        return "usable" if verdict == "pass" else verdict
+        if verdict == "pass":
+            return "usable"
+        return str(verdict) if verdict is not None else "unknown"
 
     pages = []
     for pv in manifest.pages:
