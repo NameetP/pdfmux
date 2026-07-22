@@ -63,7 +63,7 @@ dependencies = [
     # the exact failure mode this product exists to catch. Found 2026-07-20.
     "pymupdf>=1.24.0,<1.28",  # garbage filter handles 1.27 find_tables() regression
     "pymupdf4llm>=0.0.10,<1.0",
-    "rich>=13.0.0",
+    "rich>=15.0.0",
     "python-bidi>=0.6.0",  # BiDi algorithm for Arabic/Hebrew RTL text reordering
 ]
 
