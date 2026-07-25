@@ -28,7 +28,7 @@ class ClaudeProvider(LLMProvider):
         return self.sdk_installed() and self.has_credentials()
 
     def supported_models(self) -> list[ModelInfo]:
-        # Pricing per MTok, verified 2026-07-02 against the claude-api model table.
+        # Pricing per MTok, verified 2026-07-25 against the claude-api model table.
         # Sonnet 5 carries an introductory rate ($2/$10) through 2026-08-31; the
         # standard $3/$15 is used here so cost estimates don't understate spend
         # once the intro window closes.
@@ -38,6 +38,12 @@ class ClaudeProvider(LLMProvider):
                 capabilities=("ocr", "tables", "structured", "handwriting", "charts"),
                 input_cost_per_mtok=3.0,
                 output_cost_per_mtok=15.0,
+            ),
+            ModelInfo(
+                id="claude-opus-4-8",
+                capabilities=("ocr", "tables", "structured", "handwriting", "charts"),
+                input_cost_per_mtok=5.0,
+                output_cost_per_mtok=25.0,
             ),
             ModelInfo(
                 id="claude-haiku-4-5",
