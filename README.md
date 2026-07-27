@@ -633,11 +633,11 @@ Rebuilt with the per-page audit + budgeted OCR cascade: **433 of 433 processed, 
 
 ## Benchmark
 
-On [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench) — 200 real-world PDFs (financial filings, academic papers, legal contracts, government reports) — pdfmux **1.8.2** scores **0.903 overall: #2 of all tools, and #1 among free / open-source libraries**, behind only the paid hybrid engine. Re-run 2026-07-16 (reproduction below).
+On [opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench) — 200 real-world PDFs (financial filings, academic papers, legal contracts, government reports) — pdfmux scores **0.903 overall — #2 of the 8 engines measured**, behind `opendataloader-hybrid` (0.909). Re-run 2026-07-16 (reproduction below).
 
 | Rank | Engine | Overall | Reading order | Tables (TEDS) | License | GPU |
 |---:|---|---:|---:|---:|---|---|
-| 1 | opendataloader-hybrid (paid) | 0.909 | 0.935 | 0.928 | Commercial | API |
+| 1 | opendataloader-hybrid | 0.909 | 0.935 | 0.928 | Apache-2.0 | No |
 | **2** | **pdfmux** | **0.903** | **0.920** | **0.911** | **MIT** | **No** |
 | 3 | Docling | 0.877 | 0.900 | 0.887 | MIT | Optional |
 | 4 | marker | 0.861 | 0.890 | 0.808 | free | GPU |

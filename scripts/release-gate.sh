@@ -29,7 +29,14 @@ WHL="${1:-}"
 CANON_BENCH="0.903"
 SUPERSEDED_BENCH="0\.905|0\.900|0\.918|0\.887|0\.852"
 # Claims that were once published and are now known false, or links that 404.
-BANNED='verifiedextraction\.org|precision 1\.000|runtime calibration loop|ships in pdfmux Cloud|1,000 free pages'
+#
+# "#1 free" / "#1 among free" is banned on evidence: the engine ahead of pdfmux
+# on this benchmark is `opendataloader-hybrid` (0.909), which runs
+# opendataloader-pdf (Apache-2.0, ~28k stars) with hybrid="docling-fast" — no API
+# key, no token, no network call in the adapter at all. It is free and open
+# source, so "#1 free" is not imprecise, it is false. pdfmux is #2 of the 8
+# engines measured; say that instead.
+BANNED='verifiedextraction\.org|precision 1\.000|runtime calibration loop|ships in pdfmux Cloud|1,000 free pages|#1 free|#1 among free|paid hybrid engine'
 
 FAILS=0
 fail() { echo "  ✗ $*"; FAILS=$((FAILS+1)); }

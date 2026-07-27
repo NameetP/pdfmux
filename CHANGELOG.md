@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.6 (2026-07-27) — retract "#1 free": the engine ahead of us is also free
+
+### Fixed
+
+- **Retracted a false benchmark claim.** Every pdfmux surface described `opendataloader-hybrid` (0.909, the one engine scoring above pdfmux) as "the paid hybrid engine" and claimed pdfmux was **"#1 free"**. Both are wrong. `opendataloader-pdf` is **Apache-2.0** (~28k stars) and the benchmark's hybrid mode is `hybrid="docling-fast"` — no API key, no token, no network call in the adapter. The top-scoring engine is free and open source, so "#1 free" was not imprecise, it was false. The README table also labelled it `Commercial | API`; corrected to `Apache-2.0 | No`.
+- The defensible claim, used everywhere now: **0.903 overall — #2 of the 8 engines measured.** Docs-only; no code changes.
+- `scripts/release-gate.sh` now fails on `#1 free`, `#1 among free` and `paid hybrid engine`, so this specific claim cannot ship again.
+
 ## 1.8.5 (2026-07-27) — correct the benchmark score in the PyPI summary
 
 ### Fixed
