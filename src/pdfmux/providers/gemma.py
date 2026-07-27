@@ -1,9 +1,34 @@
 """Gemma provider — Google's Gemma vision models via OpenAI-compatible API.
 
-Gemma is Google's open-weight model family. The vision-capable instruct
-variants (Gemma 3 27B IT and successors) support 140+ languages including
-Arabic, with native bidirectional script handling — making them the
-preferred backend for Arabic-heavy documents in pdfmux.
+Gemma is Google's open-weight model family. This provider serves the
+vision-capable instruct variants of **Gemma 3** (`gemma-3-27b-it`,
+`gemma-3-12b-it`), which support Arabic among many other languages, with
+native bidirectional script handling — making them the preferred backend
+for Arabic-heavy documents in pdfmux.
+
+Gemma 4, not Gemma 3
+--------------------
+This provider does NOT serve Gemma 4, despite what several docs claimed
+until 2026-07-27. Gemma 4 shipped March/April 2026 and Google does expose
+two of its sizes on the Gemini API — `gemma-4-31b-it` and
+`gemma-4-26b-a4b-it` (https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api).
+Note that Gemma 4 has no 27B size at all; 27B is a Gemma 3 size, which is
+how the mislabelling was caught.
+
+Adopting Gemma 4 here is a small diff but is NOT a free rename, because
+three things are unverified and each can silently degrade extraction:
+
+  1. Whether the OpenAI-compat shim below (`/v1beta/openai/`) serves the
+     Gemma 4 IDs. Google documents them on the native `generateContent`
+     endpoint; it does not document the OpenAI-compat path for them.
+  2. Pricing. `_INPUT_COST_PER_MTOK` / `_OUTPUT_COST_PER_MTOK` below are
+     Gemma 3 rates and feed the budget cap, so a wrong value silently
+     over- or under-bills every routed page.
+  3. Vision behaviour and `max_input_tokens` (Gemma 4's larger sizes
+     document a 256K context vs the 128K claimed below for Gemma 3).
+
+Verify all three against a live key before changing `default_model`. Until
+then this provider says Gemma 3, because that is what it sends.
 
 Reuses the ``GEMINI_API_KEY`` (or ``GOOGLE_API_KEY``) credential since
 Gemma is served from the same Google generative-language endpoint:

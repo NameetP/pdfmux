@@ -310,7 +310,7 @@ class TestArabicRouting:
         assert ROUTING_MATRIX[("arabic", Strategy.BALANCED)] != DEFAULT_CHAIN[Strategy.BALANCED]
 
     def test_balanced_and_premium_prefer_the_llm_backend(self) -> None:
-        """Gemma 4 is the only backend advertising an "arabic" capability, and the
+        """The Gemma provider is the only backend advertising an "arabic" capability, and the
         README documents routing Arabic through it instead of PyMuPDF."""
         from pdfmux.router.engine import ROUTING_MATRIX
         from pdfmux.router.strategies import Strategy

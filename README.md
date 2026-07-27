@@ -29,7 +29,7 @@ PDF ──> pdfmux router ──> best extractor per page ──> audit ──> 
             ├─ Surya           (heavy OCR fallback)
             ├─ Marker          (academic papers, neural)
             ├─ Mistral OCR     ($0.002/page, 96.6% tables)
-            └─ YOUR LLM        (Gemini / Gemma 4 / Claude / GPT-4o / Ollama / Mistral — BYOK via YAML)
+            └─ YOUR LLM        (Gemini / Gemma 3 / Claude / GPT-4o / Ollama / Mistral — BYOK via YAML)
 ```
 
 ## Install
@@ -55,7 +55,7 @@ pip install "pdfmux[llm-claude]"      # Claude (Sonnet / Opus)
 pip install "pdfmux[llm-openai]"      # GPT-4o family
 pip install "pdfmux[llm-ollama]"      # Ollama (any local model)
 pip install "pdfmux[llm-mistral]"     # Mistral OCR API ($0.002/page)
-pip install "pdfmux[llm-all]"         # all LLM providers (incl. Gemma 4 via Gemini key)
+pip install "pdfmux[llm-all]"         # all LLM providers (incl. Gemma via Gemini key)
 pip install "pdfmux[watch]"           # `pdfmux watch <dir>` auto-convert on change
 pip install "pdfmux[all]"             # everything
 ```
@@ -278,7 +278,7 @@ Free tool, no signup: **[app.pdfmux.com/audit](https://app.pdfmux.com/audit)** �
 | Cost modes | economy / balanced / premium with budget caps | `pdfmux convert file.pdf --mode economy --budget 0.50` |
 | Schema extraction | 5 built-in presets (invoice, receipt, contract, resume, paper) | `pdfmux convert file.pdf --schema invoice` |
 | Profiles | Save and re-use config; built-ins for invoices/receipts/papers/contracts/bulk-rag | `pdfmux convert file.pdf --profile invoices` |
-| BYOK LLM | Gemini, Gemma 4, Claude, GPT-4o, Ollama, Mistral, any OpenAI-compatible API | `pdfmux convert file.pdf --llm-provider claude` |
+| BYOK LLM | Gemini, Gemma 3, Claude, GPT-4o, Ollama, Mistral, any OpenAI-compatible API | `pdfmux convert file.pdf --llm-provider claude` |
 | Cost estimate | Predict spend before running | `pdfmux estimate file.pdf --llm-provider gemini` |
 | Streaming output | NDJSON events page-by-page for long docs | `pdfmux stream file.pdf` |
 | Smart cache | Hash-keyed result cache, 30-day TTL, 1 GB LRU | `pdfmux convert file.pdf` (auto), `--no-cache` to bypass |
@@ -556,7 +556,7 @@ Supported providers:
 | Provider | Models | Local? | Cost |
 |----------|--------|--------|------|
 | Gemini | 2.5 Flash, 2.5 Pro | No | ~$0.01/page |
-| Gemma 4 | 27B IT, 12B IT (great for Arabic) | No (via Gemini key) | ~$0.005/page |
+| Gemma 3 | 27B IT, 12B IT (great for Arabic) | No (via Gemini key) | ~$0.0002/page |
 | Claude | Sonnet, Opus | No | ~$0.015/page |
 | GPT-4o | GPT-4o, GPT-4o-mini | No | ~$0.01/page |
 | Mistral | `mistral-ocr-latest` | No | $0.002/page |
@@ -578,8 +578,9 @@ that were stored in left-to-right order render in correct reading order.
 # Default install — already includes python-bidi for RTL reordering
 pip install pdfmux
 
-# Recommended for Arabic-heavy docs — adds Gemma 4 vision OCR
-pip install "pdfmux[arabic,llm-gemma]"
+# Recommended for Arabic-heavy docs — adds Gemma vision OCR
+# (Gemma speaks the OpenAI protocol, so it needs the openai SDK)
+pip install "pdfmux[llm-openai]"
 
 # One credential covers Gemma + Gemini (same Google endpoint)
 export GEMINI_API_KEY=...
@@ -598,7 +599,7 @@ What happens automatically:
 What requires opt-in:
 
 - Vision LLM extraction. Set `--llm-provider gemma` (or any vision
-  provider) to route Arabic pages through Gemma 4 instead of PyMuPDF.
+  provider) to route Arabic pages through Gemma instead of PyMuPDF.
 - Aggressive normalization (Tatweel removal, Alef/Yeh unification,
   Tashkeel stripping) — call `pdfmux.arabic.normalize_arabic(text)`
   on extracted strings if you need canonicalized output for search or

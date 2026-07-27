@@ -41,13 +41,13 @@ pdfmux Python API / CLI / MCP server
     │   ├─ marker.py        Marker neural extractor — academic papers (priority 35)
     │   ├─ tables.py        Docling — 97.9% table accuracy (priority 40)
     │   ├─ opendataloader.py Java-backed reading-order extractor (priority 45)
-    │   └─ llm.py           BYOK vision LLM — Gemini, Gemma 4, Claude, GPT-4o, Ollama, Mistral (priority 50)
+    │   └─ llm.py           BYOK vision LLM — Gemini, Gemma 3, Claude, GPT-4o, Ollama, Mistral (priority 50)
     │
     ├─ providers/
     │   ├─ base.py            LLMProvider protocol + ModelInfo + CostEstimate
     │   ├─ _discovery.py      auto-registers all built-in providers
     │   ├─ gemini.py          Gemini 2.5 Flash / Pro
-    │   ├─ gemma.py           Gemma 4 27B IT (Gemini OpenAI-compat endpoint, reuses GEMINI_API_KEY)
+    │   ├─ gemma.py           Gemma 3 27B IT (Gemini OpenAI-compat endpoint, reuses GEMINI_API_KEY)
     │   ├─ claude.py          Claude Sonnet / Opus
     │   ├─ openai_native.py   GPT-4o family
     │   ├─ openai_compatible.py  Mistral + custom OpenAI-compatible APIs
@@ -342,7 +342,7 @@ Optional:
   pdfmux[llm-openai]       → openai
   pdfmux[llm-ollama]       → ollama
   pdfmux[llm-mistral]      → mistralai
-  pdfmux[llm-all]          → all LLM providers (Gemma 4 piggybacks on Gemini key)
+  pdfmux[llm-all]          → all LLM providers (Gemma piggybacks on Gemini key)
   pdfmux[langchain]        → langchain-core
   pdfmux[llamaindex]       → llama-index-core
   pdfmux[serve]            → mcp + uvicorn (MCP server)
@@ -391,7 +391,7 @@ profile values with explicit flags (explicit flags win).
 
 `detect.py` samples the first 20 pages and sets
 `PDFClassification.is_arabic` + `arabic_pages`. The router's
-`ROUTING_MATRIX` includes an `arabic` page type that prefers the Gemma 4
+`ROUTING_MATRIX` includes an `arabic` page type that prefers the Gemma
 provider when available.
 
 ### `retry.py` — Decorator on every LLM provider
