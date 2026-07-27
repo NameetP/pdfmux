@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.NameetP/pdfmux",
   "title": "pdfmux",
-  "description": "PDF-to-Markdown router. Per-page backend selection + confidence scoring for RAG ingestion.",
-  "version": "1.5.1",
+  "description": "PDF-to-Markdown extraction that audits its own output and certifies any other extractor's, flagging pages they silently dropped. 7 tools incl. verify_extraction.",
+  "version": "1.8.4",
   "repository": {
     "url": "https://github.com/NameetP/pdfmux",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "pdfmux",
-      "version": "1.5.0",
+      "version": "1.8.4",
       "transport": {
         "type": "stdio"
       },
