@@ -84,3 +84,12 @@ Per the patent red line, nothing below was fixed in the engine — it is measure
 - `clean-gt` and every seeded defect are fed as page-aligned JSON so the verifier runs its segmented (Mode A) per-page path — the same path that detects real silent drops.
 - Defect seeding is a pure function of the doc id (`seed_for`); the seeding tests (`pdfmux-bench/tests/test_seeding.py`) assert two runs are identical.
 
+## Re-run status — 2026-07-27 (pdfmux 1.8.7)
+
+**This report reflects pdfmux 1.8.2 and has NOT yet been regenerated against 1.8.7**, which added the additive `table_truncated` flag. Anyone comparing the numbers here to a claim about 1.8.7 should read this section first.
+
+No script change is required to measure the new flag: `table_truncated` produces a `review` verdict, and `flagged()` already counts `REVIEW` as a detection. The report is stale only because it has not been re-run.
+
+**What blocks the re-run (2026-07-27):** two corpus documents cannot be fetched from this network — `bls-empsit` (bls.gov) and `gao-24-106214` (gao.gov) both return **HTTP 403** to automated fetch, with a browser User-Agent as well. 22 of 24 documents fetch and match their pinned sha256. Those two are among the five documents that carry a truncatable table, so the truncation figures specifically cannot be regenerated without them. A fetch from a different IP resolves it; the pins themselves are verified correct.
+
+**Interim measurement, stated with its limits:** applying `validate_verifier.py`'s own `defect_truncate_table` rule (delete half the data rows of the largest table) directly to the committed ground-truth files gives 7 of 7 truncatable files — covering 5 distinct documents — detected by the new flag, versus 0 of 7 by the previous presence-only check, with 0 false positives across all 40 unmodified ground-truth files. That is a measurement of the flag, **not** an end-to-end verifier run, and it is not a substitute for regenerating this report.
