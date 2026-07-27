@@ -1,8 +1,15 @@
 # Changelog
 
-## Unreleased — retract "Gemma 4": the provider ships Gemma 3
+## Unreleased — retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra
 
 ### Fixed
+
+- **`pdfmux/arabic.py` told users to run `pip install pdfmux[arabic]`. That extra has never existed.** Both the module docstring and `fix_bidi_order`'s docstring carried the hint, and it is worse than a typo in two compounding ways: pip accepts unknown extras **silently**, so the command succeeds and installs nothing; and `python-bidi` is already a **core** dependency, so RTL reordering was working the whole time. A reader hunting a BiDi problem would run the command, see success, see no change, and conclude BiDi was broken.
+- **A missing `python-bidi` no longer fails silently.** `fix_bidi_order` caught `ImportError` and returned the text unchanged with no signal. Because `python-bidi` is core, that branch means the install is broken — and its output is Arabic in storage order: reversed, but entirely plausible-looking to anyone who does not read Arabic. Silent, plausible, wrong output is the failure mode this package exists to surface, so it should not be the one path that ships it. It now logs a warning naming the real cause (broken install, not a missing extra) and still returns the text rather than raising, so a degraded environment does not become a hard failure on documents that may contain no Arabic at all. Cached so it warns once per process, not once per page.
+
+### Added
+
+- **`test_no_install_instruction_names_a_nonexistent_extra`** — every `pip install pdfmux[...]` across `src/`, the README, and `docs/` must resolve to a real extra in `pyproject.toml`. This defect class has now shipped three times (`pdfmux[arabic]`, `pdfmux[arabic,llm-gemma]`, and `pdfmux[local]` on the blog) precisely because it fails silently at every layer. The check matches install *instructions* only, so prose that names a bad extra in order to rule it out still passes — a blunt scan would have been switched off, which is how the original hint survived.
 
 - **Every user-facing surface called the Gemma backend "Gemma 4". It serves Gemma 3.** `providers/gemma.py` has always set `default_model = "gemma-3-27b-it"` and advertised exactly two models, `gemma-3-27b-it` and `gemma-3-12b-it` — but the README, `docs/ARCHITECTURE.md`, the `pdfmux doctor` recommendation in `cli.py`, the `ROUTING_MATRIX` comments, two test docstrings, and the 1.8.7 changelog entry all said Gemma 4. The docs were renamed ahead of the code and nothing caught it.
   - **The tell was internal, not external:** the README's provider table read `| Gemma 4 | 27B IT, 12B IT |`. Gemma 4 has no 27B size (its sizes are E2B, E4B, 12B, 26B A4B, 31B) — 27B is a Gemma 3 size. The row named one generation and listed the other's sizes.

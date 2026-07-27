@@ -17,15 +17,23 @@ Public API
 - ``fix_bidi_order(text)`` — apply Unicode BiDi algorithm line-by-line
 - ``normalize_arabic(text)`` — canonicalize Arabic text for indexing/search
 
-The BiDi implementation defers to the optional ``python-bidi`` package and
-falls back gracefully (returning the input unchanged) when unavailable.
-Install with: ``pip install pdfmux[arabic]``
+The BiDi implementation defers to ``python-bidi``, which is a **core**
+dependency (see ``pyproject.toml``) — not an optional extra. A plain
+``pip install pdfmux`` gives you working RTL reordering with no extras and
+no flags. There is no ``pdfmux[arabic]`` extra; docstrings here recommended
+one until 2026-07-27, and because pip accepts unknown extras silently, a
+reader who followed that hint installed nothing and believed otherwise.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
+from collections.abc import Callable
+from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Unicode ranges — Arabic and related blocks
@@ -175,6 +183,39 @@ def arabic_ratio(text: str) -> float:
 # ---------------------------------------------------------------------------
 
 
+@lru_cache(maxsize=1)
+def _load_get_display() -> Callable[[str], str] | None:
+    """Import ``python-bidi``'s ``get_display``, or warn once and return None.
+
+    ``python-bidi`` is a core dependency, so this returning None does not mean
+    "an optional extra is missing" — it means the install is broken (a stripped
+    environment, a vendored copy, a failed wheel). The distinction matters for
+    what we do about it.
+
+    We warn rather than raise, because raising would turn a degraded install
+    into a hard failure on documents that may not even contain Arabic. But we
+    do not stay silent: without BiDi, Arabic is returned in storage order, which
+    is *reversed and still perfectly readable-looking* to anyone who does not
+    read Arabic. Silent, plausible, wrong output is the exact failure mode this
+    package exists to surface, and it should not be the one path that ships it.
+
+    Cached, so a broken install warns once per process rather than once per
+    page — ``fix_bidi_order`` is called on every page of every document.
+    """
+    try:
+        from bidi.algorithm import get_display  # type: ignore[import-not-found]
+    except ImportError:
+        logger.warning(
+            "python-bidi could not be imported, so right-to-left text will be "
+            "returned in storage order (reversed) instead of reading order. "
+            "python-bidi is a core pdfmux dependency, so this indicates a broken "
+            "install rather than a missing optional feature — there is no "
+            "'pdfmux[arabic]' extra to add. Try: pip install --force-reinstall pdfmux"
+        )
+        return None
+    return get_display
+
+
 def fix_bidi_order(text: str) -> str:
     """Apply the Unicode Bidirectional Algorithm to fix mixed RTL/LTR text.
 
@@ -186,15 +227,15 @@ def fix_bidi_order(text: str) -> str:
     Markdown-aware: preserves heading prefixes (``#``) and pipe-table
     structure; BiDi is applied within each cell.
 
-    Falls back to returning ``text`` unchanged if ``python-bidi`` is
-    not installed. Install with ``pip install pdfmux[arabic]``.
+    Returns ``text`` unchanged, and logs a warning, if ``python-bidi`` is not
+    importable. That is a broken-install signal rather than a missing extra —
+    see :func:`_load_get_display`.
     """
     if not text:
         return text
 
-    try:
-        from bidi.algorithm import get_display  # type: ignore[import-not-found]
-    except ImportError:
+    get_display = _load_get_display()
+    if get_display is None:
         return text
 
     fixed_lines: list[str] = []
