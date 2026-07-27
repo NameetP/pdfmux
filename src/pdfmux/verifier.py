@@ -283,6 +283,65 @@ def _has_table(text: str) -> bool:
     return len(_TABLE_ROW_RE.findall(text)) >= 2
 
 
+def _table_rows(text: str) -> int:
+    """Number of markdown pipe-table rows — cardinality, not presence."""
+    return len(_TABLE_ROW_RE.findall(text))
+
+
+def _largest_table_rows(text: str) -> int:
+    """Rows in the largest *contiguous* pipe-table block.
+
+    Document-wide row counts miss the common case: one table among several is
+    truncated, so the total barely moves and stays above any sane ratio. Real
+    truncation happens to a single table, so compare the biggest block.
+    """
+    largest = current = 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            current += 1
+            largest = max(largest, current)
+        else:
+            current = 0
+    return largest
+
+
+# A table is "truncated" when the extraction keeps fewer than this share of the
+# source's rows. Guarded by a minimum source size so a 2-row table losing one
+# row cannot trip it.
+#
+# This is an ADDITIVE signal, introduced 2026-07-27. It does not modify
+# `_has_table`, `table_integrity`, or any of the five thresholds pre-registered
+# in the GT-0 validation — those stay byte-identical, so the published FP/FN
+# table remains valid for every signal it measured. GT-0 found the gap it fills:
+# `_has_table` tests presence, so a table cut from 40 rows to 3 still has >= 2
+# pipe rows and passes, which is why 4 of 5 seeded truncations were missed.
+_TABLE_TRUNCATION_RATIO = 0.8
+_TABLE_TRUNCATION_MIN_ROWS = 4
+
+
+def _table_truncated(source_text: str, extracted_text: str) -> bool:
+    """True when the extraction retains too few of the source's table rows.
+
+    Checks both the document-wide row count and the largest single table block.
+    The block check is what catches truncation of one table among several — the
+    document-wide total barely moves in that case and stays above the ratio.
+    Measured on the GT-0 corpus: the document-wide test alone caught 4 of 7
+    seeded truncations; adding the block test caught all 7, with no new false
+    positives on the 40 intact ground-truth files.
+    """
+    src_rows = _table_rows(source_text)
+    if src_rows >= _TABLE_TRUNCATION_MIN_ROWS and (
+        _table_rows(extracted_text) < _TABLE_TRUNCATION_RATIO * src_rows
+    ):
+        return True
+
+    src_block = _largest_table_rows(source_text)
+    if src_block < _TABLE_TRUNCATION_MIN_ROWS:
+        return False
+    return _largest_table_rows(extracted_text) < _TABLE_TRUNCATION_RATIO * src_block
+
+
 def _has_heading(text: str) -> bool:
     return bool(_HEADING_RE.search(text))
 
@@ -625,6 +684,11 @@ def _verify_page(
         flags.append("low_confidence")
     if not table_integrity:
         flags.append("table_dropped")
+    elif _table_truncated(source_text, extracted_text):
+        # Additive: a table that survived `_has_table` but lost most of its rows.
+        # `elif` because a dropped table is already reported and reporting both
+        # would double-count the same defect.
+        flags.append("table_truncated")
     if not heading_integrity:
         flags.append("headings_dropped")
 

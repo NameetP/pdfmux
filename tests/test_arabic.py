@@ -282,3 +282,56 @@ class TestArabicDetectionInClassify:
         result = classify(digital_pdf)
         assert result.is_arabic is False
         assert result.arabic_pages == []
+
+
+class TestArabicRouting:
+    """The Arabic route must actually reach the matrix.
+
+    Until 2026-07-27 `_classify_to_page_type` returned "arabic" but
+    ROUTING_MATRIX had no "arabic" rows, so every Arabic document fell through
+    to DEFAULT_CHAIN — whose BALANCED arm is ("opendataloader", "pymupdf") and
+    never reaches an LLM. The route was computed and discarded, which is the
+    opposite of what both `pipeline.py:527` and the README promise.
+    """
+
+    def test_arabic_rows_exist_in_the_matrix(self) -> None:
+        from pdfmux.router.engine import ROUTING_MATRIX
+        from pdfmux.router.strategies import Strategy
+
+        for strategy in (Strategy.ECONOMY, Strategy.BALANCED, Strategy.PREMIUM):
+            assert ("arabic", strategy) in ROUTING_MATRIX, (
+                f"no arabic row for {strategy} — the route falls through to DEFAULT_CHAIN"
+            )
+
+    def test_arabic_does_not_fall_back_to_the_default_chain(self) -> None:
+        from pdfmux.router.engine import DEFAULT_CHAIN, ROUTING_MATRIX
+        from pdfmux.router.strategies import Strategy
+
+        assert ROUTING_MATRIX[("arabic", Strategy.BALANCED)] != DEFAULT_CHAIN[Strategy.BALANCED]
+
+    def test_balanced_and_premium_prefer_the_llm_backend(self) -> None:
+        """Gemma 4 is the only backend advertising an "arabic" capability, and the
+        README documents routing Arabic through it instead of PyMuPDF."""
+        from pdfmux.router.engine import ROUTING_MATRIX
+        from pdfmux.router.strategies import Strategy
+
+        for strategy in (Strategy.BALANCED, Strategy.PREMIUM):
+            chain = ROUTING_MATRIX[("arabic", strategy)]
+            assert chain[0] == "llm", f"{strategy} should lead with the LLM backend, got {chain}"
+
+    def test_every_arabic_chain_ends_in_a_free_local_fallback(self) -> None:
+        """The chain must never be able to return nothing when no LLM is configured."""
+        from pdfmux.router.engine import ROUTING_MATRIX
+        from pdfmux.router.strategies import Strategy
+
+        for strategy in (Strategy.ECONOMY, Strategy.BALANCED, Strategy.PREMIUM):
+            assert ROUTING_MATRIX[("arabic", strategy)][-1] == "pymupdf"
+
+    def test_classifier_still_emits_the_arabic_route(self) -> None:
+        """Guards the other half: the matrix rows are useless if the route changes."""
+        from pdfmux.detect import PDFClassification
+        from pdfmux.pipeline import _classify_to_page_type
+
+        c = PDFClassification(page_count=1)
+        c.is_arabic = True
+        assert _classify_to_page_type(c) == "arabic"

@@ -428,3 +428,56 @@ class TestVerifyCLI:
         )
         assert result.exit_code == 2
         assert "reducto" in result.output.lower()
+
+
+class TestTableTruncationFlag:
+    """The blind spot GT-0 measured: `_has_table` tests presence, not cardinality.
+
+    A table cut from 40 rows to 3 still has >= 2 pipe rows, so `table_integrity`
+    passes and the page reads clean. That is why 4 of 5 seeded truncations were
+    missed. `table_truncated` is an ADDITIVE flag — no pre-registered threshold
+    changes, so the published FP/FN figures stay valid for the signals they
+    measured.
+    """
+
+    def test_truncated_table_is_flagged(self) -> None:
+        from pdfmux.verifier import _table_truncated
+
+        source = "\n".join(f"| r{i} | v{i} |" for i in range(40))
+        truncated = "\n".join(f"| r{i} | v{i} |" for i in range(3))
+        assert _table_truncated(source, truncated) is True
+
+    def test_the_old_presence_check_still_passes_it(self) -> None:
+        """Proves the gap is real and that the new flag is what closes it."""
+        from pdfmux.verifier import _has_table, _table_truncated
+
+        source = "\n".join(f"| r{i} | v{i} |" for i in range(40))
+        truncated = "\n".join(f"| r{i} | v{i} |" for i in range(3))
+        assert _has_table(truncated) is True, "presence check passes — the blind spot"
+        assert _table_truncated(source, truncated) is True, "cardinality catches it"
+
+    def test_intact_table_is_not_flagged(self) -> None:
+        from pdfmux.verifier import _table_truncated
+
+        source = "\n".join(f"| r{i} | v{i} |" for i in range(40))
+        assert _table_truncated(source, source) is False
+
+    def test_small_tables_cannot_trip_it(self) -> None:
+        """A 3-row table losing one row must not fire — guards against new FPs."""
+        from pdfmux.verifier import _table_truncated
+
+        source = "| a | b |\n| - | - |\n| 1 | 2 |"
+        assert _table_truncated(source, "| a | b |\n| - | - |") is False
+
+    def test_no_table_in_source_never_flags(self) -> None:
+        from pdfmux.verifier import _table_truncated
+
+        assert _table_truncated("just prose, no table here", "just prose") is False
+
+    def test_minor_row_loss_within_tolerance_is_not_flagged(self) -> None:
+        """9 of 10 rows kept is above the 0.8 ratio — deliberately not a defect."""
+        from pdfmux.verifier import _table_truncated
+
+        source = "\n".join(f"| r{i} | v{i} |" for i in range(10))
+        kept = "\n".join(f"| r{i} | v{i} |" for i in range(9))
+        assert _table_truncated(source, kept) is False

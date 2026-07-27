@@ -38,6 +38,25 @@ class RouteDecision:
 # "llm" means use the best available LLM provider.
 
 ROUTING_MATRIX: dict[tuple[str, Strategy], tuple[str, ...]] = {
+    # Arabic / RTL — the highest-priority signal. `_classify_to_page_type` has
+    # always returned "arabic" for these documents, but until 2026-07-27 this
+    # matrix had no "arabic" rows at all, so every Arabic document silently fell
+    # through to DEFAULT_CHAIN — whose BALANCED arm is ("opendataloader",
+    # "pymupdf") and never reaches an LLM. That contradicted both the comment at
+    # `pipeline.py:527` ("PyMuPDF/RapidOCR are unsuitable on Arabic-heavy docs")
+    # and the README's documented behaviour ("route Arabic pages through Gemma 4
+    # instead of PyMuPDF"). The route was computed and then thrown away.
+    #
+    # Gemma 4 is the only backend in this codebase that advertises an "arabic"
+    # capability (`providers/gemma.py:70`), so it leads wherever a budget allows.
+    # "llm" resolves to the best available LLM provider and falls through when
+    # none is configured, so this degrades safely to native extraction. ECONOMY
+    # stays free by definition; BiDi reordering is applied post-extraction for
+    # every engine (`pipeline.py:298`), so the native fallback is still correct
+    # on digital Arabic — it is scanned Arabic that needs the vision model.
+    ("arabic", Strategy.ECONOMY): ("pymupdf",),
+    ("arabic", Strategy.BALANCED): ("llm", "pymupdf"),
+    ("arabic", Strategy.PREMIUM): ("llm", "pymupdf"),
     # Digital text — no LLM needed, fast extractors dominate.
     # Marker is a strong digital extractor too but slower than opendataloader.
     ("digital", Strategy.ECONOMY): ("pymupdf",),

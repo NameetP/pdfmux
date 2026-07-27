@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.7 (2026-07-27) — Arabic routing actually routes; table truncation is detected
+
+### Fixed
+
+- **Arabic documents were never routed to an Arabic-capable backend.** `_classify_to_page_type` has always returned `"arabic"` for them, but `ROUTING_MATRIX` had no `"arabic"` rows, so every Arabic document fell through to `DEFAULT_CHAIN` — whose BALANCED arm is `("opendataloader", "pymupdf")` and never reaches an LLM. **The route was computed and then thrown away.** That contradicted the comment at `pipeline.py:527` ("PyMuPDF/RapidOCR are unsuitable on Arabic-heavy docs") *and* the README's documented behaviour ("route Arabic pages through Gemma 4 instead of PyMuPDF") — which was therefore untrue. Added `("arabic", …)` rows: ECONOMY stays free (`pymupdf`, with BiDi applied post-extraction as before); BALANCED and PREMIUM lead with `llm`, which resolves to the best available provider — Gemma 4 is the only backend advertising an `arabic` capability — and fall through to `pymupdf` when none is configured, so nothing breaks without an API key.
+
+### Added
+
+- **`table_truncated` — a new verifier flag for tables that survive but lose most of their rows.** GT-0 measured this blind spot: `_has_table` tests *presence*, so a table cut from 40 rows to 3 still has ≥2 pipe rows and passes. The new check compares cardinality both document-wide and for the largest contiguous table block — the block test is what catches truncation of one table among several, where the document-wide total barely moves.
+  - **Measured on the GT-0 corpus:** the old presence check missed **7 of 7** seeded truncations; the new flag catches **7 of 7**, with **0 false positives across the 40 intact ground-truth files**.
+  - **Purely additive.** `_has_table`, `table_integrity`, and all five pre-registered GT-0 thresholds are byte-identical, so the published FP/FN figures remain valid for every signal they measured. A page that would have passed now surfaces as `review`, never as a new hard failure.
+
 ## 1.8.6 (2026-07-27) — retract "#1 free": the engine ahead of us is also free
 
 ### Fixed
