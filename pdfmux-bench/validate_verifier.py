@@ -723,11 +723,38 @@ def main(argv: list[str] | None = None) -> int:
     manifest = json.loads(manifest_bytes)
 
     results: list[DocResult] = []
+    skipped: list[str] = []
     for rec in manifest["documents"]:
+        pdf = corpus / rec["category"] / f"{rec['id']}.pdf"
+        if not pdf.exists():
+            # Skip loudly rather than crash. Some corpus sources (bls.gov,
+            # gao.gov) return 403 to automated fetch regardless of User-Agent,
+            # so a third party reproducing these numbers can legitimately be
+            # unable to obtain every document. Never silently drop one: the
+            # report names what was skipped, so a partial run can never be
+            # mistaken for a complete one.
+            print(f"  SKIPPING {rec['id']} — PDF not present at {pdf}", file=sys.stderr)
+            skipped.append(rec["id"])
+            continue
         print(f"  verifying {rec['id']} ...", file=sys.stderr)
         results.append(run_doc(rec, corpus, with_pdfmux=not args.no_pdfmux))
 
+    if skipped:
+        print(
+            f"  WARNING: {len(skipped)} of {len(manifest['documents'])} documents skipped: "
+            + ", ".join(skipped),
+            file=sys.stderr,
+        )
+
     report = build_report(results, manifest_sha, with_pdfmux=not args.no_pdfmux)
+    if skipped:
+        report += (
+            "\n\n## Incomplete run\n\n"
+            f"**{len(skipped)} of {len(manifest['documents'])} corpus documents were not available "
+            f"and are excluded from every number above:** {', '.join(skipped)}. "
+            "The rates here are therefore computed over a subset of the pre-registered corpus "
+            "and are not comparable to a complete run."
+        )
     Path(args.out).write_text(report + "\n", encoding="utf-8")
     print(f"Wrote {args.out}", file=sys.stderr)
 
