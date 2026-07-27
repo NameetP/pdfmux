@@ -1,10 +1,25 @@
 # Changelog
 
+## Unreleased — retract "Gemma 4": the provider ships Gemma 3
+
+### Fixed
+
+- **Every user-facing surface called the Gemma backend "Gemma 4". It serves Gemma 3.** `providers/gemma.py` has always set `default_model = "gemma-3-27b-it"` and advertised exactly two models, `gemma-3-27b-it` and `gemma-3-12b-it` — but the README, `docs/ARCHITECTURE.md`, the `pdfmux doctor` recommendation in `cli.py`, the `ROUTING_MATRIX` comments, two test docstrings, and the 1.8.7 changelog entry all said Gemma 4. The docs were renamed ahead of the code and nothing caught it.
+  - **The tell was internal, not external:** the README's provider table read `| Gemma 4 | 27B IT, 12B IT |`. Gemma 4 has no 27B size (its sizes are E2B, E4B, 12B, 26B A4B, 31B) — 27B is a Gemma 3 size. The row named one generation and listed the other's sizes.
+  - Not cosmetic. The README told Arabic users their pages route through a model pdfmux never requests, and the claim had propagated to the public blog, which repeated "Gemma 4 27B" — a model that exists in neither generation's lineup.
+- **Corrected the Gemma per-page cost in the README: `~$0.005/page` → `~$0.0002/page`.** The figure was ~27x the provider's own estimator. `GemmaProvider.estimate_cost()` computes $0.000185/page from its declared rates (460 input + 500 output tokens at $0.075/$0.30 per Mtok); the README asserted a number nothing in the code produces.
+- **Fixed a broken install command in the README's Arabic section.** It read `pip install "pdfmux[arabic,llm-gemma]"`. Neither extra exists — `pip install` accepts unknown extras silently, so a reader following the Arabic quickstart installed *nothing* and believed they had enabled Gemma vision OCR. The Gemma provider imports the `openai` SDK, so the correct extra is `llm-openai` (also included in `llm-all`).
+
+### Notes
+
+- **Gemma 4 is real and is on the Gemini API** — `gemma-4-31b-it` and `gemma-4-26b-a4b-it` ([Google's docs](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)). Adopting it here was deliberately *not* bundled into this fix: the OpenAI-compat path this provider uses is undocumented for those IDs, and the pricing constants and `max_input_tokens` would both need re-verification against a live key. Doing the rename without that verification is the same defect in the other direction. The requirements are recorded in the `providers/gemma.py` module docstring.
+- `scripts/release-gate.sh` now fails when a shipped artifact claims "Gemma 4" while the provider's model IDs say `gemma-3-`, so this specific drift cannot ship again.
+
 ## 1.8.7 (2026-07-27) — Arabic routing actually routes; table truncation is detected
 
 ### Fixed
 
-- **Arabic documents were never routed to an Arabic-capable backend.** `_classify_to_page_type` has always returned `"arabic"` for them, but `ROUTING_MATRIX` had no `"arabic"` rows, so every Arabic document fell through to `DEFAULT_CHAIN` — whose BALANCED arm is `("opendataloader", "pymupdf")` and never reaches an LLM. **The route was computed and then thrown away.** That contradicted the comment at `pipeline.py:527` ("PyMuPDF/RapidOCR are unsuitable on Arabic-heavy docs") *and* the README's documented behaviour ("route Arabic pages through Gemma 4 instead of PyMuPDF") — which was therefore untrue. Added `("arabic", …)` rows: ECONOMY stays free (`pymupdf`, with BiDi applied post-extraction as before); BALANCED and PREMIUM lead with `llm`, which resolves to the best available provider — Gemma 4 is the only backend advertising an `arabic` capability — and fall through to `pymupdf` when none is configured, so nothing breaks without an API key.
+- **Arabic documents were never routed to an Arabic-capable backend.** `_classify_to_page_type` has always returned `"arabic"` for them, but `ROUTING_MATRIX` had no `"arabic"` rows, so every Arabic document fell through to `DEFAULT_CHAIN` — whose BALANCED arm is `("opendataloader", "pymupdf")` and never reaches an LLM. **The route was computed and then thrown away.** That contradicted the comment at `pipeline.py:527` ("PyMuPDF/RapidOCR are unsuitable on Arabic-heavy docs") *and* the README's documented behaviour ("route Arabic pages through Gemma 4 instead of PyMuPDF") — which was therefore untrue. Added `("arabic", …)` rows: ECONOMY stays free (`pymupdf`, with BiDi applied post-extraction as before); BALANCED and PREMIUM lead with `llm`, which resolves to the best available provider — the Gemma provider is the only backend advertising an `arabic` capability — and fall through to `pymupdf` when none is configured, so nothing breaks without an API key.
 
 ### Added
 
@@ -229,7 +244,7 @@ Field-driven patch release. Triggered by a real-world 433-PDF batch run where th
 ### Added — Extraction backends
 - **Mistral OCR** as a paid extraction backend ($0.002/page, 96.6% table accuracy on internal benches). Optional dep: `pdfmux[llm-mistral]`.
 - **Marker** neural extractor (`pdfmux[marker]`) — strong on academic papers and dense layouts. Models cached as module-level singletons to amortize warm-up.
-- **Gemma 4 27B IT** as a vision LLM provider via the GeminiAPI OpenAI-compat endpoint. Reuses `GEMINI_API_KEY`. Native Arabic OCR.
+- **Gemma 3 27B IT** as a vision LLM provider via the GeminiAPI OpenAI-compat endpoint. Reuses `GEMINI_API_KEY`. Native Arabic OCR. (Published as "Gemma 4 27B IT" at the time; corrected 2026-07-27 — see the Unreleased entry. Gemma 4 has no 27B size.)
 
 ### Added — Arabic / RTL support
 - **BiDi post-processing** for Arabic and Hebrew using `python-bidi`. Markdown-aware: preserves heading prefixes, list markers, and code fences while reordering RTL text.
