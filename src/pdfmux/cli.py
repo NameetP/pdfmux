@@ -1258,8 +1258,9 @@ def audit(
             f"({pct:.1f}% disagreement rate).\n"
         )
     console.print(
-        "[dim]Free 100 pages/mo + dashboard: https://app.pdfmux.com · "
-        "Verify with the open spec: https://verifiedextraction.org[/dim]"
+        "[dim]Need this signed for an auditor? pdfmux Cloud returns an Ed25519-signed "
+        "manifest, verifiable offline with `pdfmux verify-manifest`: "
+        "https://app.pdfmux.com/pricing[/dim]"
     )
 
     # Non-zero exit if anything was flagged — same convention as --strict
@@ -1554,7 +1555,12 @@ def version() -> None:
 
 
 def _maybe_print_funnel_upsell() -> None:
-    """Print the OSS→cloud upsell line on convert completion, when interactive.
+    """Print the OSS→cloud line on convert completion, when interactive.
+
+    Sells the one thing this local install definitionally cannot produce: a
+    third-party-verifiable signed certificate of the extraction. "A free
+    dashboard" is not a reason to leave your terminal; an attestation your
+    auditor can check without trusting us is.
 
     Suppressed when stdout is piped or PDFMUX_NO_UPSELL=1 is set, so it never
     pollutes CI logs or downstream pipes. Single line, dim styling.
@@ -1567,9 +1573,10 @@ def _maybe_print_funnel_upsell() -> None:
     if not sys.stdout.isatty():
         return
     console.print(
-        "[dim]💡 Free 100 pages/mo + audit dashboard: https://app.pdfmux.com · "
-        "Open spec: https://verifiedextraction.org "
-        "(set PDFMUX_NO_UPSELL=1 to silence)[/dim]"
+        "[dim]💡 Need to prove this extraction to someone else? pdfmux Cloud returns "
+        "an Ed25519-signed manifest they verify offline — `pdfmux verify-manifest`, "
+        "no account needed: https://app.pdfmux.com/pricing "
+        "(PDFMUX_NO_UPSELL=1 to silence)[/dim]"
     )
 
 
