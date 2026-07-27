@@ -204,6 +204,18 @@ Certify Anything reuses only pdfmux's shipped MIT audit layer. It does **not** i
 
 Full reference: **[docs/CERTIFY-ANYTHING.md](docs/CERTIFY-ANYTHING.md)**.
 
+### When you need to prove it to someone else
+
+A local install can audit an extraction, but it cannot *attest* to one — anything it signs, anyone could forge. [pdfmux Cloud](https://app.pdfmux.com/pricing) returns an **Ed25519-signed manifest** over the extraction: your auditor verifies it **offline**, against a published public key, without an account and without trusting pdfmux.
+
+```bash
+pdfmux verify-manifest manifest.json      # free, MIT, offline — no account
+```
+
+Verification is free and open forever; only *generation* is paid ($49/mo). That asymmetry is deliberate — you should never need our permission to check our work.
+
+Free tool, no signup: **[app.pdfmux.com/audit](https://app.pdfmux.com/audit)** — upload a PDF and see which pages your current extractor silently dropped. Measured accuracy (and its blind spots) published in [pdfmux-bench](https://github.com/NameetP/pdfmux/blob/feat/pdfmux-bench/pdfmux-bench/VERIFIER-VALIDATION.md).
+
 ## Architecture
 
 ```

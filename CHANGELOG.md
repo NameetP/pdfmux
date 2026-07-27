@@ -1,8 +1,17 @@
 # Changelog
 
-## Unreleased
+## 1.8.3 (2026-07-27) — verify-manifest + honest cloud pointers
+
+### Added
+
+- **`pdfmux verify-manifest <file>`** — verify a pdfmux Cloud Ed25519-signed manifest **offline**, with no pdfmux account and no network call. Verification is free and open (MIT) forever; only *generation* is paid. You should never need our permission to check our work.
 
 ### Fixed
+
+- **Removed a dead link shipped in the CLI.** `pdfmux convert` and `pdfmux audit` pointed at `verifiedextraction.org`, which does not resolve (NXDOMAIN) — every interactive user was handed a broken URL. Both lines now point at real, live surfaces.
+- The cloud pointer sold "a free dashboard", which is not a reason to leave your terminal. It now names the actual difference: a third-party-verifiable signed attestation a local install definitionally cannot produce.
+
+### Fixed (previously unreleased)
 
 - **Extraction timeout now hard-terminates a wedged extractor.** `PDFMUX_TIMEOUT` (default 300s) previously raised on schedule but could still hang the caller: a `ThreadPoolExecutor` cannot cancel a thread that is already running, and its context-exit blocks on `shutdown(wait=True)` until the native call returns — which, for a wedged PyMuPDF / OCR / Docling page, may be never. Extraction now runs under `pdfmux._timeout.run_with_timeout`: on Linux it forks a child and escalates `SIGTERM`→`SIGKILL` at the deadline (the wedged extractor is actually killed and its memory reclaimed — the path the cloud worker runs); on macOS / Windows, where forking after native libraries load is unsafe or unavailable, it falls back to a daemon thread so the caller is freed immediately and process exit is never blocked. Override with `PDFMUX_TIMEOUT_ISOLATION` (`auto` | `process` | `thread` | `off`). Still surfaces as the existing `OCRTimeoutError`. Resolves the portfolio-audit P1 finding.
 
