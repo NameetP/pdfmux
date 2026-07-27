@@ -2449,9 +2449,7 @@ def verify_manifest(
         "-s",
         help="Base64 signature, if it isn't already in the manifest file.",
     ),
-    out_format: str = typer.Option(
-        "text", "--format", "-f", help="Output: text | json."
-    ),
+    out_format: str = typer.Option("text", "--format", "-f", help="Output: text | json."),
 ) -> None:
     """Verify a pdfmux Cloud signed manifest OFFLINE — no account, no API call.
 
