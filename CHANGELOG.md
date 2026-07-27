@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.5 (2026-07-27) — correct the benchmark score in the PyPI summary
+
+### Fixed
+
+- **The PyPI Summary cited a superseded benchmark score (0.905).** The reproduced result for the current engine is **0.903** (#2 of all tools, #1 free on opendataloader-bench). The long description already said 0.903, so the package page contradicted itself on the line most developers read first. Docs-only — no code changes.
+- Added `scripts/release-gate.sh`, which runs against the **built wheel** before upload and fails on: banned claims and dead links in the metadata *or* the shipped code, a superseded benchmark score presented as pdfmux's, a Summary whose score disagrees with the canonical one, and a hardcoded `__version__`. Each of those checks exists because that exact defect shipped: 1.8.1 (unverified benchmark claim), 1.8.3 (version drift into signed manifests), 1.8.4 (this).
+
 ## 1.8.4 (2026-07-27) — report the right version
 
 ### Fixed
