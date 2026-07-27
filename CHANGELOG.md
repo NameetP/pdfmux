@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.4 (2026-07-27) — report the right version
+
+### Fixed
+
+- **`pdfmux.__version__` was hardcoded and had drifted.** 1.8.3 shipped to PyPI reporting itself as `1.8.2`: `pyproject.toml` was bumped, the literal in `__init__.py` was not. It is now derived from the installed package metadata (`importlib.metadata.version`), so the two can never disagree again.
+- Not cosmetic: `verifier.py` stamps this string into every certification manifest as the `tool` field, so a stale literal made a signed artifact misstate which engine produced it. `pdfmux --version` and `pdfmux doctor` were wrong for the same reason.
+
 ## 1.8.3 (2026-07-27) — verify-manifest + honest cloud pointers
 
 ### Added

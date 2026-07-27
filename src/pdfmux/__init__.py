@@ -30,7 +30,18 @@ finally:
     _sys.stdout = _orig
 del _orig, _io
 
-__version__ = "1.8.2"
+# Derived from the installed package metadata, never hardcoded. A literal here
+# silently drifts from pyproject.toml the moment a release bumps one and not the
+# other — which happened: 1.8.3 shipped to PyPI reporting itself as "1.8.2".
+# That is not cosmetic. `verifier.py` stamps this string into every certification
+# manifest as the `tool` field, so a stale literal makes a signed artifact
+# misstate which engine produced it.
+try:  # pragma: no cover - trivial import branch
+    from importlib.metadata import version as _pkg_version
+
+    __version__ = _pkg_version("pdfmux")
+except Exception:  # not installed (source checkout / vendored copy)
+    __version__ = "0.0.0+unknown"
 __all__ = [
     # Public API
     "extract_text",
