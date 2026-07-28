@@ -44,11 +44,13 @@ ROUTING_MATRIX: dict[tuple[str, Strategy], tuple[str, ...]] = {
     # through to DEFAULT_CHAIN — whose BALANCED arm is ("opendataloader",
     # "pymupdf") and never reaches an LLM. That contradicted both the comment at
     # `pipeline.py:527` ("PyMuPDF/RapidOCR are unsuitable on Arabic-heavy docs")
-    # and the README's documented behaviour ("route Arabic pages through Gemma 4
+    # and the README's documented behaviour ("route Arabic pages through Gemma
     # instead of PyMuPDF"). The route was computed and then thrown away.
     #
-    # Gemma 4 is the only backend in this codebase that advertises an "arabic"
-    # capability (`providers/gemma.py:70`), so it leads wherever a budget allows.
+    # The Gemma provider is the only backend in this codebase that advertises an
+    # "arabic" capability (`providers/gemma.py`), so it leads wherever a budget
+    # allows. It currently serves Gemma 3 (`gemma-3-27b-it` / `gemma-3-12b-it`);
+    # see the note in `providers/gemma.py` on what adopting Gemma 4 would need.
     # "llm" resolves to the best available LLM provider and falls through when
     # none is configured, so this degrades safely to native extraction. ECONOMY
     # stays free by definition; BiDi reordering is applied post-extraction for

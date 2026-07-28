@@ -101,6 +101,86 @@ else
   pass "__version__ is derived, not hardcoded"
 fi
 
+# 6. The Gemma model generation we ADVERTISE must match the one we SEND.
+#    Every doc surface said "Gemma 4" for months while the provider requested
+#    gemma-3-27b-it. The README's own table gave it away — "Gemma 4 | 27B IT",
+#    and Gemma 4 has no 27B size. Prose drifted; the model ID never moved.
+#
+#    This compares the two rather than banning either string, so a genuine
+#    Gemma 4 upgrade passes the moment the model IDs actually change.
+#
+#    It must NOT fire on prose that discusses the other generation in order to
+#    rule it out — providers/gemma.py documents at length why it is Gemma 3 and
+#    what adopting Gemma 4 would require. A gate that flags that gets ignored,
+#    which is the failure mode of the prose gates check 3 replaces. So the code
+#    scan parses the AST and looks only at string literals that are NOT
+#    docstrings (i.e. text a user can actually be shown, like the CLI's
+#    recommendation line), and comments are excluded for free.
+GEMMA_SRC="$TMP/pdfmux/providers/gemma.py"
+if [ -f "$GEMMA_SRC" ] && command -v python3 >/dev/null 2>&1; then
+  GEMMA_CHECK=$(python3 - "$TMP/pdfmux" "$META" <<'PYEOF'
+import ast, pathlib, re, sys
+
+pkg, meta = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+
+# The generation we SEND comes from the model IDs the provider actually
+# requests — `default_model` and each ModelInfo(id=...). Deliberately not a
+# regex over the file: the module docstring names Gemma 4 IDs while explaining
+# why they are not used, and a text scan reads those as configuration.
+gemma_tree = ast.parse((pkg / "providers/gemma.py").read_text())
+sent_ids = set()
+for node in ast.walk(gemma_tree):
+    if isinstance(node, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id == "default_model" for t in node.targets
+    ):
+        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            sent_ids.add(node.value.value)
+    if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "ModelInfo":
+        for kw in node.keywords:
+            if kw.arg == "id" and isinstance(kw.value, ast.Constant):
+                sent_ids.add(kw.value.value)
+
+sent = sorted({m.group(1) for i in sent_ids if (m := re.match(r"gemma-(\d+)-", i))})
+if len(sent) != 1:
+    print(f"BAD:?:provider sends mixed or unparseable Gemma generations: {sorted(sent_ids)}")
+    raise SystemExit
+gen = sent[0]
+claims = set()
+
+# METADATA is the PyPI page — every word of it is a user-facing claim.
+claims |= set(re.findall(r"Gemma (\d+)", meta.read_text()))
+
+# Shipped code: only non-docstring string literals can reach a user.
+for py in pkg.rglob("*.py"):
+    try:
+        tree = ast.parse(py.read_text())
+    except SyntaxError:
+        continue
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            doc = node.body[0] if node.body else None
+            if isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant) \
+               and isinstance(doc.value.value, str):
+                docstrings.add(id(doc.value))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+           and id(node) not in docstrings:
+            claims |= set(re.findall(r"Gemma (\d+)", node.value))
+
+bad = sorted(claims - {gen})
+print(f"BAD:{gen}:{','.join(bad)}" if bad else f"OK:{gen}")
+PYEOF
+)
+  case "$GEMMA_CHECK" in
+    OK:*)   pass "Gemma generation claimed matches the model IDs sent (gemma-${GEMMA_CHECK#OK:}-*)" ;;
+    SKIP:*) pass "Gemma generation check skipped (${GEMMA_CHECK#SKIP:})" ;;
+    BAD:*)  rest="${GEMMA_CHECK#BAD:}"
+            fail "advertises Gemma ${rest#*:} but the provider sends gemma-${rest%%:*}-*" ;;
+    *)      fail "Gemma generation check errored: ${GEMMA_CHECK}" ;;
+  esac
+fi
+
 echo
 if [ "$FAILS" -gt 0 ]; then
   echo "GATE FAILED (${FAILS}) — do not upload."

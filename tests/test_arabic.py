@@ -310,7 +310,7 @@ class TestArabicRouting:
         assert ROUTING_MATRIX[("arabic", Strategy.BALANCED)] != DEFAULT_CHAIN[Strategy.BALANCED]
 
     def test_balanced_and_premium_prefer_the_llm_backend(self) -> None:
-        """Gemma 4 is the only backend advertising an "arabic" capability, and the
+        """The Gemma provider is the only backend advertising an "arabic" capability, and the
         README documents routing Arabic through it instead of PyMuPDF."""
         from pdfmux.router.engine import ROUTING_MATRIX
         from pdfmux.router.strategies import Strategy
@@ -335,3 +335,108 @@ class TestArabicRouting:
         c = PDFClassification(page_count=1)
         c.is_arabic = True
         assert _classify_to_page_type(c) == "arabic"
+
+
+class TestBidiDependencyIsCore:
+    """python-bidi is a core dependency, not an optional extra.
+
+    Until 2026-07-27 both docstrings in ``pdfmux/arabic.py`` told users to run
+    ``pip install pdfmux[arabic]``. No such extra exists — and because pip
+    accepts unknown extras silently, a user following that hint installed
+    nothing while believing they had enabled RTL support.
+    """
+
+    def test_python_bidi_is_a_core_dependency(self) -> None:
+        """If this ever moves to an extra, the docstrings must move with it."""
+        import tomllib
+        from pathlib import Path
+
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        cfg = tomllib.loads(pyproject.read_text())
+        core = " ".join(cfg["project"]["dependencies"])
+        assert "python-bidi" in core, "python-bidi must stay a core dependency"
+
+    def test_no_install_instruction_names_a_nonexistent_extra(self) -> None:
+        """Every ``pip install pdfmux[...]`` must resolve to a real extra.
+
+        Generalised deliberately. This defect class has now shipped three
+        times — ``pdfmux[arabic]`` here, ``pdfmux[arabic,llm-gemma]`` in the
+        README, and ``pdfmux[local]`` on the blog — because a wrong extra
+        fails silently at every layer: pip does not error, and the import it
+        was supposed to enable is often already present for another reason.
+
+        Matches only *install instructions*, not every mention of the string.
+        Prose that names a bad extra in order to rule it out is correct and
+        must not fail — that distinction is the whole reason the original hint
+        survived so long, since a blunt scan would have been switched off.
+        """
+        import re
+        import tomllib
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        cfg = tomllib.loads((root / "pyproject.toml").read_text())
+        valid = set(cfg["project"].get("optional-dependencies", {}))
+
+        targets = [
+            *(root / "src").rglob("*.py"),
+            root / "README.md",
+            *(root / "docs").rglob("*.md"),
+        ]
+        # CHANGELOG is excluded by design: it records superseded commands
+        # verbatim, including the broken ones this test exists to prevent.
+        instruction = re.compile(r"""pip install\s+["']?pdfmux\[([a-zA-Z0-9,_\-]+)\]""")
+
+        offenders: list[str] = []
+        for path in targets:
+            if not path.is_file():
+                continue
+            for lineno, line in enumerate(path.read_text().splitlines(), 1):
+                for match in instruction.findall(line):
+                    bad = sorted({e.strip() for e in match.split(",")} - valid)
+                    if bad:
+                        rel = path.relative_to(root)
+                        offenders.append(f"{rel}:{lineno} -> unknown extra(s) {bad}")
+
+        assert not offenders, "install instructions name extras that do not exist:\n" + "\n".join(
+            offenders
+        )
+
+    def test_missing_python_bidi_warns_instead_of_failing_silently(
+        self, monkeypatch, caplog
+    ) -> None:
+        """A broken install must not quietly return reversed Arabic.
+
+        Without BiDi, RTL text comes back in storage order — reversed, but
+        still perfectly plausible-looking to anyone who does not read Arabic.
+        Silent, plausible, wrong output is the failure mode this package
+        exists to surface, so the one path that can produce it must say so.
+        """
+        import builtins
+        import logging
+
+        from pdfmux import arabic
+
+        real_import = builtins.__import__
+
+        def no_bidi(name, *args, **kwargs):
+            if name.startswith("bidi"):
+                raise ImportError("simulated broken install")
+            return real_import(name, *args, **kwargs)
+
+        arabic._load_get_display.cache_clear()
+        monkeypatch.setattr(builtins, "__import__", no_bidi)
+        try:
+            with caplog.at_level(logging.WARNING, logger="pdfmux.arabic"):
+                text = "شحنة MSKU1234567"
+                assert arabic.fix_bidi_order(text) == text, "must degrade, not raise"
+                assert arabic.fix_bidi_order(text) == text
+                assert arabic.fix_bidi_order(text) == text
+
+            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+            assert len(warnings) == 1, f"expected exactly one warning, got {len(warnings)}"
+            msg = warnings[0].getMessage()
+            assert "core pdfmux dependency" in msg
+            assert "pdfmux[arabic]" in msg, "must name the non-extra users will search for"
+        finally:
+            arabic._load_get_display.cache_clear()

@@ -452,7 +452,7 @@ def _doctor_check_directory(directory: Path, sample_size: int) -> None:
         rec_lines.append(
             "  [yellow]⚠[/yellow]  Arabic / RTL content detected. python-bidi handles digital "
             "pages; for scanned Arabic install a vision LLM.\n"
-            "     Recommended: [bold]pip install 'pdfmux[llm-all]'[/bold] (Gemma 4 reuses "
+            "     Recommended: [bold]pip install 'pdfmux[llm-all]'[/bold] (Gemma reuses "
             "GEMINI_API_KEY)"
         )
     if counts["errors"] > 0:

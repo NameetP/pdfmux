@@ -1,4 +1,8 @@
-"""Tests for the Gemma 4 provider — Arabic-capable vision OCR backend."""
+"""Tests for the Gemma provider — Arabic-capable vision OCR backend.
+
+Serves Gemma 3 (`gemma-3-27b-it` / `gemma-3-12b-it`), not Gemma 4. See the
+module docstring in ``pdfmux/providers/gemma.py`` for why.
+"""
 
 from __future__ import annotations
 

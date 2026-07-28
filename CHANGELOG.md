@@ -1,10 +1,38 @@
 # Changelog
 
+## Unreleased — retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
+
+### Fixed
+
+- **`pdfmux/arabic.py` told users to run `pip install pdfmux[arabic]`. That extra has never existed.** Both the module docstring and `fix_bidi_order`'s docstring carried the hint, and it is worse than a typo in two compounding ways: pip accepts unknown extras **silently**, so the command succeeds and installs nothing; and `python-bidi` is already a **core** dependency, so RTL reordering was working the whole time. A reader hunting a BiDi problem would run the command, see success, see no change, and conclude BiDi was broken.
+- **A missing `python-bidi` no longer fails silently.** `fix_bidi_order` caught `ImportError` and returned the text unchanged with no signal. Because `python-bidi` is core, that branch means the install is broken — and its output is Arabic in storage order: reversed, but entirely plausible-looking to anyone who does not read Arabic. Silent, plausible, wrong output is the failure mode this package exists to surface, so it should not be the one path that ships it. It now logs a warning naming the real cause (broken install, not a missing extra) and still returns the text rather than raising, so a degraded environment does not become a hard failure on documents that may contain no Arabic at all. Cached so it warns once per process, not once per page.
+
+- **The test suite was implicitly a performance test, and flaked because of it.** `pipeline.EXTRACTION_TIMEOUT_S` is read from `PDFMUX_TIMEOUT` **at import time** (default 300s), so every test driving the CLI inherited a wall-clock dependency on whatever machine ran it. `pdfmux analyze` calls `process(quality="standard")` — the full BALANCED chain, loading Docling / Marker / opendataloader — so a one-page synthetic fixture takes 30-40s idle, and on a contended machine it crept past the deadline. Two full-suite runs of byte-identical code disagreed: 762 passed vs 2 failed.
+  - **Measured blast radius, not just the file that flaked:** running each CLI test file under `PDFMUX_TIMEOUT=1` shows the latent dependency in **four** files — `test_analyze` (3), `test_cli` (4 of 9), `test_diff` (5 of 6), `test_watch` (2 of 3). `test_audit_cli`, `test_estimate`, `test_manifest_verify`, `test_profiles`, `test_streaming` and `test_verifier` are clean. The fix therefore lives in `conftest.py`, not in the one file that happened to surface it.
+  - An autouse fixture now pins `EXTRACTION_TIMEOUT_S` to 1800s. It patches the **module attribute**, not the environment variable — setting `PDFMUX_TIMEOUT` from inside a test does nothing, because the constant is already computed by then. `test_timeout_isolation.py` still overrides it locally with a sub-second value, so the wedged-extractor path stays covered.
+- **A timed-out CLI test now says so.** These tests asserted `result.exit_code == 0`, which reports `assert 1 == 0` and cannot distinguish "the command is broken" from "extraction timed out on a busy machine" — that ambiguity is what made the flake expensive to diagnose. The new `assert_cli_ok` helper surfaces the exit code, the underlying exception, and the captured CLI output, and names the timeout explicitly (reporting the value **in force**, not the pinned constant, since a test may have overridden it).
+
+- **Every user-facing surface called the Gemma backend "Gemma 4". It serves Gemma 3.** `providers/gemma.py` has always set `default_model = "gemma-3-27b-it"` and advertised exactly two models, `gemma-3-27b-it` and `gemma-3-12b-it` — but the README, `docs/ARCHITECTURE.md`, the `pdfmux doctor` recommendation in `cli.py`, the `ROUTING_MATRIX` comments, two test docstrings, and the 1.8.7 changelog entry all said Gemma 4. The docs were renamed ahead of the code and nothing caught it.
+  - **The tell was internal, not external:** the README's provider table read `| Gemma 4 | 27B IT, 12B IT |`. Gemma 4 has no 27B size (its sizes are E2B, E4B, 12B, 26B A4B, 31B) — 27B is a Gemma 3 size. The row named one generation and listed the other's sizes.
+  - Not cosmetic. The README told Arabic users their pages route through a model pdfmux never requests, and the claim had propagated to the public blog, which repeated "Gemma 4 27B" — a model that exists in neither generation's lineup.
+- **Corrected the Gemma per-page cost in the README: `~$0.005/page` → `~$0.0002/page`.** The figure was ~27x the provider's own estimator. `GemmaProvider.estimate_cost()` computes $0.000185/page from its declared rates (460 input + 500 output tokens at $0.075/$0.30 per Mtok); the README asserted a number nothing in the code produces.
+- **Fixed a broken install command in the README's Arabic section.** It read `pip install "pdfmux[arabic,llm-gemma]"`. Neither extra exists — `pip install` accepts unknown extras silently, so a reader following the Arabic quickstart installed *nothing* and believed they had enabled Gemma vision OCR. The Gemma provider imports the `openai` SDK, so the correct extra is `llm-openai` (also included in `llm-all`).
+
+### Added
+
+- **`test_no_install_instruction_names_a_nonexistent_extra`** — every `pip install pdfmux[...]` across `src/`, the README, and `docs/` must resolve to a real extra in `pyproject.toml`. This defect class has now shipped three times (`pdfmux[arabic]`, `pdfmux[arabic,llm-gemma]`, and `pdfmux[local]` on the blog) precisely because it fails silently at every layer. The check matches install *instructions* only, so prose that names a bad extra in order to rule it out still passes — a blunt scan would have been switched off, which is how the original hint survived.
+- **`assert_cli_ok` in `tests/conftest.py`** — shared helper for CLI-driving tests, plus an autouse fixture pinning the extraction timeout (both described above).
+
+### Notes
+
+- **Gemma 4 is real and is on the Gemini API** — `gemma-4-31b-it` and `gemma-4-26b-a4b-it` ([Google's docs](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)). Adopting it here was deliberately *not* bundled into this fix: the OpenAI-compat path this provider uses is undocumented for those IDs, and the pricing constants and `max_input_tokens` would both need re-verification against a live key. Doing the rename without that verification is the same defect in the other direction. The requirements are recorded in the `providers/gemma.py` module docstring.
+- `scripts/release-gate.sh` now fails when a shipped artifact claims "Gemma 4" while the provider's model IDs say `gemma-3-`, so this specific drift cannot ship again.
+
 ## 1.8.7 (2026-07-27) — Arabic routing actually routes; table truncation is detected
 
 ### Fixed
 
-- **Arabic documents were never routed to an Arabic-capable backend.** `_classify_to_page_type` has always returned `"arabic"` for them, but `ROUTING_MATRIX` had no `"arabic"` rows, so every Arabic document fell through to `DEFAULT_CHAIN` — whose BALANCED arm is `("opendataloader", "pymupdf")` and never reaches an LLM. **The route was computed and then thrown away.** That contradicted the comment at `pipeline.py:527` ("PyMuPDF/RapidOCR are unsuitable on Arabic-heavy docs") *and* the README's documented behaviour ("route Arabic pages through Gemma 4 instead of PyMuPDF") — which was therefore untrue. Added `("arabic", …)` rows: ECONOMY stays free (`pymupdf`, with BiDi applied post-extraction as before); BALANCED and PREMIUM lead with `llm`, which resolves to the best available provider — Gemma 4 is the only backend advertising an `arabic` capability — and fall through to `pymupdf` when none is configured, so nothing breaks without an API key.
+- **Arabic documents were never routed to an Arabic-capable backend.** `_classify_to_page_type` has always returned `"arabic"` for them, but `ROUTING_MATRIX` had no `"arabic"` rows, so every Arabic document fell through to `DEFAULT_CHAIN` — whose BALANCED arm is `("opendataloader", "pymupdf")` and never reaches an LLM. **The route was computed and then thrown away.** That contradicted the comment at `pipeline.py:527` ("PyMuPDF/RapidOCR are unsuitable on Arabic-heavy docs") *and* the README's documented behaviour ("route Arabic pages through Gemma 4 instead of PyMuPDF") — which was therefore untrue. Added `("arabic", …)` rows: ECONOMY stays free (`pymupdf`, with BiDi applied post-extraction as before); BALANCED and PREMIUM lead with `llm`, which resolves to the best available provider — the Gemma provider is the only backend advertising an `arabic` capability — and fall through to `pymupdf` when none is configured, so nothing breaks without an API key.
 
 ### Added
 
@@ -229,7 +257,7 @@ Field-driven patch release. Triggered by a real-world 433-PDF batch run where th
 ### Added — Extraction backends
 - **Mistral OCR** as a paid extraction backend ($0.002/page, 96.6% table accuracy on internal benches). Optional dep: `pdfmux[llm-mistral]`.
 - **Marker** neural extractor (`pdfmux[marker]`) — strong on academic papers and dense layouts. Models cached as module-level singletons to amortize warm-up.
-- **Gemma 4 27B IT** as a vision LLM provider via the GeminiAPI OpenAI-compat endpoint. Reuses `GEMINI_API_KEY`. Native Arabic OCR.
+- **Gemma 3 27B IT** as a vision LLM provider via the GeminiAPI OpenAI-compat endpoint. Reuses `GEMINI_API_KEY`. Native Arabic OCR. (Published as "Gemma 4 27B IT" at the time; corrected 2026-07-27 — see the Unreleased entry. Gemma 4 has no 27B size.)
 
 ### Added — Arabic / RTL support
 - **BiDi post-processing** for Arabic and Hebrew using `python-bidi`. Markdown-aware: preserves heading prefixes, list markers, and code fences while reordering RTL text.
