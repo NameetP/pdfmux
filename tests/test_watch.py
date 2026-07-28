@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
+from conftest import assert_cli_ok
+
 
 @pytest.fixture
 def mock_watchdog(monkeypatch: pytest.MonkeyPatch):
@@ -115,7 +117,7 @@ class TestWatchHappyPath:
             app,
             ["watch", str(watch_dir), "--process-existing"],
         )
-        assert result.exit_code == 0, result.output
+        assert_cli_ok(result)
         # Output should contain a processed filename.
         assert "doc.pdf" in result.output
         # Output file should have been written next to / into the watch dir.
@@ -163,5 +165,5 @@ class TestWatchHappyPath:
 
         runner = CliRunner()
         result = runner.invoke(app, ["watch", str(watch_dir)])
-        assert result.exit_code == 0, result.output
+        assert_cli_ok(result)
         assert (watch_dir / "incoming.md").exists()

@@ -6,6 +6,8 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from conftest import assert_cli_ok
+
 from pdfmux.cli import app
 
 runner = CliRunner()
@@ -17,13 +19,13 @@ class TestVersionCommand:
     def test_version_command(self) -> None:
         """pdfmux version should print version string."""
         result = runner.invoke(app, ["version"])
-        assert result.exit_code == 0
+        assert_cli_ok(result)
         assert "pdfmux" in result.output
 
     def test_version_flag(self) -> None:
         """pdfmux --version should print version and exit."""
         result = runner.invoke(app, ["--version"])
-        assert result.exit_code == 0
+        assert_cli_ok(result)
 
 
 class TestDoctorCommand:
@@ -32,7 +34,7 @@ class TestDoctorCommand:
     def test_doctor_runs(self) -> None:
         """pdfmux doctor should list extractors without error."""
         result = runner.invoke(app, ["doctor"])
-        assert result.exit_code == 0
+        assert_cli_ok(result)
         assert "PyMuPDF" in result.output
         assert "pymupdf4llm" in result.output
 
@@ -48,14 +50,14 @@ class TestConvertCommand:
     def test_convert_to_stdout(self, digital_pdf: Path) -> None:
         """pdfmux convert --stdout should print markdown."""
         result = runner.invoke(app, ["convert", str(digital_pdf), "--stdout"])
-        assert result.exit_code == 0
+        assert_cli_ok(result)
         assert len(result.output) > 0
 
     def test_convert_to_file(self, digital_pdf: Path, tmp_path: Path) -> None:
         """pdfmux convert -o should write output to file."""
         output = tmp_path / "output.md"
         result = runner.invoke(app, ["convert", str(digital_pdf), "-o", str(output)])
-        assert result.exit_code == 0
+        assert_cli_ok(result)
         assert output.exists()
         assert len(output.read_text()) > 0
 
@@ -65,7 +67,7 @@ class TestConvertCommand:
 
         output = tmp_path / "output.json"
         result = runner.invoke(app, ["convert", str(digital_pdf), "-f", "json", "-o", str(output)])
-        assert result.exit_code == 0
+        assert_cli_ok(result)
         data = json.loads(output.read_text())
         assert "page_count" in data
 
@@ -81,5 +83,5 @@ class TestAnalyzeCommand:
     def test_analyze_runs(self, digital_pdf: Path) -> None:
         """pdfmux analyze should show per-page breakdown."""
         result = runner.invoke(app, ["analyze", str(digital_pdf)])
-        assert result.exit_code == 0
+        assert_cli_ok(result)
         assert "Confidence" in result.output
