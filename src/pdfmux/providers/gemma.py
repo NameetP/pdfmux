@@ -30,6 +30,12 @@ three things are unverified and each can silently degrade extraction:
 Verify all three against a live key before changing `default_model`. Until
 then this provider says Gemma 3, because that is what it sends.
 
+``scripts/verify-gemma4.py`` answers (1) and (3) empirically and prints the
+exact remaining steps for (2). With a key set it is one command::
+
+    export GEMINI_API_KEY=...
+    python scripts/verify-gemma4.py
+
 Reuses the ``GEMINI_API_KEY`` (or ``GOOGLE_API_KEY``) credential since
 Gemma is served from the same Google generative-language endpoint:
 
