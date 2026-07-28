@@ -32,6 +32,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from functools import lru_cache
+from typing import cast
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,13 @@ def _load_get_display() -> Callable[[str], str] | None:
             "'pdfmux[arabic]' extra to add. Try: pip install --force-reinstall pdfmux"
         )
         return None
-    return get_display
+
+    # python-bidi types get_display as StrOrBytes -> StrOrBytes: it mirrors
+    # whatever it is handed. We only ever hand it str, so the str -> str
+    # narrowing is sound, but the stub cannot express that and pyright reads
+    # the bytes arm as a violation. Cast rather than wrap — a runtime isinstance
+    # here would run once per line of every page for a type the caller controls.
+    return cast("Callable[[str], str]", get_display)
 
 
 def fix_bidi_order(text: str) -> str:
