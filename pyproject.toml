@@ -69,7 +69,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-serve = ["mcp>=1.0.0", "uvicorn>=0.30.0"]
+# mcp upper bound is load-bearing: mcp 2.0.0 (2026-07-2x) deleted the
+# mcp.server.fastmcp submodule that src/pdfmux/mcp_server.py imports, breaking
+# every fresh install with no code change on our side. Confirmed present in
+# 1.29.0, absent in 2.0.0. Bump only after porting mcp_server.py to whatever
+# 2.x replaces FastMCP with.
+serve = ["mcp>=1.0.0,<2.0.0", "uvicorn>=0.30.0"]
 tables = ["docling>=2.0.0"]
 opendataloader = ["opendataloader-pdf>=2.0.0"]
 ocr = ["rapidocr>=3.0.0", "onnxruntime>=1.19.0"]
