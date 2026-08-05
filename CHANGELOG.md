@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — stop the heading detector from shredding display-type pages
+
+### Fixed
+
+- **Font-size heading detection turned magazine/report layouts into a wall of H1s — the exact silent-garbage failure pdfmux exists to catch, pointed at itself.** On a real 88-page document (Knight Frank *Wealth Report 2025*) `pdfmux convert` promoted **655** lines to `#` headings and still reported **97% confidence**. The masthead rendered as ~16 stacked H1s (a single email became three: `# CONTACTS firstname.` / `# familyname@` / `# knightfrank.com`), and display-type standfirsts were split one-heading-per-wrapped-line (`# affecting how you live, work,` / `# invest and give back`). Root cause: `_assign_levels` promotes any line `>= body_size * 1.2`, but on a sparse cover/masthead the most-common font by character count is a small caption/legal font, so `body_size` is under-estimated and nearly every display line clears the bar — with no page-level sanity check that the heuristic had failed.
+  - **Three high-precision, generalizable guards, applied in `_clean_false_headings` so both the injection path and the extractor-provided (early-exit) path are covered — none tuned to specific strings:**
+    - **Lowercase-start / mid-phrase demotion** (`_looks_like_heading`): a real title never begins with a lowercase letter, nor ends on a dangling `,` `;` `:` `–` `&` or function word (`and`, `to`, `of`, `the`, …). Kills the wrapped-prose lines (`their exposure to real estate, a sector they`, `Retrofitting and`).
+    - **Page-saturation guard** (`_desaturate_headings`): when ≥6 lines *and* ≥50% of a page's content lines are headings, the census is unreliable for that page — emit no headings rather than confident garbage. Clears the masthead entirely.
+    - **Heading-run collapse** (`_collapse_heading_runs`): a run of ≥5 back-to-back headings with no intervening body prose is a list/table/menu, not an outline — demoted to text. Country/asset tables stop rendering one-H1-per-row.
+  - **Net effect on the report: 655 → 379 headings**, with the masthead, split email, and shredded standfirsts gone. Legitimate sub-headings that head real paragraphs (country names over their visa write-ups) are *kept* — the run-collapse only fires on prose-free runs.
+  - **Zero eval regression:** `eval/run_eval.py` scores are byte-identical to the committed baseline; `eval/calibrate.py` still reports precision **1.00** / recall **0.82**. Full suite green (759 passed).
+
+### Added
+
+- **`TestOverInjectionGuards` in `tests/test_headings.py`** — 8 cases pinning the three guards, with real-heading survivors (`Introduction`, `Our contributors`, `ESG top picks`) asserted alongside the demoted false positives, drawn from the Wealth Report fixtures.
+
 ## Unreleased — retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
 
 ### Fixed

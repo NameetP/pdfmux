@@ -56,6 +56,102 @@ def _clean_toc_page_headings(text: str) -> str:
     return "\n".join(lines) if is_toc_page else text
 
 
+# A "heading" is really a wrapped line of running prose when it ends mid-phrase:
+# a trailing comma/colon/dash/ampersand, or a dangling function word that a real
+# heading never ends on. Catches the first line of a display sentence that the
+# font census split into per-line headings ("Retrofitting and", "commitment to").
+_CONTINUATION_END_RE = re.compile(
+    r"([,;:&–—-]"
+    r"|\b(?:and|or|to|of|the|a|an|with|for|from|into|than)"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+# A page where a large, absolute number of lines are ALL headings means the
+# font-census body-size estimate failed — a cover, masthead, or pull-quote page
+# whose display type has no real "body" to measure against. Emit no headings
+# there rather than confident garbage (pdfmux's own thesis, pointed at itself).
+_SATURATION_MIN_HEADINGS = 6
+_SATURATION_RATIO = 0.5
+
+
+def _looks_like_heading(content: str) -> bool:
+    """Is a marker-stripped line plausibly a standalone heading?
+
+    Two high-precision negative signals, neither of which a real title hits:
+      * starts with a lowercase letter — a wrapped continuation line
+        ("their exposure to real estate, a sector they")
+      * ends mid-phrase — trailing punctuation or a dangling function word
+        ("Retrofitting and", "our commitment to")
+    """
+    s = content.strip()
+    if not s:
+        return False
+    if s[0].isalpha() and s[0].islower():
+        return False
+    if _CONTINUATION_END_RE.search(s):
+        return False
+    return True
+
+
+def _demote_over_injected(text: str) -> str:
+    """Strip the ``#`` marker from lines that don't look like real headings."""
+
+    def _fix(m: re.Match) -> str:
+        content = m.group(1)
+        return m.group(0) if _looks_like_heading(content) else content
+
+    return re.sub(r"^#{1,6}\s+(.*)$", _fix, text, flags=re.MULTILINE)
+
+
+# Real headings are punctuated by body prose. A long unbroken run of heading
+# lines (only blanks between them, no body text) is a list, table, or menu the
+# font census rendered as heading-per-row — not a document outline.
+_HEADING_RUN_MIN = 5
+
+
+def _collapse_heading_runs(text: str) -> str:
+    """Demote runs of >= _HEADING_RUN_MIN consecutive headings (blanks allowed
+    between, but no intervening body text) back to plain text."""
+    lines = text.split("\n")
+    is_head = [bool(re.match(r"^#{1,6}\s", ln)) for ln in lines]
+    out = list(lines)
+    i = 0
+    n = len(lines)
+    while i < n:
+        if not is_head[i]:
+            i += 1
+            continue
+        # Extend a run over heading lines and the blank lines between them.
+        j = i
+        run_idx: list[int] = []
+        while j < n:
+            if is_head[j]:
+                run_idx.append(j)
+                j += 1
+            elif lines[j].strip() == "":
+                j += 1  # blank line — stays part of the run
+            else:
+                break  # body text ends the run
+        if len(run_idx) >= _HEADING_RUN_MIN:
+            for k in run_idx:
+                out[k] = re.sub(r"^#{1,6}\s+", "", lines[k])
+        i = j
+    return "\n".join(out)
+
+
+def _desaturate_headings(text: str) -> str:
+    """Drop all heading markers on a page saturated with them (census failed)."""
+    lines = text.split("\n")
+    content = [ln for ln in lines if ln.strip()]
+    heads = [ln for ln in content if re.match(r"^#{1,6}\s", ln)]
+    if len(heads) >= _SATURATION_MIN_HEADINGS and len(heads) >= _SATURATION_RATIO * max(
+        len(content), 1
+    ):
+        return re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    return text
+
+
 def _clean_false_headings(text: str) -> str:
     """Remove heading markers from lines matching false-positive patterns."""
 
@@ -64,6 +160,12 @@ def _clean_false_headings(text: str) -> str:
 
     text = _FALSE_HEADING_RE.sub(_demote, text)
     text = _merge_consecutive_headings(text)
+    # Saturation first (sees the full over-injected count), then collapse long
+    # heading runs (lists/tables), then per-line demotion of wrapped-prose lines
+    # the census mistook for headings.
+    text = _desaturate_headings(text)
+    text = _collapse_heading_runs(text)
+    text = _demote_over_injected(text)
     return _clean_toc_page_headings(text)
 
 
