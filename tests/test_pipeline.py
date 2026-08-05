@@ -86,6 +86,24 @@ def test_process_json_metadata(multi_page_pdf: Path) -> None:
     assert isinstance(data["warnings"], list)
 
 
+def test_process_json_per_page_not_collapsed(multi_page_pdf: Path) -> None:
+    """Regression: JSON must expose one entry per page, not one blob.
+
+    The per-page confidence/ocr metadata is the point of the JSON format.
+    Previously the formatter rebuilt pages by splitting the joined ``content``
+    on a ``\\n\\n---\\n\\n`` separator the pipeline never emits (it joins with
+    ``\\n\\n``), so every multi-page document collapsed to a single page.
+    """
+    result = process(multi_page_pdf, output_format="json")
+    data = json.loads(result.text)
+    assert len(data["pages"]) == data["page_count"] == 5
+    # Page numbers are 1-indexed and in order; each entry carries an ocr flag.
+    assert [p["page"] for p in data["pages"]] == [1, 2, 3, 4, 5]
+    for p in data["pages"]:
+        assert set(p) == {"page", "text", "ocr"}
+        assert isinstance(p["ocr"], bool)
+
+
 def test_process_llm_format(digital_pdf: Path) -> None:
     """LLM format should return valid chunked JSON."""
     result = process(digital_pdf, output_format="llm")

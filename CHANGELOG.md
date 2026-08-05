@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — JSON output no longer collapses a multi-page document to one page
+
+### Fixed
+
+- **`--format json` silently returned the whole document as a single page.** The output advertised `page_count: 88` but `pages` was a list of **length 1** holding the entire document as one blob — so the per-page `text` + `ocr` structure, the whole reason the JSON format exists, was lost for every multi-page document. Root cause: `formatters/json_fmt.py` rebuilt the per-page array by splitting the already-joined `content` string on a `"\n\n---\n\n"` separator, but the pipeline joins pages with `"\n\n"` (`pipeline.py:326`) and drops empty pages while doing so — the separator is never present, so the split always fell through to `pages = [text]`. Silent, plausible-looking, and wrong: exactly the failure mode this package exists to surface.
+  - **Fix: the pipeline now threads the real `PageResult` list to the formatter** (`format_json(..., page_entries=...)`) instead of asking it to reverse-engineer page boundaries from a lossy joined string. `pages` now has one entry per source page — `{"page": <1-indexed>, "text": ..., "ocr": <bool>}` — including empty pages (a consumer can now see that pages 6/14/28/54 were blank), with `len(pages) == page_count`.
+  - The separator-split path is **kept as a fallback** for standalone callers that only have a joined string, so importing `format_json` directly still works.
+  - No schema change (`schema_version` stays `1.1.0`) — this restores the per-page contract the schema already documented. Confidence scoring is untouched: `eval/run_eval.py` scores are byte-identical and `eval/calibrate.py` still reports precision **1.00** / recall **0.82**.
+
+### Added
+
+- **`tests/test_json_formatter.py`** (5 cases) — pins that supplied `page_entries` are authoritative, that a `"\n\n"`-joined `content` is never re-split into one page, that the separator fallback and single-blob fallback still work, and that control characters are stripped from per-page text.
+- **`test_process_json_per_page_not_collapsed`** in `tests/test_pipeline.py` — end-to-end regression asserting `len(pages) == page_count` on the 5-page fixture.
+
 ## Unreleased — retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
 
 ### Fixed
