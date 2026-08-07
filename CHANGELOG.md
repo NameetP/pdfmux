@@ -1,5 +1,17 @@
 # Changelog
 
+
+## Unreleased — captioned scans are routed to OCR instead of being called digital
+
+### Fixed
+
+- **A scanned page carrying a printed letterhead was classified `digital` and never OCR'd.** `detect.py` decided digital-vs-scanned on character count alone — `elif text_len > 50: digital` — with no reference to how much of the page was image. Real scans routinely carry a letterhead, stamp, reference number or "Page 1 of 4" footer rendered as genuine text, trivially clearing 50 characters. Those pages were routed to the fast path, and extraction returned **the caption where the document body should have been**.
+  - **This is the silent-failure mode the package exists to surface, and it outranked the documented remedy.** The known fix for empty extractions is installing `pdfmux[ocr]` — but that does nothing here, because the page never reaches the OCR stage to begin with. A user with OCR correctly installed still got the caption.
+  - **`is_graphical` did not rescue it.** That rule needs `image_count >= 1 and text_len < 100`, so it covered only the 50-100 character band and gave up above it.
+  - **The discriminator is text-*area* coverage, not character count** — and it has to be, because character count cannot separate the two cases that matter. A scan with a 1000-character letterhead and an OCR'd "searchable PDF" with a 1000-character text layer are identical by length; they differ in whether the text *spans the page*. Measured on the fixtures in `tests/test_detect_captioned_scan.py`: captioned scans 0.003-0.083, searchable PDFs 0.120, native text 0.179. A page is now called a captioned scan when images cover ≥75% of it and its text blocks span <10%.
+  - **The cliff was hard and exact.** A parametrized sweep over caption length classifies correctly at 0/20/40/50 characters and failed at 60/80/120/300/600/1200 before this change — all six now pass, and the searchable-PDF, native-text, blank-scan and small-logo cases are pinned in both directions so the fix cannot over-correct branded invoices into the OCR path.
+  - **Cost is ~1% on classification** (71.69 → 72.43 ms/doc, median of 7 passes over a 24-document corpus): the geometry work runs only for pages that already have >50 characters *and* at least one image, so ordinary digital pages are untouched. Note the module docstring already claimed it inspected "embedded images (count + **coverage area**)" — the coverage half had never been implemented.
+
 ## Unreleased — `pdfmux convert -v` reports page progress on long documents
 
 ### Fixed
@@ -94,32 +106,6 @@
 
 - **`test_server_uses_the_mcp_2x_import_surface`** — asserts both server instances are `mcp.server.mcpserver.MCPServer`. Fails with a message naming the dependency when the installed `mcp` is <2.0.0, so a re-pin surfaces as a test failure that says why, rather than as a collection-time `ModuleNotFoundError` that reads like an environment problem. A comment on a pin is not a guard.
 - **`test_run_http_server_passes_host_and_port_to_run` / `test_run_http_server_defaults_to_loopback`** — assert the bind address reaches `run()`, deterministically, without binding a socket. Both were confirmed to **fail** against the old `mcp.settings.host` form before being kept — a guard verified only in the passing direction is not a guard. The loopback default (`127.0.0.1`, overridable via `PDFMUX_HTTP_HOST`) is now covered too, so the safer-bind behaviour cannot silently regress to `0.0.0.0`.
-
-### Fixed
-
-- **`pdfmux/arabic.py` told users to run `pip install pdfmux[arabic]`. That extra has never existed.** Both the module docstring and `fix_bidi_order`'s docstring carried the hint, and it is worse than a typo in two compounding ways: pip accepts unknown extras **silently**, so the command succeeds and installs nothing; and `python-bidi` is already a **core** dependency, so RTL reordering was working the whole time. A reader hunting a BiDi problem would run the command, see success, see no change, and conclude BiDi was broken.
-- **A missing `python-bidi` no longer fails silently.** `fix_bidi_order` caught `ImportError` and returned the text unchanged with no signal. Because `python-bidi` is core, that branch means the install is broken — and its output is Arabic in storage order: reversed, but entirely plausible-looking to anyone who does not read Arabic. Silent, plausible, wrong output is the failure mode this package exists to surface, so it should not be the one path that ships it. It now logs a warning naming the real cause (broken install, not a missing extra) and still returns the text rather than raising, so a degraded environment does not become a hard failure on documents that may contain no Arabic at all. Cached so it warns once per process, not once per page.
-
-- **The test suite was implicitly a performance test, and flaked because of it.** `pipeline.EXTRACTION_TIMEOUT_S` is read from `PDFMUX_TIMEOUT` **at import time** (default 300s), so every test driving the CLI inherited a wall-clock dependency on whatever machine ran it. `pdfmux analyze` calls `process(quality="standard")` — the full BALANCED chain, loading Docling / Marker / opendataloader — so a one-page synthetic fixture takes 30-40s idle, and on a contended machine it crept past the deadline. Two full-suite runs of byte-identical code disagreed: 762 passed vs 2 failed.
-  - **Measured blast radius, not just the file that flaked:** running each CLI test file under `PDFMUX_TIMEOUT=1` shows the latent dependency in **four** files — `test_analyze` (3), `test_cli` (4 of 9), `test_diff` (5 of 6), `test_watch` (2 of 3). `test_audit_cli`, `test_estimate`, `test_manifest_verify`, `test_profiles`, `test_streaming` and `test_verifier` are clean. The fix therefore lives in `conftest.py`, not in the one file that happened to surface it.
-  - An autouse fixture now pins `EXTRACTION_TIMEOUT_S` to 1800s. It patches the **module attribute**, not the environment variable — setting `PDFMUX_TIMEOUT` from inside a test does nothing, because the constant is already computed by then. `test_timeout_isolation.py` still overrides it locally with a sub-second value, so the wedged-extractor path stays covered.
-- **A timed-out CLI test now says so.** These tests asserted `result.exit_code == 0`, which reports `assert 1 == 0` and cannot distinguish "the command is broken" from "extraction timed out on a busy machine" — that ambiguity is what made the flake expensive to diagnose. The new `assert_cli_ok` helper surfaces the exit code, the underlying exception, and the captured CLI output, and names the timeout explicitly (reporting the value **in force**, not the pinned constant, since a test may have overridden it).
-
-- **Every user-facing surface called the Gemma backend "Gemma 4". It serves Gemma 3.** `providers/gemma.py` has always set `default_model = "gemma-3-27b-it"` and advertised exactly two models, `gemma-3-27b-it` and `gemma-3-12b-it` — but the README, `docs/ARCHITECTURE.md`, the `pdfmux doctor` recommendation in `cli.py`, the `ROUTING_MATRIX` comments, two test docstrings, and the 1.8.7 changelog entry all said Gemma 4. The docs were renamed ahead of the code and nothing caught it.
-  - **The tell was internal, not external:** the README's provider table read `| Gemma 4 | 27B IT, 12B IT |`. Gemma 4 has no 27B size (its sizes are E2B, E4B, 12B, 26B A4B, 31B) — 27B is a Gemma 3 size. The row named one generation and listed the other's sizes.
-  - Not cosmetic. The README told Arabic users their pages route through a model pdfmux never requests, and the claim had propagated to the public blog, which repeated "Gemma 4 27B" — a model that exists in neither generation's lineup.
-- **Corrected the Gemma per-page cost in the README: `~$0.005/page` → `~$0.0002/page`.** The figure was ~27x the provider's own estimator. `GemmaProvider.estimate_cost()` computes $0.000185/page from its declared rates (460 input + 500 output tokens at $0.075/$0.30 per Mtok); the README asserted a number nothing in the code produces.
-- **Fixed a broken install command in the README's Arabic section.** It read `pip install "pdfmux[arabic,llm-gemma]"`. Neither extra exists — `pip install` accepts unknown extras silently, so a reader following the Arabic quickstart installed *nothing* and believed they had enabled Gemma vision OCR. The Gemma provider imports the `openai` SDK, so the correct extra is `llm-openai` (also included in `llm-all`).
-
-### Added
-
-- **`test_no_install_instruction_names_a_nonexistent_extra`** — every `pip install pdfmux[...]` across `src/`, the README, and `docs/` must resolve to a real extra in `pyproject.toml`. This defect class has now shipped three times (`pdfmux[arabic]`, `pdfmux[arabic,llm-gemma]`, and `pdfmux[local]` on the blog) precisely because it fails silently at every layer. The check matches install *instructions* only, so prose that names a bad extra in order to rule it out still passes — a blunt scan would have been switched off, which is how the original hint survived.
-- **`assert_cli_ok` in `tests/conftest.py`** — shared helper for CLI-driving tests, plus an autouse fixture pinning the extraction timeout (both described above).
-
-### Notes
-
-- **Gemma 4 is real and is on the Gemini API** — `gemma-4-31b-it` and `gemma-4-26b-a4b-it` ([Google's docs](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)). Adopting it here was deliberately *not* bundled into this fix: the OpenAI-compat path this provider uses is undocumented for those IDs, and the pricing constants and `max_input_tokens` would both need re-verification against a live key. Doing the rename without that verification is the same defect in the other direction. The requirements are recorded in the `providers/gemma.py` module docstring.
-- `scripts/release-gate.sh` now fails when a shipped artifact claims "Gemma 4" while the provider's model IDs say `gemma-3-`, so this specific drift cannot ship again.
 
 ## 1.8.7 (2026-07-27) — Arabic routing actually routes; table truncation is detected
 
