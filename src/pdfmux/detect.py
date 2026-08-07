@@ -40,6 +40,54 @@ class PDFClassification:
     empty_pages: list[int] = field(default_factory=list)
 
 
+# --- Captioned-scan detection constants ---
+# A page is a "captioned scan" when images cover most of it but the text layer
+# spans only a small fraction — i.e. the words on the page are a letterhead or
+# stamp, not the document body.
+_SCANNED_IMAGE_COVERAGE = 0.75
+# Text-*area* coverage, not character count. Character count cannot separate the
+# two cases: a scan carrying a 1000-char letterhead and an OCR'd "searchable
+# PDF" carrying a 1000-char text layer are identical by length, and differ only
+# in whether that text spans the page. Measured separation on the fixtures in
+# tests/test_detect_captioned_scan.py: captioned scans 0.003-0.083, searchable
+# PDFs 0.120, native text 0.179.
+_SCANNED_MAX_TEXT_COVERAGE = 0.10
+
+
+def _page_area_coverage(page: fitz.Page, rects: list[fitz.Rect]) -> float:
+    """Fraction of the page covered by `rects`, clipped to the page and capped at 1.0.
+
+    Overlapping rects are summed rather than unioned; the cap keeps the result
+    meaningful, and both call sites compare against a threshold, not an exact area.
+    """
+    page_area = abs(page.rect)
+    if not page_area:
+        return 0.0
+    covered = 0.0
+    for rect in rects:
+        clipped = rect & page.rect
+        if not clipped.is_empty:
+            covered += abs(clipped)
+    return min(covered / page_area, 1.0)
+
+
+def _is_captioned_scan(page: fitz.Page, image_count: int) -> bool:
+    """True when the page is image-dominated but its text layer is caption-scale.
+
+    Only called for pages that already have >50 characters, so the extra
+    geometry work stays off the hot path for ordinary digital pages.
+    """
+    if image_count == 0:
+        return False
+
+    image_rects = [fitz.Rect(info["bbox"]) for info in page.get_image_info()]
+    if _page_area_coverage(page, image_rects) < _SCANNED_IMAGE_COVERAGE:
+        return False
+
+    text_rects = [fitz.Rect(block[:4]) for block in page.get_text("blocks") if block[4].strip()]
+    return _page_area_coverage(page, text_rects) < _SCANNED_MAX_TEXT_COVERAGE
+
+
 def classify(file_path: str | Path) -> PDFClassification:
     """Classify a PDF to determine the best extraction strategy.
 
@@ -92,6 +140,12 @@ def classify(file_path: str | Path) -> PDFClassification:
         # Classify into digital / scanned / empty
         if text_len < 20 and image_count == 0:
             empty_pages.append(page_num)
+        elif text_len > 50 and _is_captioned_scan(page, image_count):
+            # A scan whose only real text is a printed letterhead, stamp, ref
+            # number or "Page 1 of 4" footer. `text_len > 50` alone calls that
+            # digital, so the page body is never routed to OCR and extraction
+            # silently returns the caption instead of the document.
+            scanned_pages.append(page_num)
         elif text_len > 50:
             digital_pages.append(page_num)
         elif images:
