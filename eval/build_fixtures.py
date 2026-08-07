@@ -94,6 +94,37 @@ def _make_image_only(path: Path) -> None:
     out.close()
 
 
+def _make_captioned_scan(path: Path, caption_chars: int) -> None:
+    """A scan carrying a printed letterhead — image body, small band of real text.
+
+    The distinguishing case from `_make_image_only`: this page has a genuine
+    text layer, so any rule keying on character count alone reads it as digital
+    and never routes the body to OCR. The words are a caption; the document is
+    in the image. Correct output still requires OCR.
+    """
+    src = fitz.open()
+    page = src.new_page()
+    page.insert_text((72, 72), "\n\n".join(LOREM_PARAS[:3]), fontsize=11)
+    pix = page.get_pixmap(dpi=150)
+    img_bytes = pix.tobytes("png")
+    src.close()
+
+    out = fitz.open()
+    out_page = out.new_page(width=pix.width, height=pix.height)
+    out_page.insert_image(out_page.rect, stream=img_bytes)
+    caption = ("ACME INDUSTRIAL LTD - TECHNICAL DATA SHEET - REF 8841-B - PAGE 1 OF 4 " * 40)[
+        :caption_chars
+    ]
+    out_page.insert_textbox(
+        fitz.Rect(20, 6, out_page.rect.width - 20, 220),
+        caption,
+        fontsize=6,
+        fontname="helv",
+    )
+    out.save(str(path))
+    out.close()
+
+
 def _make_micro_text(path: Path, content: str) -> None:
     """A PDF with a tiny scrap of text — below pdfmux's 'empty' threshold."""
     doc = fitz.open()
@@ -123,17 +154,13 @@ _ARABIC_FONT_CANDIDATES = [
 ]
 
 
-def _make_arabic(path: Path) -> None:
-    """Build a genuine Arabic-text PDF and VERIFY the glyphs survive extraction.
+def _find_arabic_font() -> str:
+    """Locate an Arabic-capable font, or raise explaining how to install one.
 
-    PyMuPDF's default font (Helvetica) has no Arabic coverage and, rather than
-    raising, silently substitutes notdef glyphs (U+00B7 MIDDLE DOT). The old
-    try/except was dead code: the fixture claimed to test Arabic while
-    containing zero Arabic codepoints, so pdfmux correctly scored it low and the
-    eval mislabelled that as a false negative. We now locate an Arabic-capable
-    font, render with it, then re-extract and assert real Arabic is present —
-    and RAISE if we cannot, instead of silently shipping a broken fixture (the
-    exact silent-failure class pdfmux exists to catch).
+    Called as a preflight from `main()` *before* the fixtures directory is
+    cleared, so a machine without Arabic fonts fails with the corpus intact
+    rather than deleting 50 fixtures and then aborting halfway through the
+    rebuild.
     """
     fontfile = next(
         (
@@ -149,6 +176,22 @@ def _make_arabic(path: Path) -> None:
             "Install Noto Sans Arabic (Linux: fonts-noto-core) or run on macOS. "
             "Refusing to write a silently-broken fixture."
         )
+    return fontfile
+
+
+def _make_arabic(path: Path) -> None:
+    """Build a genuine Arabic-text PDF and VERIFY the glyphs survive extraction.
+
+    PyMuPDF's default font (Helvetica) has no Arabic coverage and, rather than
+    raising, silently substitutes notdef glyphs (U+00B7 MIDDLE DOT). The old
+    try/except was dead code: the fixture claimed to test Arabic while
+    containing zero Arabic codepoints, so pdfmux correctly scored it low and the
+    eval mislabelled that as a false negative. We now locate an Arabic-capable
+    font, render with it, then re-extract and assert real Arabic is present —
+    and RAISE if we cannot, instead of silently shipping a broken fixture (the
+    exact silent-failure class pdfmux exists to catch).
+    """
+    fontfile = _find_arabic_font()
 
     doc = fitz.open()
     page = doc.new_page()
@@ -189,6 +232,13 @@ def _label_row(stem: str, label: str, category: str, note: str = "") -> dict[str
 def main() -> None:
     random.seed(FIXED_SEED)
     FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Preflight every prerequisite that can abort the build, BEFORE deleting
+    # anything. The Arabic fixture raises when no Arabic-capable font is
+    # installed — which on a bare Linux box is the default. Checking it after
+    # the clear below meant a failed run left the corpus deleted and only
+    # partially rebuilt, turning a missing font into data loss.
+    _find_arabic_font()
 
     # Clear stale fixtures so re-runs are clean.
     for old in FIXTURES_DIR.glob("*.pdf"):
@@ -255,6 +305,22 @@ def main() -> None:
         stem = f"edge-image-only-{i:02d}"
         _make_image_only(FIXTURES_DIR / f"{stem}.pdf")
         rows.append(_label_row(stem, "good", "image_only", "rendered raster, needs OCR"))
+
+    # Captioned scans: a raster body with a printed letterhead/stamp on top.
+    # Caption lengths straddle the old `text_len > 50` cliff, which classified
+    # every one of these as digital and never sent the body to OCR. Same `good`
+    # label and same contract as image_only — the eval runs with pdfmux[ocr].
+    for i, caption_chars in enumerate((60, 120, 300, 600, 1200)):
+        stem = f"edge-captioned-scan-{i:02d}"
+        _make_captioned_scan(FIXTURES_DIR / f"{stem}.pdf", caption_chars)
+        rows.append(
+            _label_row(
+                stem,
+                "good",
+                "captioned_scan",
+                f"raster body + {caption_chars}-char printed caption, needs OCR",
+            )
+        )
 
     # Empty PDF (one blank page, no content). Label `bad` — there's nothing
     # to extract, but the file is structurally valid.
