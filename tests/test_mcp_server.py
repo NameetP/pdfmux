@@ -260,7 +260,7 @@ class TestServerSetup:
     def test_tools_registered(self):
         from pdfmux.mcp_server import mcp
 
-        # The FastMCP instance should have our tools
+        # The MCPServer instance should have our tools
         tool_names = {name for name in mcp._tool_manager._tools}
         assert "convert_pdf" in tool_names
         assert "analyze_pdf" in tool_names

@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import os
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from pdfmux.path_safety import (
     ALLOWED_DIRS,
@@ -52,7 +52,7 @@ __all__ = [
 # Server instance — created once, started by run_server() or run_http_server()
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP(
+mcp = MCPServer(
     name="pdfmux",
     instructions=(
         "pdfmux converts PDFs to AI-readable Markdown. "
@@ -391,6 +391,8 @@ def run_http_server(host: str | None = None, port: int = 8000) -> None:
     """
     if host is None:
         host = os.environ.get("PDFMUX_HTTP_HOST", "127.0.0.1")
-    mcp.settings.host = host
-    mcp.settings.port = port
-    mcp.run(transport="streamable-http")
+    # mcp 2.x moved the bind address off ``mcp.settings`` (a frozen-field
+    # pydantic model that now raises on ``settings.host = ...``) and onto
+    # ``run()``'s transport kwargs. Guarded by
+    # test_run_http_server_passes_host_and_port_to_run.
+    mcp.run(transport="streamable-http", host=host, port=port)
