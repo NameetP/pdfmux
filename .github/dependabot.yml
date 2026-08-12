@@ -9,6 +9,12 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 5
+    ignore:
+      # pymupdf4llm >=1.0 drops body prose (to_markdown returns headings only) —
+      # see pyproject.toml comment + tests/test_dependency_regression.py, found 2026-07-20.
+      # Without this, dependabot reopens the same failing PR every week.
+      - dependency-name: "pymupdf4llm"
+        versions: [">=1.0"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
