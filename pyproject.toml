@@ -61,7 +61,7 @@ dependencies = [
     # eval/fixtures/good-digital-00.pdf yields 0 chars where 0.3.4 yields 218
     # (raw fitz sees 214). That silently guts every extraction pdfmux makes —
     # the exact failure mode this product exists to catch. Found 2026-07-20.
-    "pymupdf>=1.24.0,<1.28",  # garbage filter handles 1.27 find_tables() regression
+    "pymupdf>=1.24.0,<1.29",  # garbage filter handles 1.27 find_tables() regression
     "pymupdf4llm>=0.0.10,<1.0",
     "rich>=13.0.0",
     "python-bidi>=0.6.0",  # BiDi algorithm for Arabic/Hebrew RTL text reordering
