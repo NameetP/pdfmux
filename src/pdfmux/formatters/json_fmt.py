@@ -26,6 +26,7 @@ def format_json(
     tables: list | None = None,
     key_values: list | None = None,
     structured: dict | None = None,
+    page_entries: list[dict] | None = None,
 ) -> str:
     """Format extracted text as structured JSON with locked schema.
 
@@ -41,6 +42,11 @@ def format_json(
         tables: Structured table data (list of dicts with headers/rows).
         key_values: Key-value pairs extracted from non-table regions.
         structured: Schema-mapped structured output (if schema was provided).
+        page_entries: True per-page structures from the pipeline, each a dict
+            with ``page`` (1-indexed), ``text``, and ``ocr``. When supplied,
+            this is authoritative — the per-page split is NOT reconstructed by
+            slicing ``content``. Callers that don't have per-page data omit it
+            and fall back to separator-splitting (single blob when none found).
 
     Returns:
         JSON string with text and metadata.
@@ -48,13 +54,28 @@ def format_json(
     # Sanitize control characters that break JSON parsers
     text = _CONTROL_CHAR_RE.sub("", text)
 
-    # Split into pages if page separators exist
     ocr_set = set(ocr_pages or [])
-    page_separator = "\n\n---\n\n"
-    if page_separator in text:
-        pages = [p.strip() for p in text.split(page_separator)]
+    if page_entries is not None:
+        # Authoritative per-page data from the pipeline. Do NOT re-split content:
+        # pages are joined with "\n\n" (not the "---" separator below), so slicing
+        # would collapse the whole document into one page and silently drop the
+        # per-page confidence/ocr metadata that is the point of this format.
+        pages_out = [
+            {
+                "page": int(p.get("page", i + 1)),
+                "text": _CONTROL_CHAR_RE.sub("", p.get("text", "")),
+                "ocr": bool(p.get("ocr", (int(p.get("page", i + 1)) - 1) in ocr_set)),
+            }
+            for i, p in enumerate(page_entries)
+        ]
     else:
-        pages = [text]
+        # Fallback for standalone callers with only a joined string: split on the
+        # page separator if present, else treat the whole text as one page.
+        page_separator = "\n\n---\n\n"
+        parts = text.split(page_separator) if page_separator in text else [text]
+        pages_out = [
+            {"page": i + 1, "text": p.strip(), "ocr": i in ocr_set} for i, p in enumerate(parts)
+        ]
 
     output: dict = {
         "schema_version": "1.1.0",
@@ -67,9 +88,7 @@ def format_json(
         "warnings": warnings or [],
         "ocr_pages": ocr_pages or [],
         "content": text,
-        "pages": [
-            {"page": i + 1, "text": page, "ocr": i in ocr_set} for i, page in enumerate(pages)
-        ],
+        "pages": pages_out,
     }
 
     # Include structured data when available

@@ -339,6 +339,22 @@ def process(
         structured_tables, structured_kvs, structured_output = _extract_structured(pages, schema)
 
     # Step 7: Format output
+    # JSON carries true per-page structure. Build it from the real PageResults
+    # (every page, including empty ones) rather than re-splitting the joined blob
+    # — the merge above uses "\n\n" and drops empty pages, so a re-split cannot
+    # recover page boundaries or indices.
+    page_entries: list[dict] | None = None
+    if fmt == OutputFormat.JSON:
+        _ocr_set = set(ocr_pages or [])
+        page_entries = [
+            {
+                "page": p.page_num + 1,
+                "text": clean_text(p.text),
+                "ocr": p.ocr_applied or p.page_num in _ocr_set,
+            }
+            for p in pages
+        ]
+
     formatted = _format_output(
         text=cleaned,
         output_format=fmt,
@@ -353,6 +369,7 @@ def process(
         tables=structured_tables,
         key_values=structured_kvs,
         structured=structured_output,
+        page_entries=page_entries,
     )
 
     # Cleanup: close cached PDF handles
@@ -1250,6 +1267,7 @@ def _format_output(
     tables: list[dict] | None = None,
     key_values: list[dict] | None = None,
     structured: dict | None = None,
+    page_entries: list[dict] | None = None,
 ) -> str:
     """Format the processed text into the requested output format."""
     if output_format == OutputFormat.MARKDOWN:
@@ -1279,6 +1297,7 @@ def _format_output(
             tables=tables,
             key_values=key_values,
             structured=structured,
+            page_entries=page_entries,
         )
 
     if output_format == OutputFormat.LLM:
