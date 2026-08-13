@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from pdfmux.path_safety import check_path as _check_path
 from pdfmux.pipeline import process
@@ -31,7 +31,7 @@ from pdfmux.pipeline import process
 __all__ = ["mcp", "extract_pdf", "run_server", "run_http_server"]
 
 
-mcp = FastMCP(
+mcp = MCPServer(
     name="pdfmux",
     instructions=(
         "pdfmux converts a PDF to clean, AI-readable Markdown. Call extract_pdf "
@@ -115,9 +115,9 @@ def run_http_server(host: str | None = None, port: int = 8000) -> None:
     """
     if host is None:
         host = os.environ.get("PDFMUX_HTTP_HOST", "127.0.0.1")
-    mcp.settings.host = host
-    mcp.settings.port = port
-    mcp.run(transport="streamable-http")
+    # mcp 2.x takes the bind address as ``run()`` transport kwargs rather than
+    # via ``mcp.settings`` — see the note in mcp_server.run_http_server.
+    mcp.run(transport="streamable-http", host=host, port=port)
 
 
 if __name__ == "__main__":

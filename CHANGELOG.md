@@ -14,7 +14,17 @@
 - **`tests/test_json_formatter.py`** (5 cases) — pins that supplied `page_entries` are authoritative, that a `"\n\n"`-joined `content` is never re-split into one page, that the separator fallback and single-blob fallback still work, and that control characters are stripped from per-page text.
 - **`test_process_json_per_page_not_collapsed`** in `tests/test_pipeline.py` — end-to-end regression asserting `len(pages) == page_count` on the 5-page fixture.
 
-## Unreleased — retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
+## Unreleased — port the MCP server to mcp 2.x; retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
+
+### Changed — **breaking for the `[serve]` extra**
+
+- **`pdfmux[serve]` now requires `mcp>=2.0.0`, and drops support for mcp 1.x.** mcp 2.0.0 deleted the `mcp.server.fastmcp` submodule that `mcp_server.py` and `mcp_extract.py` imported, so every fresh install of the extra broke with `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`. The previous "fix" (commit `6a4f78a`) was an upper-bound pin — `mcp>=1.0.0,<2.0.0` — which does not fix anything, it defers: the port still has to happen, and until it does, every dependabot bump re-reds CI and gets closed again. This ports the code instead. `FastMCP` → `mcp.server.mcpserver.MCPServer`, which is a near drop-in: same `.tool()` decorator, same `.run(transport=…)`, same `name` / `instructions` constructor kwargs, same `_tool_manager` registry. Nothing in pdfmux's own API changed — `run_server()`, `run_http_server()` and the module-level `mcp` object all keep their names and signatures. Users pinned to mcp 1.x must upgrade; that is the deliberate trade for ending the loop.
+- **HTTP bind address now travels as a `run()` kwarg, not through `mcp.settings`.** This is the part the pin hid, and it is a real runtime break rather than an import error: mcp 2.x's `Settings` model no longer carries `host`/`port`, so `mcp.settings.host = host` raises `ValueError: "Settings" object has no field "host"`. A pure import-path swap would have imported cleanly, passed the existing tests (which only assert `run_http_server` is callable) and then crashed on the first `pdfmux serve --http`. Both servers now call `mcp.run(transport="streamable-http", host=host, port=port)`. Verified end-to-end, not just by assertion: the HTTP server binds and answers a real `initialize` handshake on `/mcp`, and both stdio entry points (`pdfmux serve`, `pdfmux-extract`) complete one over stdin.
+
+### Added
+
+- **`test_server_uses_the_mcp_2x_import_surface`** — asserts both server instances are `mcp.server.mcpserver.MCPServer`. Fails with a message naming the dependency when the installed `mcp` is <2.0.0, so a re-pin surfaces as a test failure that says why, rather than as a collection-time `ModuleNotFoundError` that reads like an environment problem. A comment on a pin is not a guard.
+- **`test_run_http_server_passes_host_and_port_to_run` / `test_run_http_server_defaults_to_loopback`** — assert the bind address reaches `run()`, deterministically, without binding a socket. Both were confirmed to **fail** against the old `mcp.settings.host` form before being kept — a guard verified only in the passing direction is not a guard. The loopback default (`127.0.0.1`, overridable via `PDFMUX_HTTP_HOST`) is now covered too, so the safer-bind behaviour cannot silently regress to `0.0.0.0`.
 
 ### Fixed
 
