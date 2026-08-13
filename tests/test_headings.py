@@ -5,7 +5,15 @@ from __future__ import annotations
 import fitz
 import pytest
 
-from pdfmux.headings import inject_headings, _build_font_census, _promote_bold_lines
+from pdfmux.headings import (
+    inject_headings,
+    _build_font_census,
+    _promote_bold_lines,
+    _clean_false_headings,
+    _looks_like_heading,
+    _collapse_heading_runs,
+    _desaturate_headings,
+)
 
 
 def _make_page_with_text(
@@ -148,6 +156,71 @@ class TestPromoteBoldLines:
         result = _promote_bold_lines(text)
         # >60 chars, should not be promoted
         assert "###" not in result
+
+
+class TestOverInjectionGuards:
+    """Guards that stop the font census from turning display-type pages
+    (covers, mastheads, pull-quotes, list/table rows) into a wall of headings.
+
+    Regression fixtures drawn from a real 88-page report (Knight Frank Wealth
+    Report 2025) where a naive census promoted 655 lines to H1, including an
+    email split across three headings and body paragraphs shredded per line.
+    """
+
+    def test_lowercase_start_is_not_a_heading(self):
+        # Wrapped continuation lines start lowercase — a real title never does.
+        assert not _looks_like_heading("their exposure to real estate, a sector")
+        assert not _looks_like_heading("familyname@")
+        assert _looks_like_heading("Introduction")
+        assert _looks_like_heading("ESG top picks")  # ends lowercase, but starts capital
+
+    def test_mid_phrase_end_is_not_a_heading(self):
+        # A heading is a complete label, not a clause fragment.
+        assert not _looks_like_heading("affecting how you live, work,")
+        assert not _looks_like_heading("Retrofitting and")
+        assert not _looks_like_heading("our commitment to")
+        assert _looks_like_heading("Our contributors")
+
+    def test_clean_false_headings_demotes_wrapped_prose(self):
+        text = (
+            "# Welcome\n\n"
+            "# their exposure to real estate, a sector they\n\n"
+            "# view as offering both growth potential and\n\n"
+            "body paragraph here to break up the run\n"
+        )
+        out = _clean_false_headings(text)
+        assert "# Welcome" in out  # real heading survives
+        assert "# their exposure" not in out
+        assert "# view as offering" not in out
+        assert "their exposure to real estate, a sector they" in out  # text preserved
+
+    def test_real_headings_survive(self):
+        text = "# Introduction\n\nbody\n\n# Our contributors\n\nbody\n\n# ESG top picks\n\nbody"
+        out = _clean_false_headings(text)
+        assert out.count("# ") == 3
+
+    def test_saturated_masthead_demoted(self):
+        # A credits page where nearly every line is a "heading" → census failed.
+        masthead = "\n\n".join(f"# CREDIT LINE {i}" for i in range(8))
+        out = _desaturate_headings(masthead)
+        assert "#" not in out
+
+    def test_saturation_leaves_sparse_pages_alone(self):
+        # A normal page: a couple of headings among body text → untouched.
+        text = "# Title\n\nbody\n\n# Section\n\nmore body"
+        assert _desaturate_headings(text) == text
+
+    def test_long_heading_run_collapsed(self):
+        # 6 back-to-back headings, no body between → a list, not an outline.
+        run = "\n\n".join(f"# Row {i}" for i in range(6)) + "\n"
+        out = _collapse_heading_runs(run)
+        assert "#" not in out
+
+    def test_short_heading_run_kept(self):
+        # Headings separated by body prose are real structure.
+        text = "# A\n\nbody a\n\n# B\n\nbody b\n\n# C\n\nbody c\n"
+        out = _collapse_heading_runs(text)
+        assert out.count("# ") == 3
 
 
 class TestBuildFontCensus:
