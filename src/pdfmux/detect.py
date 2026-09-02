@@ -50,13 +50,26 @@ def classify(file_path: str | Path) -> PDFClassification:
         PDFClassification with detection results.
 
     Raises:
-        FileError: If the file doesn't exist or isn't a PDF.
+        FileError: If the file doesn't exist, isn't a PDF (wrong extension or
+            wrong magic bytes), or is password-protected.
     """
     file_path = Path(file_path)
     if not file_path.exists():
         raise FileError(f"PDF not found: {file_path}")
     if not file_path.suffix.lower() == ".pdf":
         raise FileError(f"Not a PDF file: {file_path}")
+
+    # Magic-bytes check — the header must appear in the first 1024 bytes per
+    # the PDF spec. Catches HTML (and other content) served with a .pdf
+    # extension, which PyMuPDF would otherwise open as an empty document.
+    with open(file_path, "rb") as fh:
+        header = fh.read(1024)
+    if b"%PDF-" not in header:
+        raise FileError(
+            f"Not a PDF file: {file_path} — no %PDF- header",
+            code="PDF_INVALID",
+            suggestion="The file may be HTML or another format saved with a .pdf extension.",
+        )
 
     try:
         from pdfmux.pdf_cache import get_doc
@@ -66,6 +79,15 @@ def classify(file_path: str | Path) -> PDFClassification:
         doc = fitz.open(str(file_path))
     except Exception as e:
         raise FileError(f"Cannot open PDF: {file_path} — {e}") from e
+
+    # Encrypted documents open fine but raise on page access — reject them
+    # here with the documented FileError instead of leaking a ValueError.
+    if doc.needs_pass:
+        raise FileError(
+            f"PDF is password-protected: {file_path}",
+            code="PDF_ENCRYPTED",
+            suggestion="Decrypt the PDF (e.g. `qpdf --decrypt`) and try again.",
+        )
 
     result = PDFClassification(page_count=len(doc))
 
@@ -89,14 +111,19 @@ def classify(file_path: str | Path) -> PDFClassification:
         text_len = len(text)
         image_count = len(images)
 
+        # A bare raster with no real text layer is a scan page. Pages with
+        # images plus a short caption (slide decks, figure pages) are handled
+        # by the graphical rule below instead of counting as scanned.
+        is_scan_page = image_count > 0 and text_len < 20
+
         # Classify into digital / scanned / empty
         if text_len < 20 and image_count == 0:
             empty_pages.append(page_num)
         elif text_len > 50:
             digital_pages.append(page_num)
-        elif images:
+        elif is_scan_page:
             scanned_pages.append(page_num)
-        else:
+        elif image_count == 0:
             digital_pages.append(page_num)
 
         # Detect graphical pages (pitch decks, infographics, slides)
@@ -129,18 +156,25 @@ def classify(file_path: str | Path) -> PDFClassification:
         return result
 
     digital_ratio = len(digital_pages) / non_empty_total
+    scanned_ratio = len(scanned_pages) / non_empty_total
 
     if digital_ratio >= 0.8:
         result.is_digital = True
         result.confidence = min(0.95, digital_ratio)
-    elif digital_ratio <= 0.2:
+    elif scanned_ratio >= 0.8:
         result.is_scanned = True
-        result.confidence = min(0.95, 1 - digital_ratio)
+        result.confidence = min(0.95, scanned_ratio)
     else:
         result.is_mixed = True
         result.confidence = 0.7
 
-    graphical_ratio = len(graphical_pages) / total
+    # Bare scan pages satisfy the graphical page rule too (raster, minimal
+    # text), which made every scanned or mixed doc look graphical and left
+    # the lower-precedence mixed route unreachable. Only captioned image
+    # pages count toward the graphical flag; the graphical_pages list keeps
+    # scan pages so OCR routing and budgets still cover them.
+    scan_page_set = set(scanned_pages)
+    graphical_ratio = sum(1 for p in graphical_pages if p not in scan_page_set) / total
     if graphical_ratio > 0.25:
         result.is_graphical = True
 
