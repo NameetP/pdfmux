@@ -3,7 +3,7 @@
   "name": "io.github.NameetP/pdfmux",
   "title": "pdfmux",
   "description": "PDF-to-Markdown extraction that audits its own output and flags any extractor's silent drops.",
-  "version": "1.8.4",
+  "version": "1.8.7",
   "repository": {
     "url": "https://github.com/NameetP/pdfmux",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "pdfmux",
-      "version": "1.8.4",
+      "version": "1.8.7",
       "transport": {
         "type": "stdio"
       },
