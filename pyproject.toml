@@ -75,6 +75,9 @@ dependencies = [
 # >=2.0.0 is a floor, not a preference. Do NOT re-add an upper bound to dodge a
 # future bump (that is what commit 6a4f78a did); port the import surface instead.
 serve = ["mcp>=2.0.0", "uvicorn>=0.30.0"]
+# Hosted ChatGPT plugin (`pdfmux serve --remote`, src/pdfmux/remote). The parse step needs only
+# the core deps; these are for the HTTP front end and the XLSX writer.
+remote = ["starlette>=0.37.0", "uvicorn>=0.30.0", "httpx>=0.27.0", "openpyxl>=3.1.0"]
 tables = ["docling>=2.0.0"]
 opendataloader = ["opendataloader-pdf>=2.0.0"]
 ocr = ["rapidocr>=3.0.0", "onnxruntime>=1.19.0"]
