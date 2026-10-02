@@ -44,7 +44,7 @@ def _sheet_title(i: int, t: dict[str, Any]) -> str:
 
 def workbook_bytes(result: dict[str, Any], source_name: str = "document.pdf") -> bytes:
     wb = Workbook()
-    summary = wb.active
+    summary = wb.worksheets[0]
     summary.title = "Summary"
     summary.append(["Source", source_name])
     summary.append(["Pages read", result["pages"]])

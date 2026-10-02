@@ -30,6 +30,7 @@ from typing import Any
 
 import fitz
 
+from pdfmux.table_cells import table_cell_texts
 from pdfmux.table_fallback import detect_text_tables
 
 MIN_SCANNED_CHARS = 25
@@ -221,20 +222,6 @@ def _looks_like_header(row: list[str]) -> bool:
     return sum(1 for c in filled if parse_amount(c) is None) / len(filled) >= 0.75
 
 
-def _cell_texts(page: fitz.Page, table: Any) -> list[list[str]]:
-    """Read each cell's text from its own rectangle.
-
-    NOT ``table.extract()``: on PyMuPDF 1.27 it splits punctuation onto its own line and drops
-    spaces, so "37.50" comes back as "3750\n." and "Card 0" as "Card0". Whitespace-cleaning that
-    yields "3750 ." — a silent 100x error on every amount. ``get_textbox`` over the cell rect
-    returns the text as laid out ("37.50"). Pinned by test_cells_keep_decimal_points.
-    """
-    out: list[list[str]] = []
-    for row in table.rows:
-        out.append([_clean(page.get_textbox(fitz.Rect(c))) if c else "" for c in row.cells])
-    return out
-
-
 def _page_tables(page: fitz.Page, page_no: int) -> list[Table]:
     out: list[Table] = []
     try:
@@ -242,7 +229,7 @@ def _page_tables(page: fitz.Page, page_no: int) -> list[Table]:
     except Exception:
         found = []
     for t in found:
-        rows = _cell_texts(page, t)
+        rows = table_cell_texts(page, t)
         rows = [r for r in rows if any(r)]
         if _is_garbage(rows):
             continue
