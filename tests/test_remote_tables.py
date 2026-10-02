@@ -196,3 +196,14 @@ def test_result_dict_is_json_ready(tmp_path: Path) -> None:
     d = result_to_dict(extract_tables(make_pdf(tmp_path, [[HEADER, *statement_rows(4)]])))
     json.dumps(d)
     assert d["tables"][0]["columns"][4] == {"name": "Balance", "type": "number"}
+
+
+def test_cells_keep_decimal_points_and_spaces(tmp_path: Path) -> None:
+    """Regression: PyMuPDF 1.27 find_tables().extract() turns "37.50" into "3750\n." and
+    "Card 0" into "Card0"; reading cells that way produced 100x amounts silently."""
+    t = extract_tables(make_pdf(tmp_path, [[HEADER, *statement_rows(15)]])).tables[0]
+    first = t.values[0]
+    assert first[1] == "Card 0"
+    assert first[2] == pytest.approx(37.5)
+    assert first[4] == pytest.approx(962.5)
+    assert t.values[1][4] == pytest.approx(1063.5)
