@@ -54,6 +54,10 @@ def _limits() -> None:  # runs in the child before exec (process mode only)
 def _command(pdf: Path, max_pages: int) -> tuple[list[str], dict[str, Any]]:
     mode = os.environ.get("PDFMUX_SANDBOX", "process")
     if mode == "docker":
+        # The container runs as nobody (65534); job dirs are created 0700 by mkdtemp. Open just this
+        # job's dir (traverse-only) and file (read-only) so the bind mount is readable inside.
+        os.chmod(pdf.parent, 0o711)
+        os.chmod(pdf, 0o644)
         name = f"pdfmux-parse-{uuid.uuid4().hex[:12]}"
         cmd = [
             "docker", "run", "--rm", "--name", name,
