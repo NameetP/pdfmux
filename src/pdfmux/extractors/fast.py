@@ -18,6 +18,7 @@ import pymupdf4llm
 from pdfmux.column_reorder import reorder_text_ab
 from pdfmux.extractors import register
 from pdfmux.headings import inject_headings
+from pdfmux.table_cells import table_cell_texts
 from pdfmux.table_fallback import detect_text_tables
 from pdfmux.types import ExtractedTable, PageQuality, PageResult
 
@@ -63,7 +64,9 @@ def _extract_tables_fast(
     table_markdowns = []
     for table in tables.tables:
         try:
-            cells = table.extract()
+            # Not table.extract(): its text depends on process-wide PyMuPDF state that
+            # pymupdf4llm changes ("37.50" -> "3750\n."). See pdfmux/table_cells.py.
+            cells = table_cell_texts(page, table)
             if not cells or len(cells) < 2 or len(cells[0]) < 2:
                 continue
 

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
+from pdfmux.table_cells import table_cell_texts
+
 logger = logging.getLogger(__name__)
 
 
@@ -257,8 +259,9 @@ def _detect_table_regions(page: fitz.Page, page_num: int) -> list[Segment]:
 
             # Extract table text
             try:
-                cells = table.extract()
-                text = "\n".join(" | ".join(str(c) if c else "" for c in row) for row in cells)
+                # Not table.extract(): see pdfmux/table_cells.py ("37.50" -> "3750\n.").
+                cells = table_cell_texts(page, table)
+                text = "\n".join(" | ".join(c for c in row) for row in cells)
             except Exception:
                 text = ""
 
