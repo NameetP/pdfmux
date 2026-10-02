@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — table cells no longer depend on what pymupdf4llm did to PyMuPDF
+
+### Fixed
+
+- **`find_tables().extract()` could read "37.50" as `3750`: a silent 100x on every amount, decided by import order.** Importing `pymupdf4llm`, which `import pdfmux` does, calls `pymupdf.TOOLS.unset_quad_corrections(True)` process-wide. From then on, until something calls `pymupdf4llm.to_markdown()` (which happens to reset `pymupdf.table.FLAGS`), `extract()` on a ruled table returns `"3750\n."` for `37.50` and `"Card0"` for `Card 0`. After whitespace cleanup that is the number 3750. A running-balance check cannot catch it, because the error is uniform. Verified on PyMuPDF 1.27.1 / pymupdf4llm 0.3.4.
+  - **Who was exposed:**
+    - `extractors/fast.py` (`--quality fast` with tables) was correct only because `to_markdown()` runs first on that path, an accident of ordering.
+    - `segment.py`'s `_detect_table_regions` was broken whenever pymupdf4llm had been imported. Its text only fed a log line inside the pipeline, but `detect_segments` is importable library code.
+    - No user-facing `pdfmux convert` output was found to be wrong; this removes the trap before something calls these paths in a different order.
+  - **Fix:** new `pdfmux/table_cells.py` `table_cell_texts(page, table)` reads each cell through `page.get_textbox(cell_rect)`, which returns the laid-out text in every global state. `fast.py` and `segment.py` use it instead of `extract()`.
+
+### Added
+
+- **`tests/test_table_cells.py`** (4 cases). It puts PyMuPDF into the exact post-import state (quad corrections off, no `to_markdown()` yet) and asserts the helper, the fast extractor's structured tables and segment text are exact.
+  - A sentinel test records that upstream `extract()` is corrupted in that state, and skips itself if PyMuPDF ever fixes it.
+  - Both call-site tests **fail on the previous code**: checked by reverting the fix.
+
 ## Unreleased — JSON output no longer collapses a multi-page document to one page
 
 ### Fixed
