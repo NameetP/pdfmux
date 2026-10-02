@@ -20,7 +20,7 @@ from pdfmux.remote.fetch import FetchError, fetch_pdf, validate_url
 from pdfmux.remote.kit import Caller, Limits, client_ip, find_banned_copy, untrusted
 from pdfmux.remote.outputs import table_csv, workbook_bytes
 from pdfmux.remote.sandbox import SandboxError, run_parse
-from tests.test_remote_tables import HEADER, make_pdf, statement_rows
+from test_remote_tables import HEADER, make_pdf, statement_rows
 
 TOKEN = "t" * 48
 
