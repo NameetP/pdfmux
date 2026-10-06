@@ -326,13 +326,28 @@ def serve(
             "Override default via PDFMUX_HTTP_HOST env var. Only used with --http."
         ),
     ),
+    remote: bool = typer.Option(
+        False,
+        "--remote",
+        help=(
+            "Serve the hosted ChatGPT plugin (one tool, extract_tables; files by upload or URL, "
+            "parsed in a sandbox). Needs PDFMUX_REMOTE_TOKEN. Default port 8011."
+        ),
+    ),
 ) -> None:
     """Start the MCP server for AI agent integration.
 
     Default: stdio transport (for Claude Desktop, Cursor, etc.)
     With --http: Streamable HTTP transport (for Smithery, remote deployment)
+    With --remote: the hosted ChatGPT plugin (pdfmux.remote.server)
     """
     import sys
+
+    if remote:
+        from pdfmux.remote.server import run as run_remote
+
+        run_remote(host=host, port=8011 if port == 8000 else port)
+        return
 
     # Also support TRANSPORT env var for Docker/Smithery
     use_http = http or os.environ.get("TRANSPORT", "").lower() == "http"
