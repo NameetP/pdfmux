@@ -22,7 +22,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import logging
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -51,7 +53,7 @@ from pdfmux.remote.kit import (
     untrusted,
 )
 from pdfmux.remote.outputs import table_csv, workbook_bytes
-from pdfmux.remote.sandbox import SandboxError, run_parse
+from pdfmux.remote.sandbox import SandboxError, assert_sandbox_ready, run_parse
 
 MAX_PAGES = 30
 INLINE_CSV_ROWS = 150
@@ -493,6 +495,7 @@ def assert_neutral_copy() -> None:
 
 def create_app(start_sweeper: bool = True) -> Starlette:
     assert_neutral_copy()
+    assert_sandbox_ready()
     if start_sweeper:
         threading.Thread(target=_sweeper, daemon=True, name="pdfmux-remote-sweeper").start()
     return Starlette(
@@ -504,7 +507,59 @@ def create_app(start_sweeper: bool = True) -> Starlette:
     )
 
 
+# ---------------------------------------------------------------------------------------------
+# Access-log token redaction
+# ---------------------------------------------------------------------------------------------
+# The plugin token is the secret path segment in `POST /mcp/<token>` (see module docstring).
+# uvicorn's access logger records the full request path, so every call writes a live
+# credential in plaintext to pm2/root-owned access logs — low severity (logs are root-only,
+# this doesn't change the token itself) but it violates the "tokens never land in plaintext
+# logs" discipline the rest of this codebase holds elsewhere. This filter rewrites the token
+# out of the log record's format args before it's emitted; it never touches request handling.
+
+_TOKEN_IN_PATH_RE = re.compile(r"(/mcp/)[^\s\"/?]+")
+
+
+class RedactTokenFilter(logging.Filter):
+    """logging.Filter for uvicorn's access logger: redacts `/mcp/<token>` to `/mcp/<redacted>`."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _TOKEN_IN_PATH_RE.sub(r"\1<redacted>", a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        elif isinstance(record.msg, str):
+            record.msg = _TOKEN_IN_PATH_RE.sub(r"\1<redacted>", record.msg)
+        return True
+
+
+def _log_config() -> dict[str, Any]:
+    """uvicorn's default LOGGING_CONFIG, with the redaction filter wired onto the access
+    handler. uvicorn calls ``logging.config.dictConfig(log_config)`` itself at server start
+    (and ``disable_existing_loggers`` is False in its default, but the "uvicorn.access" logger
+    IS named in the config so it gets rebuilt) — so the filter has to be declared inside the
+    dict uvicorn consumes, not attached to the logger object beforehand, or dictConfig
+    overwrites it.
+    """
+    import copy
+
+    import uvicorn.config
+
+    cfg = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+    cfg["filters"] = {"redact_token": {"()": f"{__name__}.RedactTokenFilter"}}
+    cfg["handlers"]["access"]["filters"] = ["redact_token"]
+    return cfg
+
+
 def run(host: str = "127.0.0.1", port: int = 8011) -> None:
     import uvicorn
 
-    uvicorn.run(create_app(), host=host, port=port, proxy_headers=False, server_header=False)
+    uvicorn.run(
+        create_app(),
+        host=host,
+        port=port,
+        proxy_headers=False,
+        server_header=False,
+        log_config=_log_config(),
+    )
