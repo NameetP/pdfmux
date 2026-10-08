@@ -15,6 +15,7 @@ enforced from the OUTSIDE by killing the process or container.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shlex
 import subprocess
@@ -23,6 +24,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("pdfmux.remote.sandbox")
 
 DEFAULT_TIMEOUT_S = 90
 MEMORY_BYTES = 1024 * 1024 * 1024  # 1 GiB
@@ -91,6 +94,22 @@ def run_parse(pdf: Path, max_pages: int = 30, timeout_s: int = DEFAULT_TIMEOUT_S
         if not process_mode:
             subprocess.run(["docker", "kill", ctx["container"]], capture_output=True, timeout=15)  # noqa: S603,S607
         raise SandboxError("This PDF took too long to read.") from None
+    if proc.returncode != 0:
+        # docker run / the child process exited non-zero for an infra reason (image missing,
+        # daemon down, registry denied, OOM-killed, ...). stdout is typically empty here, so
+        # without this check json.loads(... or "{}") silently returns {} — no "error" key — and
+        # the caller gets SandboxResult(data={}) as if the parse succeeded. That's the exact
+        # failure mode that let a production outage run unnoticed for days: pm2's error log
+        # stayed 0 bytes because nothing ever raised. Log server-side only; never put stderr in
+        # the user-facing message (it may contain host paths, image internals, etc).
+        stderr_tail = proc.stderr.decode("utf-8", errors="replace")[-2000:]
+        logger.error(
+            "sandbox parse failed: mode=%s returncode=%s stderr_tail=%r",
+            "process" if process_mode else "docker",
+            proc.returncode,
+            stderr_tail,
+        )
+        raise SandboxError("This PDF couldn't be read.")
     try:
         data = json.loads(proc.stdout.decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -100,6 +119,35 @@ def run_parse(pdf: Path, max_pages: int = 30, timeout_s: int = DEFAULT_TIMEOUT_S
             raise SandboxError("This PDF is password-protected.")
         raise SandboxError("This PDF couldn't be read.")
     return SandboxResult(data=data)
+
+
+def assert_sandbox_ready() -> None:
+    """Fail loudly at boot, not silently per-request.
+
+    The 2026-10-07 outage: ``PDFMUX_SANDBOX=docker`` but ``pdfmux-sandbox:latest`` was never
+    built on the box, so every call's ``docker run`` exited non-zero and (before the
+    returncode check above existed) was laundered into an empty-but-valid result — no error,
+    no log line, for days. Call this once at process startup so a missing/broken image turns
+    into an immediate boot-time crash instead of a silent per-request failure.
+    """
+    if os.environ.get("PDFMUX_SANDBOX", "process") != "docker":
+        return
+    try:
+        proc = subprocess.run(  # noqa: S603 — fixed argv, no shell
+            ["docker", "image", "inspect", DOCKER_IMAGE],  # noqa: S607
+            capture_output=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError(
+            f"PDFMUX_SANDBOX=docker but `docker image inspect {DOCKER_IMAGE}` could not run: {e}"
+        ) from e
+    if proc.returncode != 0:
+        stderr_tail = proc.stderr.decode("utf-8", errors="replace").strip()[-500:]
+        raise RuntimeError(
+            f"PDFMUX_SANDBOX=docker but image {DOCKER_IMAGE!r} is not available locally "
+            f"(`docker image inspect` exit {proc.returncode}): {stderr_tail}"
+        )
 
 
 def describe() -> str:

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import shutil
 import socket
+import sys
 import time
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from openpyxl import load_workbook
 from starlette.testclient import TestClient
 
 from pdfmux.remote import fetch as fetch_mod
+from pdfmux.remote import sandbox as sandbox_mod
 from pdfmux.remote import server as server_mod
 from pdfmux.remote.fetch import FetchError, fetch_pdf, validate_url
 from pdfmux.remote.kit import Caller, Limits, client_ip, find_banned_copy, untrusted
@@ -160,6 +163,194 @@ def test_sandbox_turns_garbage_and_timeouts_into_safe_errors(
     pdf = Path(make_pdf(tmp_path, [[HEADER, *statement_rows(5)]]))
     with pytest.raises(SandboxError, match="too long"):
         run_parse(pdf, timeout_s=0.01)
+
+
+def test_sandbox_logs_diagnostic_and_raises_safe_error_on_nonzero_returncode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The silent-failure regression: `docker run` (or the child process) can exit non-zero
+    with empty stdout — before this fix that laundered into SandboxResult(data={}) as if the
+    parse succeeded, with nothing logged. Simulate a non-zero exit via a fake _command and
+    assert it raises the same user-facing string as the existing JSON-decode-failure branch,
+    while the real diagnostic (exit code + stderr) only ever reaches the server-side log.
+    """
+    monkeypatch.setenv("PDFMUX_SANDBOX", "process")
+    monkeypatch.setattr(
+        sandbox_mod,
+        "_command",
+        lambda pdf, max_pages: (
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.stderr.write('disk full: /var/lib/docker'); sys.exit(3)",
+            ],
+            {},
+        ),
+    )
+    pdf = tmp_path / "whatever.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+
+    with caplog.at_level(logging.ERROR, logger="pdfmux.remote.sandbox"):
+        with pytest.raises(SandboxError, match="couldn't be read") as exc_info:
+            sandbox_mod.run_parse(pdf)
+
+    # user-facing message is the existing neutral string, never the raw stderr/exit code
+    assert "disk full" not in str(exc_info.value)
+    assert "3" not in str(exc_info.value)
+
+    # the real diagnostic landed server-side in the log, not swallowed silently
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("returncode=3" in m and "disk full" in m for m in messages)
+
+
+def test_assert_sandbox_ready_noop_when_not_docker_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PDFMUX_SANDBOX", "process")
+
+    def fail_if_called(*_a, **_k):
+        raise AssertionError("must not shell out when not in docker mode")
+
+    monkeypatch.setattr(sandbox_mod.subprocess, "run", fail_if_called)
+    sandbox_mod.assert_sandbox_ready()  # no raise, no subprocess call
+
+
+def test_assert_sandbox_ready_passes_when_image_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PDFMUX_SANDBOX", "docker")
+
+    class _Ok:
+        returncode = 0
+        stdout = b"[{}]"
+        stderr = b""
+
+    monkeypatch.setattr(sandbox_mod.subprocess, "run", lambda *a, **k: _Ok())
+    sandbox_mod.assert_sandbox_ready()  # no raise
+
+
+def test_assert_sandbox_ready_fails_loudly_when_image_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """This is the check that would have turned the multi-day silent outage (image never
+    built) into an immediate boot-time failure instead."""
+    monkeypatch.setenv("PDFMUX_SANDBOX", "docker")
+
+    class _Missing:
+        returncode = 1
+        stdout = b""
+        stderr = b"Error: No such image: pdfmux-sandbox:latest"
+
+    monkeypatch.setattr(sandbox_mod.subprocess, "run", lambda *a, **k: _Missing())
+    with pytest.raises(RuntimeError, match="not available"):
+        sandbox_mod.assert_sandbox_ready()
+
+
+def test_assert_sandbox_ready_fails_loudly_when_docker_binary_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PDFMUX_SANDBOX", "docker")
+
+    def raise_missing(*_a, **_k):
+        raise FileNotFoundError("docker: command not found")
+
+    monkeypatch.setattr(sandbox_mod.subprocess, "run", raise_missing)
+    with pytest.raises(RuntimeError, match="could not run"):
+        sandbox_mod.assert_sandbox_ready()
+
+
+def test_create_app_runs_the_sandbox_readiness_assertion_at_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Wiring check: create_app() must actually call the boot-time assertion (the point of
+    Fix 1's second half — fail at boot, not per-request), not just define it unused."""
+
+    def boom() -> None:
+        raise RuntimeError("sandbox not ready")
+
+    monkeypatch.setattr(server_mod, "assert_sandbox_ready", boom)
+    with pytest.raises(RuntimeError, match="sandbox not ready"):
+        server_mod.create_app(start_sweeper=False)
+
+
+# ---------------------------------------------------------------------------------------------
+# access-log token redaction
+# ---------------------------------------------------------------------------------------------
+
+
+def test_redact_token_filter_strips_token_from_access_log_record() -> None:
+    token = "a" * 48
+    record = logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg='%s - "%s %s HTTP/%s" %d',
+        args=("127.0.0.1:54321", "POST", f"/mcp/{token}", "1.1", 200),
+        exc_info=None,
+    )
+    assert server_mod.RedactTokenFilter().filter(record) is True
+    assert record.args[2] == "/mcp/<redacted>"
+    assert token not in record.getMessage()
+
+
+def test_redact_token_filter_leaves_non_mcp_paths_and_non_tuple_args_alone() -> None:
+    record = logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg='%s - "%s %s HTTP/%s" %d',
+        args=("127.0.0.1:1", "GET", "/dl/abc123.xlsx", "1.1", 200),
+        exc_info=None,
+    )
+    assert server_mod.RedactTokenFilter().filter(record) is True
+    assert record.args[2] == "/dl/abc123.xlsx"  # unrelated path untouched
+
+    plain = logging.LogRecord(
+        name="uvicorn.error",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="server started",
+        args=None,
+        exc_info=None,
+    )
+    assert server_mod.RedactTokenFilter().filter(plain) is True
+    assert plain.msg == "server started"
+
+
+def test_log_config_wires_the_redaction_filter_onto_uvicorns_access_handler() -> None:
+    cfg = server_mod._log_config()
+    assert cfg["handlers"]["access"]["filters"] == ["redact_token"]
+    assert cfg["filters"]["redact_token"]["()"] == "pdfmux.remote.server.RedactTokenFilter"
+
+
+def test_log_config_redaction_survives_dictconfig_and_reaches_the_actual_log_line() -> None:
+    """End-to-end: uvicorn applies log_config via logging.config.dictConfig() at server
+    start, which rebuilds the named loggers/handlers from the dict — a filter attached to a
+    logger object beforehand would be wiped. Verify the filter declared *inside* the dict
+    survives that and actually redacts a real emitted access-log line."""
+    import copy
+    import logging.config
+
+    token = "b" * 48
+    access = logging.getLogger("uvicorn.access")
+    prev_handlers = list(access.handlers)
+    prev_propagate = access.propagate
+    prev_level = access.level
+    try:
+        logging.config.dictConfig(copy.deepcopy(server_mod._log_config()))
+        access = logging.getLogger("uvicorn.access")
+        buf = io.StringIO()
+        for h in access.handlers:
+            h.stream = buf
+        access.info('%s - "%s %s HTTP/%s" %d', "127.0.0.1:1", "POST", f"/mcp/{token}", "1.1", 200)
+        out = buf.getvalue()
+        assert token not in out
+        assert "/mcp/<redacted>" in out
+    finally:
+        access.handlers = prev_handlers
+        access.propagate = prev_propagate
+        access.level = prev_level
 
 
 # ---------------------------------------------------------------------------------------------
