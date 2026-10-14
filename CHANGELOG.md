@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — `pdfmux-mcp` (npm) no longer silently serves a stale pdfmux
+
+### Fixed
+
+- **The `npx -y pdfmux-mcp` wrapper accepted any already-importable `pdfmux`, even one below its own declared `PDFMUX_MIN_VERSION`.** Reported as "MCP server mode produces garbled Korean text while the CLI works correctly on the same PDF" (`NameetP/pdfmux#10`): the wrapper's `python3`/`python` can resolve to a different environment than the one backing the user's own `pdfmux` CLI binary, and the old check (`isPdfmuxInstalled`) only asked "does `import pdfmux` succeed," never "is it new enough." A stale install on that other environment runs silently instead of the version the wrapper advertises installing.
+  - **Fix:** `npm-wrapper/index.js`'s `getInstalledVersion()` + `versionAtLeast()` compare the resolved environment's actual `pdfmux.__version__` against `PDFMUX_MIN_VERSION` and reinstall/upgrade when it falls short, same as the already-correct "not installed at all" path.
+  - Not yet published to npm — `npm view pdfmux-mcp version` still serves `1.4.0` with this fix unreleased; publishing is a Tier-2 founder action, same gate as a PyPI release.
+
 ## Unreleased — table cells no longer depend on what pymupdf4llm did to PyMuPDF
 
 ### Fixed

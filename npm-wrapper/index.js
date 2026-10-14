@@ -31,16 +31,27 @@ function findPython() {
   return null;
 }
 
-function isPdfmuxInstalled(python) {
+function getInstalledVersion(python) {
   try {
-    execSync(`${python} -c "import pdfmux; print(pdfmux.__version__)"`, {
+    return execSync(`${python} -c "import pdfmux; print(pdfmux.__version__)"`, {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
-    });
-    return true;
+    }).trim();
   } catch {
-    return false;
+    return null;
   }
+}
+
+function versionAtLeast(version, minVersion) {
+  const parts = (v) => v.split(".").map((n) => parseInt(n, 10) || 0);
+  const a = parts(version);
+  const b = parts(minVersion);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return true;
 }
 
 function installPdfmux(python) {
@@ -66,7 +77,21 @@ function main() {
     process.exit(1);
   }
 
-  if (!isPdfmuxInstalled(python)) {
+  // Bug (reported as "pdfmux-mcp garbles Korean text, pdfmux CLI doesn't" —
+  // NameetP/pdfmux#10): this check used to only ask "is pdfmux importable at
+  // all," so a stale pdfmux already present on whatever `python3`/`python`
+  // this wrapper resolves to (which can be a different install than the
+  // user's own `pdfmux` CLI binary) was accepted silently, even below
+  // PDFMUX_MIN_VERSION. Two installs drifting apart is exactly the kind of
+  // silent inconsistency this product's extraction claims are supposed to
+  // rule out — it must not exist in its own install path.
+  const installedVersion = getInstalledVersion(python);
+  if (!installedVersion || !versionAtLeast(installedVersion, PDFMUX_MIN_VERSION)) {
+    if (installedVersion) {
+      console.error(
+        `[pdfmux-mcp] Installed pdfmux ${installedVersion} is older than the required ${PDFMUX_MIN_VERSION} — upgrading.`
+      );
+    }
     if (!installPdfmux(python)) {
       process.exit(1);
     }
