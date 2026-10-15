@@ -9,6 +9,7 @@ a CLI smoke test.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import fitz
@@ -32,6 +33,19 @@ from pdfmux.verifier import (
 )
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(s: str) -> str:
+    """Strip Rich/Click ANSI color escapes from captured CLI output.
+
+    Needed because Rich force-colors output in CI (FORCE_COLOR=1) but not
+    locally, and the escapes can land *inside* a flag name (e.g. a reset
+    between the two leading hyphens of `--check-numeric-literals`), breaking
+    a plain substring check only in one of the two environments.
+    """
+    return _ANSI_RE.sub("", s)
 
 
 # ---------------------------------------------------------------------------
@@ -806,4 +820,9 @@ class TestNumericLiteralReviewCLI:
     def test_cli_help_documents_the_flag(self) -> None:
         result = runner.invoke(app, ["verify", "--help"])
         assert result.exit_code == 0
-        assert "--check-numeric-literals" in result.output
+        # Strip ANSI escapes before the substring check: Rich force-colors its
+        # help panel under CI's FORCE_COLOR=1 (confirmed locally — NO_COLOR=1
+        # does not override it), which splits "--check-numeric-literals" with
+        # a reset/color escape between the two leading hyphens and makes a
+        # plain substring check pass locally but fail in CI.
+        assert "--check-numeric-literals" in _strip_ansi(result.output)
