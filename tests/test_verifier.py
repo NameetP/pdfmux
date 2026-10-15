@@ -17,10 +17,14 @@ from typer.testing import CliRunner
 
 from pdfmux.cli import app
 from pdfmux.verifier import (
+    LOW_ALIGNMENT_THRESHOLD,
+    LOW_COVERAGE_THRESHOLD,
     CertificationManifest,
     _alignment,
     _compute_signature,
     _hallucination_risk,
+    _missing_numeric_literals,
+    _normalize_numeric_literal,
     _verify_page,
     parse_extraction,
     verify_batch,
@@ -481,3 +485,325 @@ class TestTableTruncationFlag:
         source = "\n".join(f"| r{i} | v{i} |" for i in range(10))
         kept = "\n".join(f"| r{i} | v{i} |" for i in range(9))
         assert _table_truncated(source, kept) is False
+
+
+# ---------------------------------------------------------------------------
+# Numeric-literal review — opt-in `--check-numeric-literals` (NameetP/pdfmux#41)
+#
+# The reporter's repro (reportlab + pymupdf, in the issue body) showed
+# `verify --strict` return PASS with no page flags after a 13-digit revenue
+# figure was deleted from the extraction entirely — alignment 0.85, coverage
+# 0.7864, both comfortably above the existing thresholds. Rebuilt here with
+# pymupdf's own `page.insert_text` (this file's existing `three_page_pdf`
+# fixture convention) instead of the reportlab generator, so no new test-only
+# dependency is introduced; the page layout and the five financial figures are
+# otherwise identical to the issue.
+# ---------------------------------------------------------------------------
+
+_FINANCIAL_ROWS = (
+    ("Revenue", "1,348,243,150"),
+    ("Costs", "872,000,100"),
+    ("Profit", "476,243,050"),
+    ("Research", "54,200,000"),
+    ("Cash", "205,100,000"),
+)
+
+# The reporter's own larger variant: "a larger eight-row synthetic page where
+# removing one amount or a whole row still returned PASS."
+_FINANCIAL_ROWS_8 = _FINANCIAL_ROWS + (
+    ("Tax", "128,400,000"),
+    ("Dividends", "61,000,000"),
+    ("Retained earnings", "286,843,050"),
+)
+
+
+def _build_financial_page(tmp_path: Path, rows: tuple[tuple[str, str], ...], name: str) -> Path:
+    """One-page digital PDF of `label: value` rows, mirroring the issue's layout."""
+    pdf_path = tmp_path / f"{name}.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    for i, (label, value) in enumerate(rows):
+        y = 100 + 24 * i
+        page.insert_text((60, y), label, fontsize=11)
+        page.insert_text((300, y), value, fontsize=11)
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+def _page0_text(pdf_path: Path) -> str:
+    with fitz.open(pdf_path) as doc:
+        return doc[0].get_text()
+
+
+class TestNumericLiteralNormalization:
+    """Format-normalizing comparison — the conservative handling the issue asks
+    for, so `"1,348,243,150"` / `"1348243150"` / `"1,348,243,150.00"` never
+    false-positive against each other."""
+
+    @pytest.mark.parametrize(
+        "token",
+        ["1,348,243,150", "1348243150", "1,348,243,150.00", "1,348,243,150.0"],
+    )
+    def test_formatting_variants_normalize_identically(self, token: str) -> None:
+        assert _normalize_numeric_literal(token) == "1348243150"
+
+    def test_missing_literal_detected(self) -> None:
+        findings = _missing_numeric_literals("Revenue 1,348,243,150", "Revenue missing here")
+        assert len(findings) == 1
+        assert findings[0].normalized == "1348243150"
+        assert findings[0].literal == "1,348,243,150"
+        assert findings[0].source_count == 1
+        assert findings[0].extracted_count == 0
+
+    @pytest.mark.parametrize(
+        "extracted",
+        ["Revenue 1348243150", "Revenue 1,348,243,150.00", "Revenue 1,348,243,150"],
+    )
+    def test_pure_formatting_difference_is_not_a_finding(self, extracted: str) -> None:
+        findings = _missing_numeric_literals("Revenue 1,348,243,150", extracted)
+        assert findings == ()
+
+    def test_repeated_number_with_matching_counts_is_not_flagged(self) -> None:
+        src = "Total 500,000 and again 500,000"
+        ext = "Total 500,000 and again 500,000"
+        assert _missing_numeric_literals(src, ext) == ()
+
+    def test_small_bare_integers_are_not_tracked(self) -> None:
+        # Bare (non-grouped, non-decimal) integers need >= 4 digits — keeps
+        # page numbers / list indices / 2-digit years out of the signal.
+        assert _missing_numeric_literals("page 12 of 45", "page of") == ()
+
+
+class TestNumericLiteralReviewPerPage:
+    """`_verify_page(..., check_numeric_literals=True)` — the per-page gate."""
+
+    _SRC = (
+        "Revenue reached 1,348,243,150 this quarter, a healthy increase over "
+        "the prior comparable period for the whole division overall today."
+    )
+    _EXT_MISSING = (
+        "Revenue reached this quarter, a healthy increase over the prior "
+        "comparable period for the whole division overall today."
+    )
+
+    def test_flag_off_never_computes_findings(self) -> None:
+        pv = _verify_page(0, self._SRC, self._EXT_MISSING)  # check_numeric_literals defaults False
+        assert pv.numeric_literal_findings == ()
+        assert "numeric_literal_review" not in pv.flags
+
+    def test_intact_extraction_no_finding_flag_on(self) -> None:
+        pv = _verify_page(0, self._SRC, self._SRC, check_numeric_literals=True)
+        assert pv.numeric_literal_findings == ()
+        assert pv.verdict == "pass"
+
+    def test_missing_literal_is_review_not_fail(self) -> None:
+        pv = _verify_page(0, self._SRC, self._EXT_MISSING, check_numeric_literals=True)
+        assert pv.verdict == "review"
+        assert pv.verdict != "fail"
+        assert "numeric_literal_review" in pv.flags
+        assert len(pv.numeric_literal_findings) == 1
+        assert pv.numeric_literal_findings[0].normalized == "1348243150"
+
+    def test_finding_never_escalates_coverage_fail(self) -> None:
+        # A page easily clearing the existing coverage/alignment thresholds
+        # still only reaches "review", never "fail", from this flag alone.
+        pv = _verify_page(0, self._SRC, self._EXT_MISSING, check_numeric_literals=True)
+        assert pv.coverage >= LOW_COVERAGE_THRESHOLD or pv.alignment >= LOW_ALIGNMENT_THRESHOLD
+        assert pv.verdict == "review"
+
+
+class TestNumericLiteralReviewRepro:
+    """End-to-end against the reporter's own repro shape — a page-aligned JSON
+    extraction of a one-page financial PDF, one figure deleted."""
+
+    def test_intact_extraction_no_finding_either_way(self, tmp_path: Path) -> None:
+        pdf_path = _build_financial_page(tmp_path, _FINANCIAL_ROWS, "intact_source")
+        text = _page0_text(pdf_path)
+        extraction = {"pages": [{"page": 1, "text": text}]}
+        source_pages = {0: text}
+
+        m_off = verify_extraction(
+            pdf_path, extraction, check_numeric_literals=False, source_pages=source_pages
+        )
+        m_on = verify_extraction(
+            pdf_path, extraction, check_numeric_literals=True, source_pages=source_pages
+        )
+        assert m_off.verdict == "PASS"
+        assert m_on.verdict == "PASS"
+        assert m_on.pages[0].numeric_literal_findings == ()
+
+    def test_one_literal_deleted_review_only_when_flag_on(self, tmp_path: Path) -> None:
+        pdf_path = _build_financial_page(tmp_path, _FINANCIAL_ROWS, "missing_source")
+        text = _page0_text(pdf_path)
+        assert text.count("1,348,243,150") == 1
+        missing_text = text.replace("1,348,243,150\n", "", 1)
+        extraction = {"pages": [{"page": 1, "text": missing_text}]}
+        source_pages = {0: text}
+
+        # Flag off: unchanged, backward-compatible behavior — PASS, exactly
+        # what the reporter observed on 1.8.7.
+        m_off = verify_extraction(
+            pdf_path, extraction, check_numeric_literals=False, source_pages=source_pages
+        )
+        assert m_off.verdict == "PASS"
+        assert m_off.pages[0].numeric_literal_findings == ()
+
+        # Flag on: REVIEW (not FAIL), naming the exact dropped figure.
+        m_on = verify_extraction(
+            pdf_path, extraction, check_numeric_literals=True, source_pages=source_pages
+        )
+        assert m_on.verdict == "REVIEW"
+        findings = m_on.pages[0].numeric_literal_findings
+        assert len(findings) == 1
+        assert findings[0].normalized == "1348243150"
+        assert findings[0].literal == "1,348,243,150"
+        assert findings[0].source_count == 1
+        assert findings[0].extracted_count == 0
+
+    def test_whole_row_deleted_flags_every_literal_not_just_the_first(self, tmp_path: Path) -> None:
+        pdf_path = _build_financial_page(tmp_path, _FINANCIAL_ROWS_8, "eight_row_source")
+        text = _page0_text(pdf_path)
+        assert text.count("61,000,000") == 1
+        row_deleted_text = text.replace("Dividends\n", "").replace("61,000,000\n", "")
+        extraction = {"pages": [{"page": 1, "text": row_deleted_text}]}
+        source_pages = {0: text}
+
+        m = verify_extraction(
+            pdf_path, extraction, check_numeric_literals=True, source_pages=source_pages
+        )
+        assert m.verdict == "REVIEW"
+        findings = m.pages[0].numeric_literal_findings
+        assert any(f.normalized == "61000000" for f in findings)
+        # Every other figure on the page is still intact — exactly one finding.
+        assert len(findings) == 1
+
+    def test_deleting_two_rows_flags_both_literals(self, tmp_path: Path) -> None:
+        pdf_path = _build_financial_page(tmp_path, _FINANCIAL_ROWS_8, "two_rows_source")
+        text = _page0_text(pdf_path)
+        two_rows_deleted = (
+            text.replace("Dividends\n", "")
+            .replace("61,000,000\n", "")
+            .replace("Tax\n", "")
+            .replace("128,400,000\n", "")
+        )
+        extraction = {"pages": [{"page": 1, "text": two_rows_deleted}]}
+        source_pages = {0: text}
+
+        m = verify_extraction(
+            pdf_path, extraction, check_numeric_literals=True, source_pages=source_pages
+        )
+        findings = {f.normalized for f in m.pages[0].numeric_literal_findings}
+        assert findings == {"61000000", "128400000"}
+
+    def test_formatting_difference_not_flagged(self, tmp_path: Path) -> None:
+        pdf_path = _build_financial_page(tmp_path, _FINANCIAL_ROWS, "reformatted_source")
+        text = _page0_text(pdf_path)
+        reformatted = text.replace("1,348,243,150", "1348243150")
+        extraction = {"pages": [{"page": 1, "text": reformatted}]}
+        source_pages = {0: text}
+
+        m = verify_extraction(
+            pdf_path, extraction, check_numeric_literals=True, source_pages=source_pages
+        )
+        assert m.verdict == "PASS"
+        assert m.pages[0].numeric_literal_findings == ()
+
+    def test_repeated_number_across_pages_only_flags_the_dropped_page(self, tmp_path: Path) -> None:
+        """A running total shown on both pages; only page 2 drops it. Per-page
+        counting must not punish page 1 for page 2's loss."""
+        pdf_path = tmp_path / "two_page.pdf"
+        doc = fitz.open()
+        for _ in range(2):
+            page = doc.new_page()
+            page.insert_text((60, 100), "Running total", fontsize=11)
+            page.insert_text((300, 100), "999,000,000", fontsize=11)
+            page.insert_text(
+                (60, 140),
+                "Narrative text to keep the page substantial enough to score reliably.",
+                fontsize=10,
+            )
+        doc.save(str(pdf_path))
+        doc.close()
+
+        with fitz.open(pdf_path) as d:
+            p1_text = d[0].get_text()
+            p2_text = d[1].get_text()
+        assert p2_text.count("999,000,000") == 1
+        p2_dropped = p2_text.replace("999,000,000\n", "", 1)
+
+        extraction = {"pages": [{"page": 1, "text": p1_text}, {"page": 2, "text": p2_dropped}]}
+        source_pages = {0: p1_text, 1: p2_text}
+
+        m = verify_extraction(
+            pdf_path, extraction, check_numeric_literals=True, source_pages=source_pages
+        )
+        assert m.pages[0].numeric_literal_findings == ()
+        assert m.pages[0].verdict == "pass"
+        assert len(m.pages[1].numeric_literal_findings) == 1
+        assert m.pages[1].numeric_literal_findings[0].normalized == "999000000"
+        assert m.verdict == "REVIEW"
+
+
+class TestNumericLiteralReviewCLI:
+    def test_cli_strict_unaffected_by_default(self, tmp_path: Path) -> None:
+        pdf_path = _build_financial_page(tmp_path, _FINANCIAL_ROWS, "cli_source_default")
+        text = _page0_text(pdf_path)
+        missing_text = text.replace("1,348,243,150\n", "", 1)
+        ext_path = tmp_path / "missing.json"
+        ext_path.write_text(
+            json.dumps({"pages": [{"page": 1, "text": missing_text}]}), encoding="utf-8"
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "verify",
+                "--source",
+                str(pdf_path),
+                "--extracted",
+                str(ext_path),
+                "--strict",
+                "--format",
+                "json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        manifest = json.loads(result.stdout)
+        assert manifest["verdict"] == "PASS"
+        assert manifest["pages"][0]["numeric_literal_findings"] == []
+
+    def test_cli_flag_surfaces_review_and_strict_gate(self, tmp_path: Path) -> None:
+        pdf_path = _build_financial_page(tmp_path, _FINANCIAL_ROWS, "cli_source_flagged")
+        text = _page0_text(pdf_path)
+        missing_text = text.replace("1,348,243,150\n", "", 1)
+        ext_path = tmp_path / "missing.json"
+        ext_path.write_text(
+            json.dumps({"pages": [{"page": 1, "text": missing_text}]}), encoding="utf-8"
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "verify",
+                "--source",
+                str(pdf_path),
+                "--extracted",
+                str(ext_path),
+                "--strict",
+                "--check-numeric-literals",
+                "--format",
+                "json",
+            ],
+        )
+        assert result.exit_code == 3, result.output
+        manifest = json.loads(result.stdout)
+        assert manifest["verdict"] == "REVIEW"
+        findings = manifest["pages"][0]["numeric_literal_findings"]
+        assert len(findings) == 1
+        assert findings[0]["normalized"] == "1348243150"
+
+    def test_cli_help_documents_the_flag(self) -> None:
+        result = runner.invoke(app, ["verify", "--help"])
+        assert result.exit_code == 0
+        assert "--check-numeric-literals" in result.output

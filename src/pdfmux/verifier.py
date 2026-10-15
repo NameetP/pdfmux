@@ -120,11 +120,16 @@ class PageVerification:
     heading_integrity: bool  # source headings preserved (True if no heading)
     verdict: str  # "pass" | "review" | "fail" | "unverifiable"
     flags: tuple[str, ...] = ()
+    # Opt-in (`--check-numeric-literals`, default off): numeric literals found
+    # in the source page text but under-represented in the extracted page
+    # text. Always `()` unless the flag is passed — see NameetP/pdfmux#41.
+    numeric_literal_findings: tuple[NumericLiteralFinding, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["page"] = self.page_num + 1  # human-friendly 1-indexed alias
         d["flags"] = list(self.flags)
+        d["numeric_literal_findings"] = [asdict(f) for f in self.numeric_literal_findings]
         return d
 
 
@@ -304,6 +309,102 @@ def _largest_table_rows(text: str) -> int:
         else:
             current = 0
     return largest
+
+
+# ---------------------------------------------------------------------------
+# Numeric-literal presence check (opt-in — see `--check-numeric-literals`)
+# ---------------------------------------------------------------------------
+#
+# This is deliberately separate from `_alignment`'s token-overlap scoring.
+# Alignment tokenizes on [0-9A-Za-z...]{2,} and lowercases, so digit runs are
+# already "covered" by partial credit the moment *any* overlap exists — it was
+# never designed to catch "this exact financial figure vanished" the way a
+# human skimming the page would. See NameetP/pdfmux#41: a page can carry
+# alignment 0.85 / coverage 0.79 (comfortably above both thresholds) while a
+# single 13-digit revenue figure is silently absent from the extraction.
+#
+# Numeric literal: a thousands-grouped integer (optionally with a decimal
+# tail), OR a plain decimal, OR a bare run of >= 4 digits. The >= 4 digit floor
+# on bare integers is deliberate — it keeps page numbers, list indices, and
+# 1-3 digit percentages/years out of the signal, which is the "don't be
+# aggressive on repeated small numbers" ask from the issue. Thousands-grouped
+# and decimal forms have no such floor because their shape alone (a comma
+# group or a decimal point) already marks them as a value worth tracking.
+_NUMERIC_LITERAL_RE = re.compile(
+    r"(?<![\w.])(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+|\d{4,})(?![\w.])"
+)
+
+
+def _normalize_numeric_literal(token: str) -> str:
+    """Canonicalize a numeric literal so formatting differences don't matter.
+
+    Strips thousands separators and insignificant trailing/leading zeros, so
+    `"1,348,243,150"`, `"1348243150"`, and `"1,348,243,150.00"` all normalize
+    to the same string. This is the conservative, format-normalizing
+    comparison the issue explicitly asked for — a naive substring/string
+    count would false-positive on every one of those three forms.
+    """
+    cleaned = token.replace(",", "")
+    if "." in cleaned:
+        integer_part, _, frac_part = cleaned.partition(".")
+        frac_part = frac_part.rstrip("0")
+        integer_part = integer_part.lstrip("0") or "0"
+        return f"{integer_part}.{frac_part}" if frac_part else integer_part
+    return cleaned.lstrip("0") or "0"
+
+
+def _numeric_literal_multiset(text: str) -> dict[str, tuple[int, str]]:
+    """Count normalized numeric literals, keeping one raw example per value.
+
+    Returns ``{normalized: (count, example_raw_form)}``. The raw form is
+    whichever exact string first produced that normalized value — used only
+    for human-readable findings, never for comparison.
+    """
+    counts: dict[str, tuple[int, str]] = {}
+    for m in _NUMERIC_LITERAL_RE.finditer(text):
+        raw = m.group(0)
+        norm = _normalize_numeric_literal(raw)
+        n, example = counts.get(norm, (0, raw))
+        counts[norm] = (n + 1, example)
+    return counts
+
+
+@dataclass(frozen=True)
+class NumericLiteralFinding:
+    """A numeric literal present in the source text but under-represented in
+    the extraction, for the same page. Presence/count only — this deliberately
+    does NOT assert the value is attached to the right row/column/period (see
+    NameetP/pdfmux#41)."""
+
+    literal: str  # raw form as it appeared in the source page text
+    normalized: str  # canonical form used for the comparison
+    source_count: int
+    extracted_count: int
+
+
+def _missing_numeric_literals(
+    source_text: str, extracted_text: str
+) -> tuple[NumericLiteralFinding, ...]:
+    """Numeric literals whose source-page count exceeds their extracted-page
+    count, for ONE page. Per-page by construction — callers must pass only
+    same-page text on both sides, so a value repeated across pages (e.g. a
+    running total shown on p.1 and p.2) is judged independently per page and
+    a drop on p.2 cannot flag p.1."""
+    src = _numeric_literal_multiset(source_text)
+    ext = _numeric_literal_multiset(extracted_text)
+    findings = []
+    for norm, (src_count, raw) in src.items():
+        ext_count = ext.get(norm, (0, ""))[0]
+        if src_count > ext_count:
+            findings.append(
+                NumericLiteralFinding(
+                    literal=raw,
+                    normalized=norm,
+                    source_count=src_count,
+                    extracted_count=ext_count,
+                )
+            )
+    return tuple(findings)
 
 
 # A table is "truncated" when the extraction keeps fewer than this share of the
@@ -568,6 +669,7 @@ def _verify_page(
     extracted_text: str,
     *,
     recovery_text: str | None = None,
+    check_numeric_literals: bool = False,
 ) -> PageVerification:
     """Score one page of an extraction against the source page text.
 
@@ -579,6 +681,14 @@ def _verify_page(
             silent drop (content gone everywhere) from a re-pagination (the
             engine put this page's content in a different slot). Without it,
             an empty slot with substantial source is treated as a silent drop.
+        check_numeric_literals: Opt-in (default False — see
+            `--check-numeric-literals`, NameetP/pdfmux#41). When True, flags a
+            `REVIEW`-tier `numeric_literal_review` finding for any numeric
+            literal whose count in the source page text exceeds its count in
+            the extracted page text. Never on by default, and never escalates
+            a page past `review` on its own — only `low_coverage`/
+            `low_alignment`/`severe_content_loss` style signals can fail a
+            page outright.
     """
     source_text = source_text or ""
     extracted_text = extracted_text or ""
@@ -692,6 +802,17 @@ def _verify_page(
     if not heading_integrity:
         flags.append("headings_dropped")
 
+    # Opt-in: numeric literals present in the source page but missing/under-
+    # counted in the extraction (NameetP/pdfmux#41). Deliberately additive —
+    # a REVIEW-tier flag, never a FAIL on its own, and only ever computed when
+    # the caller asks for it. This is a presence/count signal only; it makes
+    # no claim about row/column/period attribution.
+    numeric_literal_findings: tuple[NumericLiteralFinding, ...] = ()
+    if check_numeric_literals:
+        numeric_literal_findings = _missing_numeric_literals(source_text, extracted_text)
+        if numeric_literal_findings:
+            flags.append("numeric_literal_review")
+
     # Verdict. Silent drop already handled. A page fails only on catastrophic
     # loss (both coverage and alignment gone) — otherwise it's a review.
     if coverage < 0.25 and alignment < 0.35:
@@ -715,6 +836,7 @@ def _verify_page(
         heading_integrity=heading_integrity,
         verdict=verdict,
         flags=tuple(flags),
+        numeric_literal_findings=numeric_literal_findings,
     )
 
 
@@ -725,6 +847,7 @@ def verify_extraction(
     engine: str = "external",
     fmt: str = "auto",
     source_pages: dict[int, str] | None = None,
+    check_numeric_literals: bool = False,
 ) -> CertificationManifest:
     """Audit an external extraction of ``source_pdf`` and return a manifest.
 
@@ -740,6 +863,13 @@ def verify_extraction(
         fmt: Extraction format hint ("auto" | "json" | "markdown" | "text").
         source_pages: Optional pre-computed 0-indexed source page text, to skip
             re-extraction (used by batch mode and tests).
+        check_numeric_literals: Opt-in (default False, see
+            `--check-numeric-literals`, NameetP/pdfmux#41). Adds a per-page
+            `REVIEW` finding for numeric literals present in the source page
+            text but under-represented in the extracted page text. Only
+            applies in segmented (page-aligned) mode — see `Mode B` below,
+            which has no per-page extracted text to compare against. Zero
+            effect on the result when left at its default.
 
     Returns:
         A :class:`CertificationManifest`.
@@ -777,7 +907,15 @@ def verify_extraction(
         for idx in range(n_pages):
             src = source_pages.get(idx, "")
             ext = parsed.pages.get(idx, "")
-            page_results.append(_verify_page(idx, src, ext, recovery_text=whole_ext_text))
+            page_results.append(
+                _verify_page(
+                    idx,
+                    src,
+                    ext,
+                    recovery_text=whole_ext_text,
+                    check_numeric_literals=check_numeric_literals,
+                )
+            )
         effective_page_aligned = True
     else:
         # --- Mode B: unsegmented — compare each source page against the WHOLE
@@ -1084,6 +1222,7 @@ def verify_batch(
     *,
     engine: str = "external",
     fmt: str = "auto",
+    check_numeric_literals: bool = False,
 ) -> BatchCertification:
     """Certify many (source_pdf, extraction) pairs and aggregate the result.
 
@@ -1095,6 +1234,8 @@ def verify_batch(
         pairs: List of (source_pdf_path, extraction_path).
         engine: Label for the engine under audit.
         fmt: Extraction format hint.
+        check_numeric_literals: Opt-in, default False — see
+            `verify_extraction`'s parameter of the same name.
 
     Returns:
         A :class:`BatchCertification`.
@@ -1109,7 +1250,13 @@ def verify_batch(
     )
     for source_pdf, extraction in pairs:
         try:
-            manifest = verify_extraction(source_pdf, extraction, engine=engine, fmt=fmt)
+            manifest = verify_extraction(
+                source_pdf,
+                extraction,
+                engine=engine,
+                fmt=fmt,
+                check_numeric_literals=check_numeric_literals,
+            )
             batch.manifests.append(manifest)
         except Exception as exc:  # noqa: BLE001 — one bad doc shouldn't kill the run
             batch.errors.append((Path(source_pdf).name, str(exc)))
@@ -1227,11 +1374,15 @@ def run_engine(name: str, source_pdf: Path) -> str:
 def verify_with_engine(
     source_pdf: str | Path,
     engine: str,
+    *,
+    check_numeric_literals: bool = False,
 ) -> CertificationManifest:
     """Run ``engine`` on ``source_pdf`` then certify its output."""
     source_pdf = Path(source_pdf)
     raw = run_engine(engine, source_pdf)
-    return verify_extraction(source_pdf, raw, engine=engine, fmt="auto")
+    return verify_extraction(
+        source_pdf, raw, engine=engine, fmt="auto", check_numeric_literals=check_numeric_literals
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1271,6 +1422,26 @@ def _manifest_markdown(m: CertificationManifest) -> str:
         )
         lines.append("")
         lines.append(f"`pages {_fmt_pages(m.silent_drops, limit=100)}`")
+        lines.append("")
+
+    literal_findings = [(p.page_num + 1, f) for p in m.pages for f in p.numeric_literal_findings]
+    if literal_findings:
+        lines.append(f"## ⚠️  Numeric literals missing from extraction ({len(literal_findings)})")
+        lines.append("")
+        lines.append(
+            "Opt-in signal (`--check-numeric-literals`): a numeric literal appears "
+            "fewer times in the page-aligned extraction than in the source text "
+            "layer for that same page. Presence/count only — this does not claim "
+            "the value belongs to a particular row, column, or period."
+        )
+        lines.append("")
+        lines.append("| Page | Literal | Normalized | Source count | Extracted count |")
+        lines.append("|---:|:---|:---|---:|---:|")
+        for page, f in literal_findings:
+            lines.append(
+                f"| {page} | `{f.literal}` | `{f.normalized}` | {f.source_count} | "
+                f"{f.extracted_count} |"
+            )
         lines.append("")
 
     if m.page_aligned:
