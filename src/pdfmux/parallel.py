@@ -13,7 +13,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+from pdfmux.progress import should_log
+
 logger = logging.getLogger(__name__)
+
+# Report every OCR'd page up to this many; beyond it, throttle (see progress.py).
+OCR_EVERY_PAGE_BELOW = 100
 
 # Default: 4 threads. ONNX runtime uses internal threading per inference,
 # so we don't want too many concurrent inferences competing for CPU.
@@ -63,6 +68,8 @@ def parallel_ocr(
             pool.submit(_ocr_one_page, extractor, file_path, pn): pn for pn in page_nums
         }
 
+        total = len(page_nums)
+        done = 0
         for future in as_completed(future_to_page):
             page_num = future_to_page[future]
             try:
@@ -77,6 +84,11 @@ def parallel_ocr(
                     success=False,
                     error=str(e),
                 )
+            done += 1
+            # OCR is the slow stage (seconds per page), so report every page
+            # up to 100 pages and ~2% steps beyond that.
+            if should_log(done, total, every_page_below=OCR_EVERY_PAGE_BELOW):
+                logger.info("OCR: %d/%d pages", done, total)
 
     return results
 

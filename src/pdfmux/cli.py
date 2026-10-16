@@ -161,7 +161,13 @@ def convert(
         "--clear-cache",
         help="Wipe the smart result cache before extracting.",
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show INFO-level logs."),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show INFO-level logs, including per-page progress for the extract, "
+        "audit, and OCR stages (useful on long documents).",
+    ),
     debug: bool = typer.Option(False, "--debug", help="Show DEBUG-level logs."),
     quiet: bool = typer.Option(False, "--quiet", help="Suppress all logs except errors."),
     profile: str | None = typer.Option(

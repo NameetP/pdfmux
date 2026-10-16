@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — `pdfmux convert -v` reports page progress on long documents
+
+### Fixed
+
+- **A multi-hour convert printed nothing, even with `-v`.** Reported in `NameetP/pdfmux#15`: a ~5000-page manual ran for 8 hours with no sign of whether it was progressing or stuck. `-v` only enabled INFO logs, and none of the three long-running stages logged per page.
+  - **Fix:** the extract, audit, and OCR stages now emit throttled INFO lines through the `pdfmux` logger — `Extracting: 1500/5000 pages`, `Auditing: 1500/5000 pages`, `OCR: 37/412 pages`. Every page is reported on documents of 20 pages or fewer (100 for OCR, where each page costs seconds); above that, roughly every 2% (never more often than every 5 pages), and the last page always closes a stage with an unambiguous `N/N`. A 5000-page document produces about 50 lines per stage, not 5000. New module `pdfmux/progress.py` holds the cadence rule.
+  - **The fast extractor is now windowed (50 pages per `pymupdf4llm.to_markdown` call), the same window `audit_document` has always used.** Previously it made one monolithic call for the whole file, so on a 5000-page document nothing at all could be reported until that call returned, and the whole file's chunks sat in memory at once. Pages are yielded in the same order with the same per-page text; a `pages=` subset is honoured as before (now sorted and de-duplicated). If `pymupdf4llm` ever returns fewer chunks than requested for a window, the shortfall is logged as a WARNING and the affected pages fall through to the existing raw-fitz fallback — a page is never silently dropped.
+  - **Why logging and not a callback:** on Linux the extraction runs inside a forkserver child under the hard timeout (`_timeout.py`). A progress callback handed across that boundary would never update the parent process; a log record written to the inherited stderr does.
+  - `--verbose` help text now says it includes per-page progress. Default (non-`-v`) output is unchanged: progress is INFO, and the default level is WARNING.
+
+### Added — tests
+
+- **`tests/test_progress.py`** (15 cases): cadence rule (small docs every page, large docs ~2% with a floor of 5, last page always reports, zero/negative never report, per-stage override); fast-extractor windowing on a generated 120-page PDF (every page yielded once, in order, carrying only its own marker text; seamless at the 49/50 and 99/100 boundaries; `pages=` subset honoured; three progress lines at 50/100/120; a monkeypatched short chunk list recovers every page through the raw fallback and logs the WARNING; a 5-page document still makes one call and reports once); audit progress on the same 120-page PDF; OCR progress (every page up to 100, failures still counted as done, 250 pages throttled to 50 lines).
+
 ## Unreleased — `pdfmux verify` can opt in to catching a numeric literal that silently vanished from a page
 
 ### Added
