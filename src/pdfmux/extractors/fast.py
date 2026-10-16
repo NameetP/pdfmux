@@ -18,11 +18,16 @@ import pymupdf4llm
 from pdfmux.column_reorder import reorder_text_ab
 from pdfmux.extractors import register
 from pdfmux.headings import inject_headings
+from pdfmux.progress import should_log
 from pdfmux.table_cells import table_cell_texts
 from pdfmux.table_fallback import detect_text_tables
 from pdfmux.types import ExtractedTable, PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
+
+# Pages per pymupdf4llm call. Same window as audit.PAGE_WINDOW: bounds memory on
+# large documents and lets progress be reported while they convert (#15).
+PAGE_WINDOW = 50
 
 
 def _extract_tables_fast(
@@ -148,8 +153,6 @@ class FastExtractor:
         """
         file_path = Path(file_path)
 
-        chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True)
-
         # Use cached doc for heading detection + optional table enhancement
         try:
             from pdfmux.pdf_cache import get_doc
@@ -158,46 +161,82 @@ class FastExtractor:
         except ImportError:
             doc = fitz.open(str(file_path))
 
-        for i, chunk in enumerate(chunks):
-            if pages is not None and i not in pages:
-                continue
+        total = len(doc)
+        if pages is None:
+            wanted = list(range(total))
+        else:
+            wanted = sorted({p for p in pages if 0 <= p < total})
 
-            text = chunk.get("text", "")
-            image_count = len(chunk.get("images", []))
-
-            # Fallback: if pymupdf4llm returned near-empty for this page,
-            # try raw fitz extraction
-            if len(text.strip()) < 50:
-                raw = self._extract_raw_page(file_path, i)
-                if len(raw.strip()) > len(text.strip()):
-                    text = raw
-
-            # Column-aware reading order (A/B comparison — safe, no-op if uncertain)
-            if i < len(doc):
-                text = reorder_text_ab(text, doc[i])
-
-            # Heading detection via font-size analysis (after fallback
-            # so headings are injected into the fullest text available)
-            if i < len(doc):
-                text = inject_headings(text, doc[i])
-
-            # Table enhancement (fast mode, no ML deps)
-            page_tables: tuple[ExtractedTable, ...] = ()
-            if enhance_tables and doc and i < len(doc):
-                text, extracted = _extract_tables_fast(doc[i], i, text)
-                page_tables = tuple(extracted)
-
-            yield PageResult(
-                page_num=i,
-                text=text,
-                confidence=1.0,  # fast extract starts at full confidence
-                quality=PageQuality.GOOD,  # audit will reassess
-                extractor=self.name,
-                image_count=image_count,
-                tables=page_tables,
-            )
+        # Windowed, like audit.audit_document: one pymupdf4llm call per
+        # PAGE_WINDOW pages instead of one monolithic call for the whole file,
+        # so a 5000-page manual reports progress while it converts (#15).
+        done = 0
+        for start in range(0, len(wanted), PAGE_WINDOW):
+            window = wanted[start : start + PAGE_WINDOW]
+            chunks = pymupdf4llm.to_markdown(str(file_path), page_chunks=True, pages=window)
+            if len(chunks) != len(window):
+                # Never drop a page silently: a missing chunk falls through to
+                # the raw-fitz fallback below via an empty text.
+                logger.warning(
+                    "pymupdf4llm returned %d chunks for %d requested pages (%d-%d); "
+                    "falling back to raw extraction for the rest",
+                    len(chunks),
+                    len(window),
+                    window[0],
+                    window[-1],
+                )
+            for offset, i in enumerate(window):
+                chunk = chunks[offset] if offset < len(chunks) else {}
+                yield self._page_result(file_path, doc, i, chunk, enhance_tables)
+            done += len(window)
+            if should_log(done, len(wanted)):
+                logger.info("Extracting: %d/%d pages", done, len(wanted))
 
         # doc closed by pdf_cache.close_all() at end of pipeline
+
+    def _page_result(
+        self,
+        file_path: Path,
+        doc: fitz.Document,
+        i: int,
+        chunk: dict,
+        enhance_tables: bool,
+    ) -> PageResult:
+        """Build the PageResult for page ``i`` from its pymupdf4llm chunk."""
+        text = chunk.get("text", "")
+        image_count = len(chunk.get("images", []))
+
+        # Fallback: if pymupdf4llm returned near-empty for this page,
+        # try raw fitz extraction
+        if len(text.strip()) < 50:
+            raw = self._extract_raw_page(file_path, i)
+            if len(raw.strip()) > len(text.strip()):
+                text = raw
+
+        # Column-aware reading order (A/B comparison — safe, no-op if uncertain)
+        if i < len(doc):
+            text = reorder_text_ab(text, doc[i])
+
+        # Heading detection via font-size analysis (after fallback
+        # so headings are injected into the fullest text available)
+        if i < len(doc):
+            text = inject_headings(text, doc[i])
+
+        # Table enhancement (fast mode, no ML deps)
+        page_tables: tuple[ExtractedTable, ...] = ()
+        if enhance_tables and doc and i < len(doc):
+            text, extracted = _extract_tables_fast(doc[i], i, text)
+            page_tables = tuple(extracted)
+
+        return PageResult(
+            page_num=i,
+            text=text,
+            confidence=1.0,  # fast extract starts at full confidence
+            quality=PageQuality.GOOD,  # audit will reassess
+            extractor=self.name,
+            image_count=image_count,
+            tables=page_tables,
+        )
 
     @staticmethod
     def _extract_raw_page(file_path: Path, page_num: int) -> str:

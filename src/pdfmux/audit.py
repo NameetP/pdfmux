@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pymupdf4llm
 
+from pdfmux.progress import should_log
 from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
@@ -299,6 +300,9 @@ def audit_document(file_path: str | Path) -> DocumentAudit:
                     reason=reason,
                 )
             )
+
+        if should_log(len(page_audits), total_pages):
+            logger.info("Auditing: %d/%d pages", len(page_audits), total_pages)
 
     audit = DocumentAudit(pages=page_audits, total_pages=total_pages)
 
