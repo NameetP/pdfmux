@@ -1330,6 +1330,18 @@ def verify(
         "--strict",
         help="Exit 3 unless the overall verdict is PASS (for CI gating).",
     ),
+    check_numeric_literals: bool = typer.Option(
+        False,
+        "--check-numeric-literals",
+        help="Opt-in, default off (NameetP/pdfmux#41). Adds a REVIEW finding per "
+        "page for numeric literals present in the source text layer but "
+        "under-represented in the page-aligned extraction — e.g. a financial "
+        "figure silently dropped from one row. Presence/count only, format-"
+        "normalized (thousands separators and trailing decimal zeros do not "
+        "cause false positives); never attributes a value to a specific row, "
+        "column, or period, and never flips an otherwise-PASS result to FAIL. "
+        "No effect on output or exit code unless passed.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show INFO logs."),
     quiet: bool = typer.Option(False, "--quiet", help="Errors only."),
 ) -> None:
@@ -1345,6 +1357,7 @@ def verify(
         pdfmux verify --source doc.pdf --extracted reducto.json --engine-name reducto
         pdfmux verify --source doc.pdf --engine pdfmux           # call + certify
         pdfmux verify --source ./pdfs/ --extracted ./outputs/ -o report.json  # batch
+        pdfmux verify --source doc.pdf --extracted out.json --check-numeric-literals
 
     Exit codes: 0 = ran (see verdict); 2 = usage error; 3 = --strict gate failed.
     """
@@ -1384,7 +1397,12 @@ def verify(
             transient=True,
         ) as progress:
             progress.add_task(f"Certifying {len(pairs)} documents…", total=None)
-            batch = verify_batch(pairs, engine=engine_name, fmt=fmt)
+            batch = verify_batch(
+                pairs,
+                engine=engine_name,
+                fmt=fmt,
+                check_numeric_literals=check_numeric_literals,
+            )
 
         if out_format == "json":
             console.print_json(batch.to_json())
@@ -1408,13 +1426,21 @@ def verify(
     # --- Single-document mode. ---
     try:
         if engine is not None:
-            manifest = verify_with_engine(source, engine)
+            manifest = verify_with_engine(
+                source, engine, check_numeric_literals=check_numeric_literals
+            )
         else:
             assert extracted is not None
             if not extracted.exists():
                 console.print(f"[red]Error:[/red] extraction not found: {extracted}")
                 raise typer.Exit(2)
-            manifest = verify_extraction(source, extracted, engine=engine_name, fmt=fmt)
+            manifest = verify_extraction(
+                source,
+                extracted,
+                engine=engine_name,
+                fmt=fmt,
+                check_numeric_literals=check_numeric_literals,
+            )
     except NotImplementedError as exc:
         console.print(f"[yellow]{exc}[/yellow]")
         raise typer.Exit(2) from exc

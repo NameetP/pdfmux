@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — `pdfmux verify` can opt in to catching a numeric literal that silently vanished from a page
+
+### Added
+
+- **New opt-in flag: `pdfmux verify --check-numeric-literals`** (default off, zero effect unless passed). Raised as a scope question in `NameetP/pdfmux#41`: a careful synthetic repro showed `verify --strict` return `PASS` with no page flags after a 13-digit revenue figure (`"1,348,243,150"`) was deleted from an otherwise page-aligned JSON extraction — that page's alignment (`0.85`) and coverage (`0.7864`) were both comfortably above the existing `LOW_ALIGNMENT_THRESHOLD`/`LOW_COVERAGE_THRESHOLD` gates, which score lexical token overlap, not "did this specific number survive."
+  - When passed, each page gets a conservative, format-normalizing comparison: numeric literals (thousands-grouped integers, decimals, or bare runs of 4+ digits) are counted in the source page text and in the extracted page text for that **same page**, independently. If a literal's source-page count exceeds its extracted-page count, the page gets a new `numeric_literal_review` flag and a `REVIEW` verdict (never `FAIL` on its own), with a structured `numeric_literal_findings` entry per page naming the literal (raw + normalized form), source count, and extracted count — presence/count only, no claim about which row/column/period the value belongs to.
+  - **Format-normalized by design**, per the issue's own request: `"1,348,243,150"`, `"1348243150"`, and `"1,348,243,150.00"` all normalize to the same comparison value, so reformatting alone never raises a finding. Counting is **per page**, so a value repeated across pages (e.g. a running total on p.1 and p.2) with only one page's occurrence dropped flags only that page.
+  - **Strictly opt-in and backward-compatible — default `verify`/`verify --strict` behavior is byte-identical to before this change** for any caller that does not pass the new flag. `verify_extraction()`, `verify_batch()`, and `verify_with_engine()` all gained a `check_numeric_literals: bool = False` keyword for library callers.
+  - Not yet published to PyPI — this ships to `main` only; publishing is a separate Tier-2 founder action (version bump + `twine check`), same gate as the pending npm-wrapper fix below.
+
+### Added — tests
+
+- **`tests/test_verifier.py`** gained 24 cases across `TestNumericLiteralNormalization`, `TestNumericLiteralReviewPerPage`, `TestNumericLiteralReviewRepro`, and `TestNumericLiteralReviewCLI`. `TestNumericLiteralReviewRepro` rebuilds the reporter's own repro shape (a one-page financial PDF, 5 then 8 `label: value` rows) with pymupdf's own text insertion — this file's existing PDF-fixture convention — instead of the reportlab generator in the issue body, so no new test-only dependency is introduced. Covers: intact extraction (no finding either way), one literal deleted (REVIEW only with the flag on, unchanged `PASS` with it off), a whole row deleted (every dropped literal flagged, not just the first), a value repeated across two pages with only one page's occurrence dropped (no false positive on the untouched page), and a pure formatting difference (never flagged).
+
 ## Unreleased — `pdfmux-mcp` (npm) no longer silently serves a stale pdfmux
 
 ### Fixed
