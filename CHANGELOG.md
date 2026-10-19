@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased — `pdfmux convert -v` reports page progress on long documents
+## 1.8.8 (unreleased — ships when the GitHub release is published) — seven fixes that have been sitting on `main` since 1.8.7
 
-### Fixed
+Everything below merged to `main` between 2026-07-27 and 2026-10-16 but never reached `pip install pdfmux` (PyPI stayed at 1.8.7). User-visible: `#43` table cells read as `3750` instead of `37.50`, `#45` the npm wrapper silently serving a stale pdfmux, `#46` opt-in `verify --check-numeric-literals`, `#47` `convert -v` page progress, `#34` real per-page JSON, `#33` heading-detector fix, `#35` mcp 2.x port (fresh installs of `pdfmux[serve]` were broken against mcp 2.0.0 until this).
+
+### `pdfmux convert -v` reports page progress on long documents
+
+#### Fixed
 
 - **A multi-hour convert printed nothing, even with `-v`.** Reported in `NameetP/pdfmux#15`: a ~5000-page manual ran for 8 hours with no sign of whether it was progressing or stuck. `-v` only enabled INFO logs, and none of the three long-running stages logged per page.
   - **Fix:** the extract, audit, and OCR stages now emit throttled INFO lines through the `pdfmux` logger — `Extracting: 1500/5000 pages`, `Auditing: 1500/5000 pages`, `OCR: 37/412 pages`. Every page is reported on documents of 20 pages or fewer (100 for OCR, where each page costs seconds); above that, roughly every 2% (never more often than every 5 pages), and the last page always closes a stage with an unambiguous `N/N`. A 5000-page document produces about 50 lines per stage, not 5000. New module `pdfmux/progress.py` holds the cadence rule.
@@ -10,13 +14,13 @@
   - **Why logging and not a callback:** on Linux the extraction runs inside a forkserver child under the hard timeout (`_timeout.py`). A progress callback handed across that boundary would never update the parent process; a log record written to the inherited stderr does.
   - `--verbose` help text now says it includes per-page progress. Default (non-`-v`) output is unchanged: progress is INFO, and the default level is WARNING.
 
-### Added — tests
+#### Added — tests
 
 - **`tests/test_progress.py`** (15 cases): cadence rule (small docs every page, large docs ~2% with a floor of 5, last page always reports, zero/negative never report, per-stage override); fast-extractor windowing on a generated 120-page PDF (every page yielded once, in order, carrying only its own marker text; seamless at the 49/50 and 99/100 boundaries; `pages=` subset honoured; three progress lines at 50/100/120; a monkeypatched short chunk list recovers every page through the raw fallback and logs the WARNING; a 5-page document still makes one call and reports once); audit progress on the same 120-page PDF; OCR progress (every page up to 100, failures still counted as done, 250 pages throttled to 50 lines).
 
-## Unreleased — `pdfmux verify` can opt in to catching a numeric literal that silently vanished from a page
+### `pdfmux verify` can opt in to catching a numeric literal that silently vanished from a page
 
-### Added
+#### Added
 
 - **New opt-in flag: `pdfmux verify --check-numeric-literals`** (default off, zero effect unless passed). Raised as a scope question in `NameetP/pdfmux#41`: a careful synthetic repro showed `verify --strict` return `PASS` with no page flags after a 13-digit revenue figure (`"1,348,243,150"`) was deleted from an otherwise page-aligned JSON extraction — that page's alignment (`0.85`) and coverage (`0.7864`) were both comfortably above the existing `LOW_ALIGNMENT_THRESHOLD`/`LOW_COVERAGE_THRESHOLD` gates, which score lexical token overlap, not "did this specific number survive."
   - When passed, each page gets a conservative, format-normalizing comparison: numeric literals (thousands-grouped integers, decimals, or bare runs of 4+ digits) are counted in the source page text and in the extracted page text for that **same page**, independently. If a literal's source-page count exceeds its extracted-page count, the page gets a new `numeric_literal_review` flag and a `REVIEW` verdict (never `FAIL` on its own), with a structured `numeric_literal_findings` entry per page naming the literal (raw + normalized form), source count, and extracted count — presence/count only, no claim about which row/column/period the value belongs to.
@@ -24,21 +28,21 @@
   - **Strictly opt-in and backward-compatible — default `verify`/`verify --strict` behavior is byte-identical to before this change** for any caller that does not pass the new flag. `verify_extraction()`, `verify_batch()`, and `verify_with_engine()` all gained a `check_numeric_literals: bool = False` keyword for library callers.
   - Not yet published to PyPI — this ships to `main` only; publishing is a separate Tier-2 founder action (version bump + `twine check`), same gate as the pending npm-wrapper fix below.
 
-### Added — tests
+#### Added — tests
 
 - **`tests/test_verifier.py`** gained 24 cases across `TestNumericLiteralNormalization`, `TestNumericLiteralReviewPerPage`, `TestNumericLiteralReviewRepro`, and `TestNumericLiteralReviewCLI`. `TestNumericLiteralReviewRepro` rebuilds the reporter's own repro shape (a one-page financial PDF, 5 then 8 `label: value` rows) with pymupdf's own text insertion — this file's existing PDF-fixture convention — instead of the reportlab generator in the issue body, so no new test-only dependency is introduced. Covers: intact extraction (no finding either way), one literal deleted (REVIEW only with the flag on, unchanged `PASS` with it off), a whole row deleted (every dropped literal flagged, not just the first), a value repeated across two pages with only one page's occurrence dropped (no false positive on the untouched page), and a pure formatting difference (never flagged).
 
-## Unreleased — `pdfmux-mcp` (npm) no longer silently serves a stale pdfmux
+### `pdfmux-mcp` (npm) no longer silently serves a stale pdfmux
 
-### Fixed
+#### Fixed
 
 - **The `npx -y pdfmux-mcp` wrapper accepted any already-importable `pdfmux`, even one below its own declared `PDFMUX_MIN_VERSION`.** Reported as "MCP server mode produces garbled Korean text while the CLI works correctly on the same PDF" (`NameetP/pdfmux#10`): the wrapper's `python3`/`python` can resolve to a different environment than the one backing the user's own `pdfmux` CLI binary, and the old check (`isPdfmuxInstalled`) only asked "does `import pdfmux` succeed," never "is it new enough." A stale install on that other environment runs silently instead of the version the wrapper advertises installing.
   - **Fix:** `npm-wrapper/index.js`'s `getInstalledVersion()` + `versionAtLeast()` compare the resolved environment's actual `pdfmux.__version__` against `PDFMUX_MIN_VERSION` and reinstall/upgrade when it falls short, same as the already-correct "not installed at all" path.
   - Not yet published to npm — `npm view pdfmux-mcp version` still serves `1.4.0` with this fix unreleased; publishing is a Tier-2 founder action, same gate as a PyPI release.
 
-## Unreleased — table cells no longer depend on what pymupdf4llm did to PyMuPDF
+### table cells no longer depend on what pymupdf4llm did to PyMuPDF
 
-### Fixed
+#### Fixed
 
 - **`find_tables().extract()` could read "37.50" as `3750`: a silent 100x on every amount, decided by import order.** Importing `pymupdf4llm`, which `import pdfmux` does, calls `pymupdf.TOOLS.unset_quad_corrections(True)` process-wide. From then on, until something calls `pymupdf4llm.to_markdown()` (which happens to reset `pymupdf.table.FLAGS`), `extract()` on a ruled table returns `"3750\n."` for `37.50` and `"Card0"` for `Card 0`. After whitespace cleanup that is the number 3750. A running-balance check cannot catch it, because the error is uniform. Verified on PyMuPDF 1.27.1 / pymupdf4llm 0.3.4.
   - **Who was exposed:**
@@ -47,29 +51,29 @@
     - No user-facing `pdfmux convert` output was found to be wrong; this removes the trap before something calls these paths in a different order.
   - **Fix:** new `pdfmux/table_cells.py` `table_cell_texts(page, table)` reads each cell through `page.get_textbox(cell_rect)`, which returns the laid-out text in every global state. `fast.py` and `segment.py` use it instead of `extract()`.
 
-### Added
+#### Added
 
 - **`tests/test_table_cells.py`** (4 cases). It puts PyMuPDF into the exact post-import state (quad corrections off, no `to_markdown()` yet) and asserts the helper, the fast extractor's structured tables and segment text are exact.
   - A sentinel test records that upstream `extract()` is corrupted in that state, and skips itself if PyMuPDF ever fixes it.
   - Both call-site tests **fail on the previous code**: checked by reverting the fix.
 
-## Unreleased — JSON output no longer collapses a multi-page document to one page
+### JSON output no longer collapses a multi-page document to one page
 
-### Fixed
+#### Fixed
 
 - **`--format json` silently returned the whole document as a single page.** The output advertised `page_count: 88` but `pages` was a list of **length 1** holding the entire document as one blob — so the per-page `text` + `ocr` structure, the whole reason the JSON format exists, was lost for every multi-page document. Root cause: `formatters/json_fmt.py` rebuilt the per-page array by splitting the already-joined `content` string on a `"\n\n---\n\n"` separator, but the pipeline joins pages with `"\n\n"` (`pipeline.py:326`) and drops empty pages while doing so — the separator is never present, so the split always fell through to `pages = [text]`. Silent, plausible-looking, and wrong: exactly the failure mode this package exists to surface.
   - **Fix: the pipeline now threads the real `PageResult` list to the formatter** (`format_json(..., page_entries=...)`) instead of asking it to reverse-engineer page boundaries from a lossy joined string. `pages` now has one entry per source page — `{"page": <1-indexed>, "text": ..., "ocr": <bool>}` — including empty pages (a consumer can now see that pages 6/14/28/54 were blank), with `len(pages) == page_count`.
   - The separator-split path is **kept as a fallback** for standalone callers that only have a joined string, so importing `format_json` directly still works.
   - No schema change (`schema_version` stays `1.1.0`) — this restores the per-page contract the schema already documented. Confidence scoring is untouched: `eval/run_eval.py` scores are byte-identical and `eval/calibrate.py` still reports precision **1.00** / recall **0.82**.
 
-### Added
+#### Added
 
 - **`tests/test_json_formatter.py`** (5 cases) — pins that supplied `page_entries` are authoritative, that a `"\n\n"`-joined `content` is never re-split into one page, that the separator fallback and single-blob fallback still work, and that control characters are stripped from per-page text.
 - **`test_process_json_per_page_not_collapsed`** in `tests/test_pipeline.py` — end-to-end regression asserting `len(pages) == page_count` on the 5-page fixture.
 
-## Unreleased — stop the heading detector from shredding display-type pages
+### stop the heading detector from shredding display-type pages
 
-### Fixed
+#### Fixed
 
 - **Font-size heading detection turned magazine/report layouts into a wall of H1s — the exact silent-garbage failure pdfmux exists to catch, pointed at itself.** On a real 88-page document (Knight Frank *Wealth Report 2025*) `pdfmux convert` promoted **655** lines to `#` headings and still reported **97% confidence**. The masthead rendered as ~16 stacked H1s (a single email became three: `# CONTACTS firstname.` / `# familyname@` / `# knightfrank.com`), and display-type standfirsts were split one-heading-per-wrapped-line (`# affecting how you live, work,` / `# invest and give back`). Root cause: `_assign_levels` promotes any line `>= body_size * 1.2`, but on a sparse cover/masthead the most-common font by character count is a small caption/legal font, so `body_size` is under-estimated and nearly every display line clears the bar — with no page-level sanity check that the heuristic had failed.
   - **Three high-precision, generalizable guards, applied in `_clean_false_headings` so both the injection path and the extractor-provided (early-exit) path are covered — none tuned to specific strings:**
@@ -79,23 +83,23 @@
   - **Net effect on the report: 655 → 379 headings**, with the masthead, split email, and shredded standfirsts gone. Legitimate sub-headings that head real paragraphs (country names over their visa write-ups) are *kept* — the run-collapse only fires on prose-free runs.
   - **Zero eval regression:** `eval/run_eval.py` scores are byte-identical to the committed baseline; `eval/calibrate.py` still reports precision **1.00** / recall **0.82**. Full suite green (759 passed).
 
-### Added
+#### Added
 
 - **`TestOverInjectionGuards` in `tests/test_headings.py`** — 8 cases pinning the three guards, with real-heading survivors (`Introduction`, `Our contributors`, `ESG top picks`) asserted alongside the demoted false positives, drawn from the Wealth Report fixtures.
 
-## Unreleased — port the MCP server to mcp 2.x; retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
+### port the MCP server to mcp 2.x; retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
 
-### Changed — **breaking for the `[serve]` extra**
+#### Changed — **breaking for the `[serve]` extra**
 
 - **`pdfmux[serve]` now requires `mcp>=2.0.0`, and drops support for mcp 1.x.** mcp 2.0.0 deleted the `mcp.server.fastmcp` submodule that `mcp_server.py` and `mcp_extract.py` imported, so every fresh install of the extra broke with `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`. The previous "fix" (commit `6a4f78a`) was an upper-bound pin — `mcp>=1.0.0,<2.0.0` — which does not fix anything, it defers: the port still has to happen, and until it does, every dependabot bump re-reds CI and gets closed again. This ports the code instead. `FastMCP` → `mcp.server.mcpserver.MCPServer`, which is a near drop-in: same `.tool()` decorator, same `.run(transport=…)`, same `name` / `instructions` constructor kwargs, same `_tool_manager` registry. Nothing in pdfmux's own API changed — `run_server()`, `run_http_server()` and the module-level `mcp` object all keep their names and signatures. Users pinned to mcp 1.x must upgrade; that is the deliberate trade for ending the loop.
 - **HTTP bind address now travels as a `run()` kwarg, not through `mcp.settings`.** This is the part the pin hid, and it is a real runtime break rather than an import error: mcp 2.x's `Settings` model no longer carries `host`/`port`, so `mcp.settings.host = host` raises `ValueError: "Settings" object has no field "host"`. A pure import-path swap would have imported cleanly, passed the existing tests (which only assert `run_http_server` is callable) and then crashed on the first `pdfmux serve --http`. Both servers now call `mcp.run(transport="streamable-http", host=host, port=port)`. Verified end-to-end, not just by assertion: the HTTP server binds and answers a real `initialize` handshake on `/mcp`, and both stdio entry points (`pdfmux serve`, `pdfmux-extract`) complete one over stdin.
 
-### Added
+#### Added
 
 - **`test_server_uses_the_mcp_2x_import_surface`** — asserts both server instances are `mcp.server.mcpserver.MCPServer`. Fails with a message naming the dependency when the installed `mcp` is <2.0.0, so a re-pin surfaces as a test failure that says why, rather than as a collection-time `ModuleNotFoundError` that reads like an environment problem. A comment on a pin is not a guard.
 - **`test_run_http_server_passes_host_and_port_to_run` / `test_run_http_server_defaults_to_loopback`** — assert the bind address reaches `run()`, deterministically, without binding a socket. Both were confirmed to **fail** against the old `mcp.settings.host` form before being kept — a guard verified only in the passing direction is not a guard. The loopback default (`127.0.0.1`, overridable via `PDFMUX_HTTP_HOST`) is now covered too, so the safer-bind behaviour cannot silently regress to `0.0.0.0`.
 
-### Fixed
+#### Fixed
 
 - **`pdfmux/arabic.py` told users to run `pip install pdfmux[arabic]`. That extra has never existed.** Both the module docstring and `fix_bidi_order`'s docstring carried the hint, and it is worse than a typo in two compounding ways: pip accepts unknown extras **silently**, so the command succeeds and installs nothing; and `python-bidi` is already a **core** dependency, so RTL reordering was working the whole time. A reader hunting a BiDi problem would run the command, see success, see no change, and conclude BiDi was broken.
 - **A missing `python-bidi` no longer fails silently.** `fix_bidi_order` caught `ImportError` and returned the text unchanged with no signal. Because `python-bidi` is core, that branch means the install is broken — and its output is Arabic in storage order: reversed, but entirely plausible-looking to anyone who does not read Arabic. Silent, plausible, wrong output is the failure mode this package exists to surface, so it should not be the one path that ships it. It now logs a warning naming the real cause (broken install, not a missing extra) and still returns the text rather than raising, so a degraded environment does not become a hard failure on documents that may contain no Arabic at all. Cached so it warns once per process, not once per page.
@@ -111,12 +115,12 @@
 - **Corrected the Gemma per-page cost in the README: `~$0.005/page` → `~$0.0002/page`.** The figure was ~27x the provider's own estimator. `GemmaProvider.estimate_cost()` computes $0.000185/page from its declared rates (460 input + 500 output tokens at $0.075/$0.30 per Mtok); the README asserted a number nothing in the code produces.
 - **Fixed a broken install command in the README's Arabic section.** It read `pip install "pdfmux[arabic,llm-gemma]"`. Neither extra exists — `pip install` accepts unknown extras silently, so a reader following the Arabic quickstart installed *nothing* and believed they had enabled Gemma vision OCR. The Gemma provider imports the `openai` SDK, so the correct extra is `llm-openai` (also included in `llm-all`).
 
-### Added
+#### Added
 
 - **`test_no_install_instruction_names_a_nonexistent_extra`** — every `pip install pdfmux[...]` across `src/`, the README, and `docs/` must resolve to a real extra in `pyproject.toml`. This defect class has now shipped three times (`pdfmux[arabic]`, `pdfmux[arabic,llm-gemma]`, and `pdfmux[local]` on the blog) precisely because it fails silently at every layer. The check matches install *instructions* only, so prose that names a bad extra in order to rule it out still passes — a blunt scan would have been switched off, which is how the original hint survived.
 - **`assert_cli_ok` in `tests/conftest.py`** — shared helper for CLI-driving tests, plus an autouse fixture pinning the extraction timeout (both described above).
 
-### Notes
+#### Notes
 
 - **Gemma 4 is real and is on the Gemini API** — `gemma-4-31b-it` and `gemma-4-26b-a4b-it` ([Google's docs](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)). Adopting it here was deliberately *not* bundled into this fix: the OpenAI-compat path this provider uses is undocumented for those IDs, and the pricing constants and `max_input_tokens` would both need re-verification against a live key. Doing the rename without that verification is the same defect in the other direction. The requirements are recorded in the `providers/gemma.py` module docstring.
 - `scripts/release-gate.sh` now fails when a shipped artifact claims "Gemma 4" while the provider's model IDs say `gemma-3-`, so this specific drift cannot ship again.
