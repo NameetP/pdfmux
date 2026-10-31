@@ -110,11 +110,21 @@ def test_captioned_scan_routed_to_ocr(tmp_path: Path, caption_chars: int) -> Non
     )
 
     result = classify(pdf)
-    assert result.scanned_pages == [0], (
-        f"scan with a {caption_chars}-char caption was not routed to OCR; "
-        f"scanned_pages={result.scanned_pages} digital_pages={result.digital_pages}"
+    assert result.digital_pages == [], (
+        f"scan with a {caption_chars}-char caption was called digital, so its body "
+        f"would never reach OCR; digital_pages={result.digital_pages}"
     )
-    assert result.is_scanned
+    if 20 <= caption_chars <= 50:
+        # Image plus a short caption is deliberately the graphical band (slide
+        # decks, figure pages), not "scanned" — see the is_scan_page comment in
+        # detect.py. It is still routed away from the fast digital path.
+        assert result.graphical_pages == [0]
+    else:
+        assert result.scanned_pages == [0], (
+            f"scan with a {caption_chars}-char caption was not routed to OCR; "
+            f"scanned_pages={result.scanned_pages} digital_pages={result.digital_pages}"
+        )
+        assert result.is_scanned
 
 
 def test_searchable_pdf_stays_digital(tmp_path: Path) -> None:
