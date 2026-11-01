@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — captioned scans are routed to OCR instead of being called digital
+
+### Fixed
+
+- **A scanned page carrying a printed letterhead was classified `digital` and never OCR'd.** `detect.py` decided digital-vs-scanned on character count alone — `elif text_len > 50: digital` — with no reference to how much of the page was image. Real scans routinely carry a letterhead, stamp, reference number or "Page 1 of 4" footer rendered as genuine text, trivially clearing 50 characters. Those pages were routed to the fast path, and extraction returned **the caption where the document body should have been**.
+  - **This is the silent-failure mode the package exists to surface, and it outranked the documented remedy.** The known fix for empty extractions is installing `pdfmux[ocr]` — but that does nothing here, because the page never reaches the OCR stage to begin with. A user with OCR correctly installed still got the caption.
+  - **`is_graphical` did not rescue it.** That rule needs `image_count >= 1 and text_len < 100`, so it covered only the 50-100 character band and gave up above it.
+  - **The discriminator is text-*area* coverage, not character count** — and it has to be, because character count cannot separate the two cases that matter. A scan with a 1000-character letterhead and an OCR'd "searchable PDF" with a 1000-character text layer are identical by length; they differ in whether the text *spans the page*. Measured on the fixtures in `tests/test_detect_captioned_scan.py`: captioned scans 0.003-0.083, searchable PDFs 0.120, native text 0.179. A page is now called a captioned scan when images cover ≥75% of it and its text blocks span <10%.
+  - **The cliff was hard and exact.** A parametrized sweep over caption length classifies correctly at 0/20/40/50 characters and failed at 60/80/120/300/600/1200 before this change — all six now pass, and the searchable-PDF, native-text, blank-scan and small-logo cases are pinned in both directions so the fix cannot over-correct branded invoices into the OCR path.
+  - **Cost is ~1% on classification** (71.69 → 72.43 ms/doc, median of 7 passes over a 24-document corpus): the geometry work runs only for pages that already have >50 characters *and* at least one image, so ordinary digital pages are untouched. Note the module docstring already claimed it inspected "embedded images (count + **coverage area**)" — the coverage half had never been implemented.
+
 ## Unreleased — `pdfmux convert -v` reports page progress on long documents
 
 ### Fixed
