@@ -194,6 +194,13 @@ def convert(
     """Convert a PDF (or directory of PDFs) to Markdown."""
     _configure_logging(verbose=verbose, debug=debug, quiet=quiet)
 
+    if not 0.0 <= min_confidence <= 1.0:
+        console.print(
+            f"[red]--min-confidence must be between 0.0 and 1.0 "
+            f"(got {min_confidence}).[/red]"
+        )
+        raise typer.Exit(2)
+
     # Apply profile defaults — explicit flags win over profile values.
     if profile:
         from pdfmux.profiles import apply_profile_defaults
