@@ -196,8 +196,7 @@ def convert(
 
     if not 0.0 <= min_confidence <= 1.0:
         console.print(
-            f"[red]--min-confidence must be between 0.0 and 1.0 "
-            f"(got {min_confidence}).[/red]"
+            f"[red]--min-confidence must be between 0.0 and 1.0 (got {min_confidence}).[/red]"
         )
         raise typer.Exit(2)
 
