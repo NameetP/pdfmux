@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from conftest import assert_cli_ok
@@ -75,6 +76,17 @@ class TestConvertCommand:
         """pdfmux convert on nonexistent file should fail."""
         result = runner.invoke(app, ["convert", "/tmp/nonexistent_abc123.pdf"])
         assert result.exit_code != 0
+
+    @pytest.mark.parametrize("value", ["1.5", "-0.1", "nan"])
+    def test_convert_min_confidence_out_of_range_is_usage_error(
+        self, tmp_path: Path, value: str
+    ) -> None:
+        """--min-confidence outside 0.0-1.0 should exit 2 before extracting."""
+        pdf = tmp_path / "doc.pdf"
+        pdf.write_bytes(b"%PDF-1.4\n%EOF\n")
+        result = runner.invoke(app, ["convert", str(pdf), "--min-confidence", value])
+        assert result.exit_code == 2
+        assert "min-confidence" in result.output
 
 
 class TestAnalyzeCommand:
