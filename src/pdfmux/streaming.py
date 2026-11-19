@@ -171,6 +171,11 @@ def process_streaming(
     if not file_path.exists():
         raise FileError(f"PDF not found: {file_path}")
 
+    # Size and page limits before classify()/audit_document() walk every page.
+    from pdfmux.pipeline import check_resource_limits
+
+    check_resource_limits(file_path)
+
     try:
         qual = Quality(quality)
     except ValueError:

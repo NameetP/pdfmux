@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Security: size, page and time limits now apply before any page is read (GHSA-332c-cq58-rx3x)
+
+### Security
+
+- **Four MCP tools read every page of a PDF with no size limit, page limit or timeout.** `get_pdf_metadata` and `analyze_pdf` called `classify()`/`audit_document()` directly. `extract_streaming` (via `process_streaming()`) and `verify_extraction` with caller-supplied `extracted_text` (via the verifier's source read) did the same. A high-page-count PDF could tie up a CPU core in the MCP server for minutes, with no upper bound, because the 500 MB file limit was never checked on these paths either. Availability only: no code execution and no file access outside `PDFMUX_ALLOWED_DIRS`. Reported privately by @arpitjain099.
+  - **`process()` was only partly protected.** It checked the page count only after `classify()` had already walked every page, so it paid the full cost before rejecting the file.
+  - **Fix:** a single guard, `pipeline.check_resource_limits()`, enforces `PDFMUX_MAX_FILE_SIZE_MB` and `PDFMUX_MAX_PAGES` before any per-page work, on all five entry points. It reads the page count from the page tree only (no page is loaded), which takes about 8 ms on a 20,000-page file, compared with 2.6 s for `classify()`. The two triage tools also run under the hard `PDFMUX_TIMEOUT` deadline through `pipeline.run_bounded()`. `analyze_pdf` now raises the same "File not found" error as the other tools.
+  - Tests: `tests/test_resource_limits.py`. Each entry point is asserted to reject an oversized file **without** calling `classify()`/`audit_document()`, and a separate test checks that a stalled `classify()` returns control at the deadline.
+
 ## Unreleased — captioned scans are routed to OCR instead of being called digital
 
 ### Fixed

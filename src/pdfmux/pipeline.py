@@ -49,6 +49,70 @@ MAX_PAGE_COUNT = max(1, int(os.environ.get("PDFMUX_MAX_PAGES", "10000")))
 EXTRACTION_TIMEOUT_S = max(1, int(os.environ.get("PDFMUX_TIMEOUT", "300")))
 
 
+def check_resource_limits(file_path: str | Path) -> int:
+    """Reject a PDF that exceeds the size or page-count limits, cheaply.
+
+    This is the single resource guard for every entry point that reads a PDF:
+    ``process()``, ``process_streaming()``, the MCP triage tools and the
+    verifier's source read. It must run BEFORE ``classify()`` or
+    ``audit_document()``. Those walk every page, so a guard placed after them
+    pays the full cost before it can refuse (GHSA-332c-cq58-rx3x).
+
+    The page count comes from opening the document and reading its page tree
+    only. No page is loaded or rendered, so it takes milliseconds even for tens
+    of thousands of pages.
+
+    Returns the page count (0 if the file is missing or not openable, which is
+    left to the caller's existing error handling so error codes are unchanged).
+    Raises :class:`FileError` with code ``PDF_TOO_LARGE`` on a limit breach.
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return 0
+
+    file_size_mb = file_path.stat().st_size / (1024 * 1024)
+    if file_size_mb > MAX_FILE_SIZE_MB:
+        raise FileError(
+            f"File too large: {file_size_mb:.0f}MB exceeds "
+            f"{MAX_FILE_SIZE_MB}MB limit. Set PDFMUX_MAX_FILE_SIZE_MB to override.",
+            code="PDF_TOO_LARGE",
+        )
+
+    import pymupdf
+
+    try:
+        with pymupdf.open(str(file_path)) as doc:
+            page_count = doc.page_count
+    except Exception:
+        return 0
+
+    if page_count > MAX_PAGE_COUNT:
+        raise FileError(
+            f"Too many pages: {page_count} exceeds "
+            f"{MAX_PAGE_COUNT} page limit. Set PDFMUX_MAX_PAGES to override.",
+            code="PDF_TOO_LARGE",
+        )
+    return page_count
+
+
+def run_bounded(func, *args):
+    """Run ``func(*args)`` under the hard ``EXTRACTION_TIMEOUT_S`` deadline.
+
+    For read-only triage work (classify, audit) that runs outside ``process()``'s
+    own timeout. Raises :class:`OCRTimeoutError` on expiry, as ``process()`` does.
+    ``func`` must be a module-level function so the process backend can pickle it.
+    """
+    from pdfmux._timeout import HardTimeoutError, run_with_timeout
+
+    try:
+        return run_with_timeout(func, args, EXTRACTION_TIMEOUT_S)
+    except HardTimeoutError:
+        raise OCRTimeoutError(
+            f"Analysis timed out after {EXTRACTION_TIMEOUT_S}s. "
+            "Set PDFMUX_TIMEOUT to increase the limit."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Legacy ConversionResult — kept for backward compat during transition
 # ---------------------------------------------------------------------------
@@ -108,15 +172,9 @@ def process(
     """
     file_path = Path(file_path)
 
-    # Security: file size check
-    if file_path.exists():
-        file_size_mb = file_path.stat().st_size / (1024 * 1024)
-        if file_size_mb > MAX_FILE_SIZE_MB:
-            raise FileError(
-                f"File too large: {file_size_mb:.0f}MB exceeds "
-                f"{MAX_FILE_SIZE_MB}MB limit. Set PDFMUX_MAX_FILE_SIZE_MB to override.",
-                code="PDF_TOO_LARGE",
-            )
+    # Security: size and page-count limits, BEFORE any per-page work (cache
+    # hashing, classify, extraction). See check_resource_limits.
+    check_resource_limits(file_path)
 
     # Smart cache: return early on hit. Cache key includes file hash so
     # any change to the source PDF, quality preset, output format, or
@@ -160,7 +218,8 @@ def process(
     # Step 1: Classify the PDF
     classification = classify(file_path)
 
-    # Security: page count check
+    # Security: backstop page-count check on the classified count, in case the
+    # cheap page-tree count above and classify() ever disagree.
     if classification.page_count > MAX_PAGE_COUNT:
         raise FileError(
             f"Too many pages: {classification.page_count} exceeds "

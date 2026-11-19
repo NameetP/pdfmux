@@ -1276,6 +1276,10 @@ def _source_page_text(source_pdf: Path) -> dict[int, str]:
     pdfmux's multi-pass extraction. The verifier's ground truth is pdfmux's own
     reading of the document, which is the honest thing to certify against.
     """
+    # Size and page limits before audit_document() walks every page.
+    from pdfmux.pipeline import check_resource_limits
+
+    check_resource_limits(source_pdf)
     audit = audit_document(source_pdf)
     return {pa.page_num: pa.text for pa in audit.pages}
 

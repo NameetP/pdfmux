@@ -36,7 +36,7 @@ from pdfmux.path_safety import (
 from pdfmux.path_safety import (
     is_path_allowed as _is_path_allowed,
 )
-from pdfmux.pipeline import process
+from pdfmux.pipeline import check_resource_limits, process, run_bounded
 
 __all__ = [
     "ALLOWED_DIRS",
@@ -65,6 +65,26 @@ mcp = MCPServer(
 
 
 # ---------------------------------------------------------------------------
+# Bounded triage helpers. The triage tools skip process(), so they apply the
+# same size, page and time limits themselves (GHSA-332c-cq58-rx3x). Kept at
+# module level so the timeout's process backend can pickle them.
+# ---------------------------------------------------------------------------
+
+
+def _classify(path: str):
+    from pdfmux.detect import classify
+
+    return classify(path)
+
+
+def _classify_and_audit(path: str):
+    from pdfmux.audit import audit_document
+    from pdfmux.detect import classify
+
+    return classify(path), audit_document(path)
+
+
+# ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
 
@@ -77,9 +97,8 @@ def get_pdf_metadata(file_path: str) -> str:
     if not p.exists():
         raise ValueError(f"File not found: {file_path}")
 
-    from pdfmux.detect import classify
-
-    classification = classify(str(p))
+    check_resource_limits(p)
+    classification = run_bounded(_classify, str(p))
     file_size = p.stat().st_size
 
     types = []
@@ -157,11 +176,11 @@ def analyze_pdf(file_path: str) -> str:
     """Quick PDF triage — classify type and audit page quality without full extraction. Returns page count, type detection, per-page quality breakdown, and estimated extraction difficulty. Much cheaper than convert_pdf for initial assessment."""
     p = _check_path(file_path)
 
-    from pdfmux.audit import audit_document
-    from pdfmux.detect import classify
+    if not p.exists():
+        raise ValueError(f"File not found: {file_path}")
 
-    classification = classify(str(p))
-    audit = audit_document(str(p))
+    check_resource_limits(p)
+    classification, audit = run_bounded(_classify_and_audit, str(p))
 
     types = []
     if classification.is_digital:
