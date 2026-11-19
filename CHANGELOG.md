@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Security: size, page and time limits now apply before any page is read (GHSA-332c-cq58-rx3x)
+## 1.8.8 (2026-11-19) — Security: size, page and time limits now apply before any page is read (GHSA-332c-cq58-rx3x)
 
 ### Security
 
@@ -9,7 +9,7 @@
   - **Fix:** a single guard, `pipeline.check_resource_limits()`, enforces `PDFMUX_MAX_FILE_SIZE_MB` and `PDFMUX_MAX_PAGES` before any per-page work, on all five entry points. It reads the page count from the page tree only (no page is loaded), which takes about 8 ms on a 20,000-page file, compared with 2.6 s for `classify()`. The two triage tools also run under the hard `PDFMUX_TIMEOUT` deadline through `pipeline.run_bounded()`. `analyze_pdf` now raises the same "File not found" error as the other tools.
   - Tests: `tests/test_resource_limits.py`. Each entry point is asserted to reject an oversized file **without** calling `classify()`/`audit_document()`, and a separate test checks that a stalled `classify()` returns control at the deadline.
 
-## Unreleased — captioned scans are routed to OCR instead of being called digital
+## 1.8.8 (2026-11-19) — captioned scans are routed to OCR instead of being called digital
 
 ### Fixed
 
@@ -20,7 +20,7 @@
   - **The cliff was hard and exact.** A parametrized sweep over caption length classifies correctly at 0/20/40/50 characters and failed at 60/80/120/300/600/1200 before this change — all six now pass, and the searchable-PDF, native-text, blank-scan and small-logo cases are pinned in both directions so the fix cannot over-correct branded invoices into the OCR path.
   - **Cost is ~1% on classification** (71.69 → 72.43 ms/doc, median of 7 passes over a 24-document corpus): the geometry work runs only for pages that already have >50 characters *and* at least one image, so ordinary digital pages are untouched. Note the module docstring already claimed it inspected "embedded images (count + **coverage area**)" — the coverage half had never been implemented.
 
-## Unreleased — `pdfmux convert -v` reports page progress on long documents
+## 1.8.8 (2026-11-19) — `pdfmux convert -v` reports page progress on long documents
 
 ### Fixed
 
@@ -34,7 +34,7 @@
 
 - **`tests/test_progress.py`** (15 cases): cadence rule (small docs every page, large docs ~2% with a floor of 5, last page always reports, zero/negative never report, per-stage override); fast-extractor windowing on a generated 120-page PDF (every page yielded once, in order, carrying only its own marker text; seamless at the 49/50 and 99/100 boundaries; `pages=` subset honoured; three progress lines at 50/100/120; a monkeypatched short chunk list recovers every page through the raw fallback and logs the WARNING; a 5-page document still makes one call and reports once); audit progress on the same 120-page PDF; OCR progress (every page up to 100, failures still counted as done, 250 pages throttled to 50 lines).
 
-## Unreleased — `pdfmux verify` can opt in to catching a numeric literal that silently vanished from a page
+## 1.8.8 (2026-11-19) — `pdfmux verify` can opt in to catching a numeric literal that silently vanished from a page
 
 ### Added
 
@@ -48,7 +48,7 @@
 
 - **`tests/test_verifier.py`** gained 24 cases across `TestNumericLiteralNormalization`, `TestNumericLiteralReviewPerPage`, `TestNumericLiteralReviewRepro`, and `TestNumericLiteralReviewCLI`. `TestNumericLiteralReviewRepro` rebuilds the reporter's own repro shape (a one-page financial PDF, 5 then 8 `label: value` rows) with pymupdf's own text insertion — this file's existing PDF-fixture convention — instead of the reportlab generator in the issue body, so no new test-only dependency is introduced. Covers: intact extraction (no finding either way), one literal deleted (REVIEW only with the flag on, unchanged `PASS` with it off), a whole row deleted (every dropped literal flagged, not just the first), a value repeated across two pages with only one page's occurrence dropped (no false positive on the untouched page), and a pure formatting difference (never flagged).
 
-## Unreleased — `pdfmux-mcp` (npm) no longer silently serves a stale pdfmux
+## 1.8.8 (2026-11-19) — `pdfmux-mcp` (npm) no longer silently serves a stale pdfmux
 
 ### Fixed
 
@@ -56,7 +56,7 @@
   - **Fix:** `npm-wrapper/index.js`'s `getInstalledVersion()` + `versionAtLeast()` compare the resolved environment's actual `pdfmux.__version__` against `PDFMUX_MIN_VERSION` and reinstall/upgrade when it falls short, same as the already-correct "not installed at all" path.
   - Not yet published to npm — `npm view pdfmux-mcp version` still serves `1.4.0` with this fix unreleased; publishing is a Tier-2 founder action, same gate as a PyPI release.
 
-## Unreleased — table cells no longer depend on what pymupdf4llm did to PyMuPDF
+## 1.8.8 (2026-11-19) — table cells no longer depend on what pymupdf4llm did to PyMuPDF
 
 ### Fixed
 
@@ -73,7 +73,7 @@
   - A sentinel test records that upstream `extract()` is corrupted in that state, and skips itself if PyMuPDF ever fixes it.
   - Both call-site tests **fail on the previous code**: checked by reverting the fix.
 
-## Unreleased — JSON output no longer collapses a multi-page document to one page
+## 1.8.8 (2026-11-19) — JSON output no longer collapses a multi-page document to one page
 
 ### Fixed
 
@@ -87,7 +87,7 @@
 - **`tests/test_json_formatter.py`** (5 cases) — pins that supplied `page_entries` are authoritative, that a `"\n\n"`-joined `content` is never re-split into one page, that the separator fallback and single-blob fallback still work, and that control characters are stripped from per-page text.
 - **`test_process_json_per_page_not_collapsed`** in `tests/test_pipeline.py` — end-to-end regression asserting `len(pages) == page_count` on the 5-page fixture.
 
-## Unreleased — stop the heading detector from shredding display-type pages
+## 1.8.8 (2026-11-19) — stop the heading detector from shredding display-type pages
 
 ### Fixed
 
@@ -103,7 +103,7 @@
 
 - **`TestOverInjectionGuards` in `tests/test_headings.py`** — 8 cases pinning the three guards, with real-heading survivors (`Introduction`, `Our contributors`, `ESG top picks`) asserted alongside the demoted false positives, drawn from the Wealth Report fixtures.
 
-## Unreleased — port the MCP server to mcp 2.x; retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
+## 1.8.8 (2026-11-19) — port the MCP server to mcp 2.x; retract "Gemma 4"; drop the phantom `pdfmux[arabic]` extra; de-flake the CLI tests
 
 ### Changed — **breaking for the `[serve]` extra**
 
