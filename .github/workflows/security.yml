@@ -8,9 +8,15 @@ on:
   schedule:
     - cron: '23 8 * * 1'  # Weekly Monday 8:23am UTC
 
+# Supersede stale runs on the same ref instead of queueing them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

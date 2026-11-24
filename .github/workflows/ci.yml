@@ -6,9 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+# Supersede stale runs on the same ref instead of queueing them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -20,6 +26,7 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: lint
     steps:
       - uses: actions/checkout@v7
@@ -31,6 +38,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: lint
     strategy:
       matrix:
@@ -45,6 +53,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: test
     steps:
       - uses: actions/checkout@v7
