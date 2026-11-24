@@ -16,6 +16,7 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
+from pdfmux.render import render_pixmap
 from pdfmux.types import WeakRegion
 
 logger = logging.getLogger(__name__)
@@ -116,9 +117,7 @@ def ocr_region(
     clip_rect = fitz.Rect(region.bbox)
 
     # Render just the clipped region at target DPI
-    zoom = dpi / 72.0
-    mat = fitz.Matrix(zoom, zoom)
-    pix = page.get_pixmap(matrix=mat, clip=clip_rect)
+    pix = render_pixmap(page, dpi, clip=clip_rect)
 
     # Convert to bytes for OCR
     img_bytes = pix.tobytes("png")

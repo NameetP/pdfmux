@@ -31,6 +31,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from pdfmux.extractors import register
+from pdfmux.render import render_pixmap
 from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ class LLMExtractor:
 
         for page_num in page_range:
             page = doc[page_num]
-            pix = page.get_pixmap(dpi=200)
+            pix = render_pixmap(page, 200)
 
             # Render page to PNG bytes
             tmp_path = None

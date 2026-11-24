@@ -47,6 +47,8 @@ def ocr_image_to_table(
     try:
         import fitz
         from rapidocr import RapidOCR
+
+        from pdfmux.render import render_pixmap
     except ImportError:
         return None
 
@@ -58,9 +60,7 @@ def ocr_image_to_table(
         page = doc[page_num]
         clip = fitz.Rect(*image_bbox)
 
-        zoom = dpi / 72.0
-        mat = fitz.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat, clip=clip)
+        pix = render_pixmap(page, dpi, clip=clip)
         img_bytes = pix.tobytes("png")
 
         engine = RapidOCR()

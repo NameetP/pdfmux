@@ -16,6 +16,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from pdfmux.extractors import register
+from pdfmux.render import render_pixmap
 from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ class OCRExtractor:
 
         for page_num in page_range:
             page = doc[page_num]
-            pix = page.get_pixmap(dpi=300)
+            pix = render_pixmap(page, 300)
 
             tmp_path = None
             try:
