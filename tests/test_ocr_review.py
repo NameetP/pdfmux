@@ -262,3 +262,54 @@ class TestPipelineIntegration:
         assert "review_flags" not in json.loads(format_json("hello"))
         flagged = json.loads(format_json("hello", review_flags=[{"page": 1}]))
         assert flagged["review_flags"] == [{"page": 1}]
+
+
+class TestCacheIsVersioned:
+    """A result cached by an older pdfmux must not hide this version's flags."""
+
+    def test_key_changes_with_version(self, monkeypatch):
+        from pdfmux import result_cache
+
+        kw = dict(pdf_hash="abc", quality="standard", output_format="json", schema=None)
+        monkeypatch.setattr(result_cache, "_pdfmux_version", lambda: "1.8.9")
+        old = result_cache._build_key(**kw)
+        monkeypatch.setattr(result_cache, "_pdfmux_version", lambda: "1.8.10")
+        new = result_cache._build_key(**kw)
+        assert old[0] != new[0] and old[1] != new[1]
+
+    def test_key_is_stable_within_a_version(self):
+        from pdfmux import result_cache
+
+        kw = dict(pdf_hash="abc", quality="standard", output_format="json", schema=None)
+        assert result_cache._build_key(**kw) == result_cache._build_key(**kw)
+
+    def test_review_flags_survive_the_cache_round_trip(self):
+        from pdfmux.detect import PDFClassification
+        from pdfmux.pipeline import ConversionResult
+        from pdfmux.result_cache import _dict_to_result, _result_to_dict
+
+        flags = [{"page": 1, "kind": IMPLAUSIBLE_DATE, "text": "x", "reason": "y", "score": None}]
+        original = ConversionResult(
+            text="t",
+            format="json",
+            confidence=0.8,
+            extractor_used="rapidocr",
+            page_count=1,
+            warnings=[],
+            classification=PDFClassification(),
+            review_flags=flags,
+        )
+        assert _dict_to_result(_result_to_dict(original)).review_flags == flags
+
+
+class TestStreaming:
+    def test_streamed_ocr_page_carries_flags(self, tmp_path):
+        pytest.importorskip("rapidocr")
+        from pdfmux.streaming import process_streaming
+
+        events = list(process_streaming(TestPipelineIntegration()._scan(tmp_path)))
+        ocr_pages = [e for e in events if e.type == "page" and e.data.get("ocr_applied")]
+        assert ocr_pages, "scan should have been OCR'd"
+        flags = ocr_pages[0].data["review_flags"]
+        assert any(f["kind"] == IMPLAUSIBLE_DATE and "2096" in f["text"] for f in flags)
+        assert "2096" in ocr_pages[0].data["text"]
