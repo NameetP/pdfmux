@@ -68,6 +68,8 @@ class PageOCRResult:
     runtime_seconds: float
     success: bool
     error: str | None = None
+    # (line, score) pairs when the extractor reports per-line confidence.
+    lines: tuple[tuple[str, float], ...] = ()
 
 
 def parallel_ocr(
@@ -155,11 +157,17 @@ def parallel_ocr(
 def _ocr_one_page(extractor, file_path: Path, page_num: int) -> PageOCRResult:
     """OCR a single page. Runs inside a thread."""
     start = time.perf_counter()
-    text = extractor.extract_page(file_path, page_num)
+    lines: tuple[tuple[str, float], ...] = ()
+    if hasattr(extractor, "extract_page_lines"):
+        lines = tuple(extractor.extract_page_lines(file_path, page_num))
+        text = "\n".join(t for t, _ in lines)
+    else:
+        text = extractor.extract_page(file_path, page_num)
     elapsed = time.perf_counter() - start
     return PageOCRResult(
         page_num=page_num,
         text=text,
         runtime_seconds=elapsed,
         success=True,
+        lines=lines,
     )

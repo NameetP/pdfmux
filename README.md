@@ -680,6 +680,33 @@ Page 4: 32% confidence. 0 chars extracted from image-heavy page.
   -> Install pdfmux[ocr] for RapidOCR support on 6 image-heavy pages.
 ```
 
+### OCR review flags
+
+OCR text is for search, not a record. pdfmux never corrects what it reads, but it
+tells you which readings to check against the original page:
+
+- **Low-confidence lines**: RapidOCR scores every line. Lines under 0.92 are flagged
+  (`PDFMUX_OCR_MIN_LINE_SCORE` to change it, `0` to turn it off).
+- **Dates that cannot be right**: impossible (`31/02/1985`), before 1900, more than
+  10 years ahead, or later than today when the nearest label is a past event
+  ("collected", "DOB", "reported"). "Next", "due", "valid until", "expiry" and
+  "appointment" make a future date expected. This check also catches confident
+  one-digit misreads, such as 2026 read as 2096.
+
+```
+⚠ Page 1: OCR "12/03/2096" is more than 10 years in the future — check the original ("Collected on 12/03/2096")
+```
+
+JSON output adds a `review_flags` list (`page`, `kind`, `text`, `reason`, `score`) when
+there is anything to check. Use it to decide what to check first. It does not tell you
+what to skip: a confident reading can still be wrong.
+
+### Memory
+
+OCR needs about 1.3 GB per worker process. `PDFMUX_OCR_WORKERS` (default 4) sets how many
+pages are OCR'd at once. Use `1` on hosts with less than 2 GB free.
+`PDFMUX_MAX_RENDER_PIXELS` (default 16 MP) caps page renders.
+
 ## Cost Modes
 
 | Mode | Behavior | Typical cost |

@@ -150,6 +150,15 @@ def _normalise_schema(schema: str | None) -> str:
     return "preset:" + schema
 
 
+def _pdfmux_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("pdfmux")
+    except Exception:
+        return "unknown"
+
+
 def _build_key(
     *,
     pdf_hash: str,
@@ -157,10 +166,16 @@ def _build_key(
     output_format: str,
     schema: str | None,
 ) -> tuple[str, str]:
-    """Return (filename, composite_key_str) for an entry."""
+    """Return (filename, composite_key_str) for an entry.
+
+    The pdfmux version is part of the key: an upgrade that changes output
+    (new warnings, review flags, better OCR) must not be masked by a result
+    cached by the previous version.
+    """
     schema_token = _normalise_schema(schema)
-    composite = f"{pdf_hash}|{quality}|{output_format}|{schema_token}"
-    short_schema = _hash_str(schema_token)[:8]
+    version = _pdfmux_version()
+    composite = f"{pdf_hash}|{quality}|{output_format}|{schema_token}|{version}"
+    short_schema = _hash_str(f"{schema_token}|{version}")[:8]
     fname = f"{pdf_hash}__{quality}__{output_format}__{short_schema}.json"
     return fname, composite
 
@@ -209,6 +224,7 @@ def _dict_to_result(data: dict[str, Any]) -> Any:
         warnings=list(data.get("warnings") or []),
         classification=classification,
         ocr_pages=list(data.get("ocr_pages") or []),
+        review_flags=list(data.get("review_flags") or []),
     )
 
 

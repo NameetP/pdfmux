@@ -27,6 +27,7 @@ def format_json(
     key_values: list | None = None,
     structured: dict | None = None,
     page_entries: list[dict] | None = None,
+    review_flags: list[dict] | None = None,
 ) -> str:
     """Format extracted text as structured JSON with locked schema.
 
@@ -47,6 +48,8 @@ def format_json(
             this is authoritative — the per-page split is NOT reconstructed by
             slicing ``content``. Callers that don't have per-page data omit it
             and fall back to separator-splitting (single blob when none found).
+        review_flags: OCR readings to check against the original page
+            (``ReviewFlag.to_dict()`` entries). Emitted only when non-empty.
 
     Returns:
         JSON string with text and metadata.
@@ -98,6 +101,9 @@ def format_json(
         output["key_values"] = key_values
     if structured:
         output["structured"] = structured
+    # OCR readings to check against the original page; present only when there are any.
+    if review_flags:
+        output["review_flags"] = review_flags
 
     return json.dumps(output, indent=2, ensure_ascii=False)
 

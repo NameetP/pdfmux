@@ -93,11 +93,13 @@ def _classification_to_page_types(c: PDFClassification) -> list[str]:
     return types
 
 
-def _ocr_page(file_path: Path, page_num: int, current_text: str) -> tuple[str, str] | None:
+def _ocr_page(file_path: Path, page_num: int, current_text: str) -> tuple[str, str, tuple] | None:
     """Re-extract a single page with OCR/LLM fall-throughs.
 
-    Returns ``(text, extractor_name)`` on success, ``None`` if no extractor
-    produced better text than ``current_text``.
+    Returns ``(text, extractor_name, review_flags)`` on success, ``None`` if no
+    extractor produced better text than ``current_text``. ``review_flags`` is
+    RapidOCR's line-scored review (empty for other engines; the caller adds
+    date checks).
     """
     # 1) RapidOCR
     try:
@@ -108,7 +110,7 @@ def _ocr_page(file_path: Path, page_num: int, current_text: str) -> tuple[str, s
             results = list(ocr.extract(file_path, pages=[page_num]))
             if results and results[0].text.strip():
                 if len(results[0].text.strip()) > len(current_text.strip()):
-                    return results[0].text, "rapidocr"
+                    return results[0].text, "rapidocr", results[0].review_flags
     except Exception as e:
         logger.debug("RapidOCR streaming page %d failed: %s", page_num, e)
 
@@ -121,7 +123,7 @@ def _ocr_page(file_path: Path, page_num: int, current_text: str) -> tuple[str, s
             results = list(ocr_legacy.extract(file_path, pages=[page_num]))
             if results and results[0].text.strip():
                 if len(results[0].text.strip()) > len(current_text.strip()):
-                    return results[0].text, "surya"
+                    return results[0].text, "surya", ()
     except Exception as e:
         logger.debug("Surya streaming page %d failed: %s", page_num, e)
 
@@ -134,7 +136,7 @@ def _ocr_page(file_path: Path, page_num: int, current_text: str) -> tuple[str, s
             results = list(llm.extract(file_path, pages=[page_num]))
             if results and results[0].text.strip():
                 if len(results[0].text.strip()) > len(current_text.strip()):
-                    return results[0].text, "gemini"
+                    return results[0].text, "gemini", ()
     except Exception as e:
         logger.debug("LLM streaming page %d failed: %s", page_num, e)
 
@@ -298,8 +300,10 @@ def process_streaming(
                 )
                 continue
 
-            ocr_text, ocr_name = ocr_attempt
+            ocr_text, ocr_name, ocr_flags = ocr_attempt
             extractors_used.add(ocr_name)
+            from pdfmux.ocr_review import review_text
+
             new_pr = PageResult(
                 page_num=page_num,
                 text=ocr_text,
@@ -308,6 +312,7 @@ def process_streaming(
                 extractor=ocr_name,
                 image_count=pa.image_count,
                 ocr_applied=True,
+                review_flags=ocr_flags or review_text(page_num, ocr_text),
             )
             page_results[page_num] = new_pr
             ocr_pages.append(page_num)
@@ -321,6 +326,7 @@ def process_streaming(
                     "extractor": new_pr.extractor,
                     "ocr_applied": True,
                     "image_count": new_pr.image_count,
+                    "review_flags": [f.to_dict() for f in new_pr.review_flags],
                 },
             )
 

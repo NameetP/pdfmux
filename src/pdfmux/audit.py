@@ -208,6 +208,13 @@ def compute_document_confidence(
             first_five = ", ".join(str(p.page_num + 1) for p in empty_pages[:5])
             warnings.append(f"{len(empty_pages)} empty pages detected (first 5: {first_five}, ...)")
 
+    # OCR readings to check against the original page
+    flags = [f for p in pages for f in getattr(p, "review_flags", ())]
+    if flags:
+        from pdfmux.ocr_review import flags_to_warnings
+
+        warnings.extend(flags_to_warnings(flags))
+
     # Sparse page detection (non-empty but low text)
     sparse = [p for p in pages if 20 <= p.char_count < 100]
     if sparse and len(sparse) / len(pages) > 0.25:

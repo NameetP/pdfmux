@@ -130,6 +130,8 @@ class ConversionResult:
     warnings: list[str]
     classification: PDFClassification
     ocr_pages: list[int] = field(default_factory=list)
+    # OCR readings to check against the original page (ReviewFlag.to_dict() entries).
+    review_flags: list[dict] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +289,11 @@ def process(
     except Exception:
         pass  # telemetry should never break extraction
 
+    # Step 2.9: OCR review flags. Any OCR'd page not already reviewed (Surya, LLM
+    # vision, cached results) still gets the date sanity check. Text is never changed.
+    pages = _ensure_review_flags(pages, ocr_pages)
+    review_flags = [f.to_dict() for p in pages for f in p.review_flags]
+
     # Step 3: Compute confidence
     unrecovered = sum(
         1 for p in pages if p.quality in (PageQuality.BAD, PageQuality.EMPTY) and not p.ocr_applied
@@ -429,6 +436,7 @@ def process(
         key_values=structured_kvs,
         structured=structured_output,
         page_entries=page_entries,
+        review_flags=review_flags,
     )
 
     # Cleanup: close cached PDF handles
@@ -448,6 +456,7 @@ def process(
         warnings=warnings,
         classification=classification,
         ocr_pages=ocr_pages,
+        review_flags=review_flags,
     )
 
     # Persist to the smart cache for next time.
@@ -1037,6 +1046,8 @@ def _multipass_extract(
     # Pass 2: Re-extract bad/empty pages with OCR
     all_pages_needing_ocr = audit.bad_pages + audit.empty_pages
     ocr_results: dict[int, str] = {}
+    # Line-scored review flags for pages RapidOCR read (see pdfmux.ocr_review).
+    ocr_line_flags: dict[int, tuple] = {}
     ocr_name = ""
     budget_warnings: list[str] = []
 
@@ -1115,6 +1126,10 @@ def _multipass_extract(
                 elif page_audit.quality == "bad":
                     if len(ocr_text.strip()) > len(page_audit.text.strip()):
                         ocr_results[page_num] = ocr_text
+                if ocr_results.get(page_num) == ocr_text and page_ocr.lines:
+                    from pdfmux.ocr_review import review_page
+
+                    ocr_line_flags[page_num] = review_page(page_num, page_ocr.lines)
 
             ocr_name = "rapidocr"
     except Exception:
@@ -1183,9 +1198,13 @@ def _multipass_extract(
 
         _fitz_doc = _fitz.open(str(file_path))
 
+    from pdfmux.ocr_review import review_text as _review_text
+
     for fp in fast_pages:
         if fp.page_num in ocr_results:
             ocr_text = ocr_results[fp.page_num]
+            # Scored flags from RapidOCR; date checks only for engines without line scores.
+            flags = ocr_line_flags.get(fp.page_num) or _review_text(fp.page_num, ocr_text)
             if fp.page_num < len(_fitz_doc):
                 ocr_text = _inject_headings(ocr_text, _fitz_doc[fp.page_num])
             merged_pages.append(
@@ -1197,6 +1216,7 @@ def _multipass_extract(
                     extractor=ocr_name or "ocr",
                     image_count=fp.image_count,
                     ocr_applied=True,
+                    review_flags=flags,
                 )
             )
         else:
@@ -1223,6 +1243,23 @@ def _multipass_extract(
     )
 
     return merged_pages, name, ocr_page_list
+
+
+def _ensure_review_flags(pages: list[PageResult], ocr_pages: list[int] | None) -> list[PageResult]:
+    """Date-check OCR'd pages that carry no review flags yet."""
+    from dataclasses import replace
+
+    from pdfmux.ocr_review import review_text
+
+    ocr_set = set(ocr_pages or [])
+    out: list[PageResult] = []
+    for p in pages:
+        if (p.ocr_applied or p.page_num in ocr_set) and not p.review_flags:
+            flags = review_text(p.page_num, p.text)
+            if flags:
+                p = replace(p, review_flags=flags)
+        out.append(p)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1327,6 +1364,7 @@ def _format_output(
     key_values: list[dict] | None = None,
     structured: dict | None = None,
     page_entries: list[dict] | None = None,
+    review_flags: list[dict] | None = None,
 ) -> str:
     """Format the processed text into the requested output format."""
     if output_format == OutputFormat.MARKDOWN:
@@ -1357,6 +1395,7 @@ def _format_output(
             key_values=key_values,
             structured=structured,
             page_entries=page_entries,
+            review_flags=review_flags,
         )
 
     if output_format == OutputFormat.LLM:
