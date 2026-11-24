@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — review flags you can locate, track and export; table, number and ambiguous-date checks
+## 1.9.0 (2026-11-24) — review flags you can locate, track and export; table, number and ambiguous-date checks
 
 Built from a field report on a ~150-PDF family medical archive (lab reports, imaging and ECG scans, insurance forms). The rule does not change: **extracted text is never corrected.** Flags rank what to check first; an unflagged line is not a verified line, and JSON output now says so in `review_note`.
 
