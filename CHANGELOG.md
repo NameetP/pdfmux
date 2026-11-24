@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — scanned tables: rows and columns rebuilt from OCR box positions
+## 1.9.1 (2026-11-24) — scanned tables: rows and columns rebuilt from OCR box positions
 
 Follow-up from the same medical-archive field report, retested on 1.9.0: `table_cell` never fired on real scans, and `8:02` for `8.02` still passed.
 
