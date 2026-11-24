@@ -72,6 +72,7 @@ def format_json(
                 # Lines as the OCR engine read them (index, text, score, bbox); present
                 # only on OCR'd pages whose engine reports lines.
                 **({"ocr_lines": p["ocr_lines"]} if p.get("ocr_lines") else {}),
+                **({"ocr_tables": p["ocr_tables"]} if p.get("ocr_tables") else {}),
             }
             for i, p in enumerate(page_entries)
         ]

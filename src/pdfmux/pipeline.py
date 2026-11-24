@@ -420,6 +420,8 @@ def process(
                 # Lines as the OCR engine read them: every review flag's line_index
                 # resolves here, including lines Markdown cleanup dropped from "text".
                 **({"ocr_lines": [ln.to_dict() for ln in p.ocr_lines]} if p.ocr_lines else {}),
+                # Tables rebuilt from OCR box positions; every cell keeps its own score + bbox.
+                **_ocr_tables_entry(p),
             }
             for p in pages
         ]
@@ -1275,6 +1277,20 @@ def _ensure_review_flags(pages: list[PageResult], ocr_pages: list[int] | None) -
 # ---------------------------------------------------------------------------
 # Formatting
 # ---------------------------------------------------------------------------
+
+
+def _ocr_tables_entry(page: PageResult) -> dict:
+    """``{"ocr_tables": [...]}`` for an OCR'd page whose boxes form tables, else ``{}``."""
+    if not page.ocr_lines:
+        return {}
+    try:
+        from pdfmux.ocr_review import find_ocr_tables
+
+        tables = find_ocr_tables(list(page.ocr_lines))
+    except Exception as e:  # never break JSON output over a layout heuristic
+        logger.debug("OCR table rebuild skipped on page %d: %s", page.page_num, e)
+        return {}
+    return {"ocr_tables": [t.to_dict() for t in tables]} if tables else {}
 
 
 def _kv_provenance(kv, page: PageResult | None) -> dict:

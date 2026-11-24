@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — scanned tables: rows and columns rebuilt from OCR box positions
+
+Follow-up from the same medical-archive field report, retested on 1.9.0: `table_cell` never fired on real scans, and `8:02` for `8.02` still passed.
+
+### Fixed
+
+- **Table checks never ran on scanned pages.** RapidOCR returns one box per run of text, not a table, so 1.9.0 only checked tables that a table extractor or Markdown had already built. Lab reports scanned as images never became tables. Boxes that share a baseline band now form a visual row, and 3+ rows whose boxes line up in 3+ column bands form a scanned table (`find_ocr_tables`). Its cells are checked like any table, and each `table_cell` flag points at the exact cell box: `anchor: {ocr_table, row, col}`, plus that cell's `line_index`, `bbox` and `score`.
+- **A misread number in a columned report was never checked.** In a lab table, "Glucose", "8:02" and "mmol/L" are separate boxes, so the unit check never saw a unit on the value's line. Number checks now also run across each visual row, and the flag names the row's label: `Glucose (fasting): "8:02" may be a decimal point read as a colon`. The text is unchanged.
+
+### Added
+
+- **Per-cell confidence for scanned tables:** JSON `pages[].ocr_tables` lists each rebuilt table with `header`, `bbox` and a grid of cells (`index`, `text`, `score`, `bbox`, or `null` for an empty cell).
+- Line-level `suspect_number` reasons now start with their label too (`Glucose: "8:02" …`).
+
+### Measured
+
+- Columned lab-report scan with faults planted: `8:02` (labelled), "see note" in the Result column, and two **real RapidOCR misreads** (`g/dL` read as `7p/6` at 0.952 and `mg/dL` as `79/dl`, both above the 0.92 line cutoff) are flagged; every correct cell is left alone.
+- Clean scanned letter, invoice (line-item table with blank cells and `1,500.00` amounts) and insurance form: no flags.
+
+
 ## 1.9.0 (2026-11-24) — review flags you can locate, track and export; table, number and ambiguous-date checks
 
 Built from a field report on a ~150-PDF family medical archive (lab reports, imaging and ECG scans, insurance forms). The rule does not change: **extracted text is never corrected.** Flags rank what to check first; an unflagged line is not a verified line, and JSON output now says so in `review_note`.
