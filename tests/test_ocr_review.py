@@ -532,14 +532,55 @@ class TestTables:
         text = "Intro\n\n| Test | Result |\n|---|---|\n| Hb | 13.2 |\n| WBC | 7.1 |\n\nAfter"
         assert pipe_tables(text) == [(["Test", "Result"], [["Hb", "13.2"], ["WBC", "7.1"]])]
 
-    def test_document_pass_checks_digital_tables(self):
+    def _table_page(self, ocr: bool):
         from pdfmux.types import ExtractedTable, PageQuality, PageResult
 
         rows = [*GOOD, ["RBC", "see note", "10^6/uL", "4.5-5.5"]]
         table = ExtractedTable(0, tuple(H), tuple(tuple(r) for r in rows), bbox=(1, 2, 3, 4))
-        page = PageResult(0, "digital", 0.9, PageQuality.GOOD, "fast", tables=(table,))
-        (flag,) = review_document([page], today=TODAY)[0]
+        return PageResult(0, "t", 0.9, PageQuality.GOOD, "x", ocr_applied=ocr, tables=(table,))
+
+    def test_document_pass_checks_ocr_tables(self):
+        (flag,) = review_document([self._table_page(True)], today=TODAY)[0]
         assert flag.kind == TABLE_CELL and flag.bbox == (1, 2, 3, 4)
+
+    def test_digital_tables_are_not_checked(self):
+        # Measured: 313 false flags on 31 digital filings before this rule.
+        assert review_document([self._table_page(False)], today=TODAY) == {}
+
+    def test_pipe_table_on_ocr_page(self):
+        from pdfmux.types import PageQuality, PageResult
+
+        text = "| Test | Result | Unit | Range |\n|---|---|---|---|\n" + "\n".join(
+            "| " + " | ".join(r) + " |" for r in [*GOOD, ["MCV", "fL", "80-100", ""]]
+        )
+        page = PageResult(0, text, 0.9, PageQuality.GOOD, "x", ocr_applied=True)
+        (flag,) = review_document([page], today=TODAY)[0]
+        assert flag.anchor == {"table": 0, "row": 4} and "moved one column right" in flag.reason
+
+    @pytest.mark.parametrize(
+        "cell",
+        ["(356)", "$1,234.50", "12%", "45†", "7¹", "1 234", "−3.2", "( 14 )", "<0.9", "4.9 H"],
+    )
+    def test_accounting_and_footnote_numbers(self, cell):
+        from pdfmux.ocr_review import _cell_type
+
+        assert _cell_type(cell) == "number"
+
+    @pytest.mark.parametrize("cell", ["$", ")%", "%", "—", "†", "(", "  "])
+    def test_fragments_are_ignored(self, cell):
+        from pdfmux.ocr_review import _cell_type
+
+        assert _cell_type(cell) is None
+
+    def test_financial_table_is_clean(self):
+        headers = ["Item", "2024", "2023", "Change"]
+        rows = [
+            ["Revenue", "$ 391,035", "$ 383,285", "2 %"],
+            ["Cost", "(210,352)", "(214,137)", "(2)%"],
+            ["Margin", "180,683", "169,148", "7%"],
+            ["Tax", "29,749", "16,741", "78 %"],
+        ]
+        assert review_table(0, 0, headers, rows) == ()
 
 
 class TestKeyValueProvenance:

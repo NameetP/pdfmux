@@ -696,7 +696,7 @@ tells you which readings to check against the original page:
 | `implausible_date` | Impossible (`31/02/1985`), before 1900, more than 10 years ahead, or later than today when the nearest label is a past event ("collected", "DOB", "reported"). "Next", "due", "valid until", "expiry" and "appointment" make a future date expected. Catches confident one-digit misreads such as 2026 read as 2096. |
 | `ambiguous_date` | `03/04/2026` when nothing in the document says day-first or month-first (one `25/12/…` anywhere settles it) |
 | `suspect_number` | On a line with a unit: a decimal point read as a colon (`8:02 mmol/L`), letters in a number (`1O.2`). Opt-in `PDFMUX_OCR_RANGE_CHECK=1`: a value 5x outside the reference range on its line |
-| `table_cell` | In any table: a cell that breaks its column's type (a word in a number column), or a row that only fits once moved one column over |
+| `table_cell` | In a table on an OCR'd page: a cell that breaks its column's type (a word in a number column), or a row that only fits once moved one column over |
 
 ```
 ⚠ Page 1: OCR "12/03/2096" is more than 10 years in the future — check the original ("Collected on 12/03/2096")

@@ -4,7 +4,7 @@ OCR output is searchable text, not a record. The rules here never change the
 extracted text. They rank what a reviewer should check first; an unflagged
 line is not a verified line.
 
-Checks (1-4 on OCR'd pages, 5 on every table):
+Checks, all on OCR'd pages:
 
 1. **Low-confidence lines.** RapidOCR scores every line. On degraded scans
    (5-8 pt print, heavy JPEG compression, 100-200 DPI) a 0.92 cutoff caught
@@ -25,7 +25,7 @@ Checks (1-4 on OCR'd pages, 5 on every table):
    is flagged. Opt-in (``PDFMUX_OCR_RANGE_CHECK=1``): a value more than 5x
    outside the reference range printed on its own line (a dropped decimal:
    ``Haemoglobin 132 g/dL 13-17``).
-5. **Table cells.** In any table (OCR'd or not), a cell whose type breaks its
+5. **Table cells.** In a table on an OCR'd page, a cell whose type breaks its
    column (a word in a number column) is flagged, and a row whose cells all fit
    once moved one column over is flagged as shifted.
 
@@ -127,7 +127,14 @@ _LETTER_NUM = re.compile(
 _RANGE = re.compile(r"(?P<lo>\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(?P<hi>\d+(?:\.\d+)?)", re.IGNORECASE)
 _VALUE_AFTER_LABEL = re.compile(r"[A-Za-z][^\d]*?(?<![\d.])(?P<v>\d+(?:\.\d+)?)(?![\d.:/])")
 
-_NUM_CELL = re.compile(r"^\s*[<>≤≥]?\s*[-+]?\d+(?:[.,]\d+)?\s*[HLhl*↑↓]?\s*$")
+# Numbers as tables print them: 13.2, <0.9, 4.9 H, (356), $1,234.50, 12%, 45†, 7¹
+_NUM_CELL = re.compile(
+    r"^\s*[<>≤≥]?\s*[-+−(]?\s*[$€£₹¥]?\s*\d{1,3}(?:[,\s]\d{3})*(?:[.,]\d+)?\s*\)?\s*%?"
+    r"\s*[HLhl*↑↓†‡§¹²³⁴⁵⁶⁷⁸⁹⁰]*\s*$|^\s*[<>≤≥]?\s*[-+−(]?\s*[$€£₹¥]?\s*\d+(?:[.,]\d+)?"
+    r"\s*\)?\s*%?\s*[HLhl*↑↓†‡§¹²³⁴⁵⁶⁷⁸⁹⁰]*\s*$"
+)
+# Punctuation and currency fragments left behind by cell splitting: not evidence of anything.
+_FRAGMENT = re.compile(r"^[\s$€£₹¥%()\-–—.,:;*†‡§]+$")
 _RANGE_CELL = re.compile(r"^\s*[<>≤≥]?\s*\d+(?:[.,]\d+)?\s*(?:(?:-|–|—|to)\s*\d+(?:[.,]\d+)?)?\s*$")
 
 
@@ -408,7 +415,7 @@ def _range_problems(line: str) -> list[str]:
 
 def _cell_type(cell: str) -> str | None:
     c = cell.strip()
-    if not c or c in {"-", "—", "–"}:
+    if not c or _FRAGMENT.match(c):
         return None
     if _NUM_CELL.match(c):
         return "number"
@@ -622,8 +629,7 @@ def review_document(
 ) -> dict[int, tuple[ReviewFlag, ...]]:
     """Whole-document review: flags keyed by page number.
 
-    Line checks (scores, dates, numbers) run on OCR'd pages; table checks run on
-    every page that has a table.
+    Everything runs on OCR'd pages only, tables included; digital pages get no flags.
 
     ``pages`` are :class:`pdfmux.types.PageResult`-like objects (``page_num``,
     ``text``, ``ocr_applied``, optional ``ocr_lines`` and ``tables``). The day/month
@@ -645,16 +651,18 @@ def review_document(
             flags.extend(
                 review_page(p.page_num, lines, today=today, date_order=order, check_ambiguous=True)
             )
-        # Tables are checked on every page: a value shifted into the wrong column is
-        # as wrong in a table extractor's output as in OCR.
+        if not is_ocr:
+            continue
+        # Tables only on OCR'd pages: on 31 real digital PDFs (10-Ks, FDA reports) the
+        # column-type check raised 313 flags on accounting layouts and footnote marks,
+        # none of them extraction errors. A column shift is an OCR failure mode.
         tables = [
             (list(t.headers), [list(r) for r in t.rows], t.bbox)
             for t in (getattr(p, "tables", ()) or ())
         ] or [(h, r, None) for h, r in pipe_tables(p.text)]
         for i, (headers, rows, bbox) in enumerate(tables):
             flags.extend(review_table(p.page_num, i, headers, rows, bbox))
-        if is_ocr or flags:
-            out[p.page_num] = _number(flags)
+        out[p.page_num] = _number(flags)
     return out
 
 
