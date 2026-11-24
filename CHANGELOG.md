@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — review flags you can locate, track and export; table, number and ambiguous-date checks
+
+Built from a field report on a ~150-PDF family medical archive (lab reports, imaging and ECG scans, insurance forms). The rule does not change: **extracted text is never corrected.** Flags rank what to check first; an unflagged line is not a verified line, and JSON output now says so in `review_note`.
+
+### Added
+
+- **Every flag can be found on its page.** RapidOCR's line boxes were thrown away; now each OCR line is kept as `PageResult.ocr_lines` (`index`, `text`, `score`, `bbox` in PDF points from the top-left of the visible page) and listed per page in JSON as `pages[].ocr_lines`. Each flag carries `line_index` and `bbox`, so it resolves to a spot on the page image even when Markdown cleanup dropped the line from `text` (the report found 17 of 176 flag texts missing from the body). Table flags carry `anchor: {table, row, col}`.
+- **Stable flag ids.** `review_flags[].id` (12 hex chars) is derived from page, kind, the line text and its anchor, so the same reading gets the same id on every run.
+- **`pdfmux review`: flags as tracked work.**
+  - `pdfmux review scan <folder|files>` converts each PDF and records its flags in `<folder>/.pdfmux-review.json`, keyed by the PDF's SHA-256. Re-running reports only **new**, **reopened** and **still open** flags; flags a reviewer resolved stay resolved, flags that no longer appear become `gone` (and reopen if they return). A moved or renamed file keeps its review. One broken PDF does not stop the folder, and the manifest is saved after every file.
+  - `pdfmux review resolve <id...> [--note] [--reopen]` (ids or unique 6+ character prefixes).
+  - `pdfmux review export [folder] [--format csv|json] [--state open|resolved|gone|all] [-o file]`: every flag in one spreadsheet-ready file, worst documents first.
+- **Ambiguous dates.** `03/04/2026` is 3 April or March 4. The day/month order is read from the whole document (any `25/12/…` settles day-first, `12/25/…` month-first). With no clue, each swappable date is flagged `ambiguous_date`; with both orders in one document, the flag says the document mixes them. A settled order also sharpens the existing date check: `Collected 05/12/2026` in a day-first document is 5 December, so later than today.
+- **Suspect numbers** (`suspect_number`), on result lines that carry a measurement unit: a decimal point read as a colon (`Glucose 8:02 mmol/L`) and letters inside numbers (`1O.2`, `13.l`, `I.02`). Times, titres (`1:80`) and lines without a unit are left alone. Opt-in with `PDFMUX_OCR_RANGE_CHECK=1`: a value more than 5x outside the reference range printed on its own line (`Haemoglobin 132 g/dL 13-17`, a dropped decimal). Off by default because real results can be that far out (a CRP of 120 against 0-5).
+- **Table cells** (`table_cell`), on tables from OCR'd pages: a column's type (number, range, unit) is inferred from its cells, and a cell that breaks it is flagged (`"see note" in the number column "Result"`). A row whose cells only fit once moved one column over is flagged once as shifted rather than cell by cell. Cells marked `H`/`L`/`*`, `<`/`>` values, accounting numbers (`(356)`, `$1,234`, `12%`, footnote marks like `45†`), stray `$`/`%` fragments and tables under 3 rows are not flagged. Digital pages are not checked: on 31 real digital filings the check raised 313 flags on accounting layouts and footnote marks, none of them extraction errors. On 755 degraded OCR lab-report lines the new checks flagged no correct line.
+- **Key-value fields carry their reliability.** On OCR'd pages each `key_values` entry gets `confidence` (lowest score of the OCR lines it came from), `line_index`, and `flags` (ids of review flags on those lines). Digital pages are unchanged: their text layer has no OCR score.
+
+### Changed
+
+- Review flags are computed once per document in `process()` (dates need the whole document to know day/month order). Extractors still attach per-page flags for direct and streaming use.
+- Flag warnings now group: dates and numbers listed individually (up to 10), ambiguous dates as one summary line, table cells and low-confidence lines summarised per page.
+
+### Fixed
+
+- The 1.8.8 entry for `verify --check-numeric-literals` said "not yet published to PyPI". It has been on PyPI since 1.8.8.
+
+
 ## 1.8.10 (2026-11-24) — OCR review flags: low-confidence lines and dates that cannot be right
 
 ### Added
@@ -73,7 +100,7 @@
   - When passed, each page gets a conservative, format-normalizing comparison: numeric literals (thousands-grouped integers, decimals, or bare runs of 4+ digits) are counted in the source page text and in the extracted page text for that **same page**, independently. If a literal's source-page count exceeds its extracted-page count, the page gets a new `numeric_literal_review` flag and a `REVIEW` verdict (never `FAIL` on its own), with a structured `numeric_literal_findings` entry per page naming the literal (raw + normalized form), source count, and extracted count — presence/count only, no claim about which row/column/period the value belongs to.
   - **Format-normalized by design**, per the issue's own request: `"1,348,243,150"`, `"1348243150"`, and `"1,348,243,150.00"` all normalize to the same comparison value, so reformatting alone never raises a finding. Counting is **per page**, so a value repeated across pages (e.g. a running total on p.1 and p.2) with only one page's occurrence dropped flags only that page.
   - **Strictly opt-in and backward-compatible — default `verify`/`verify --strict` behavior is byte-identical to before this change** for any caller that does not pass the new flag. `verify_extraction()`, `verify_batch()`, and `verify_with_engine()` all gained a `check_numeric_literals: bool = False` keyword for library callers.
-  - Not yet published to PyPI — this ships to `main` only; publishing is a separate Tier-2 founder action (version bump + `twine check`), same gate as the pending npm-wrapper fix below.
+  - Published to PyPI in 1.8.8 (2026-11-19). (This line said "not yet published" until 2026-11-24; the flag has been on PyPI since 1.8.8.)
 
 ### Added — tests
 

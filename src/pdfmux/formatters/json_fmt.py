@@ -44,7 +44,8 @@ def format_json(
         key_values: Key-value pairs extracted from non-table regions.
         structured: Schema-mapped structured output (if schema was provided).
         page_entries: True per-page structures from the pipeline, each a dict
-            with ``page`` (1-indexed), ``text``, and ``ocr``. When supplied,
+            with ``page`` (1-indexed), ``text``, ``ocr`` and, on OCR'd pages,
+            ``ocr_lines``. When supplied,
             this is authoritative — the per-page split is NOT reconstructed by
             slicing ``content``. Callers that don't have per-page data omit it
             and fall back to separator-splitting (single blob when none found).
@@ -68,6 +69,9 @@ def format_json(
                 "page": int(p.get("page", i + 1)),
                 "text": _CONTROL_CHAR_RE.sub("", p.get("text", "")),
                 "ocr": bool(p.get("ocr", (int(p.get("page", i + 1)) - 1) in ocr_set)),
+                # Lines as the OCR engine read them (index, text, score, bbox); present
+                # only on OCR'd pages whose engine reports lines.
+                **({"ocr_lines": p["ocr_lines"]} if p.get("ocr_lines") else {}),
             }
             for i, p in enumerate(page_entries)
         ]
@@ -104,6 +108,10 @@ def format_json(
     # OCR readings to check against the original page; present only when there are any.
     if review_flags:
         output["review_flags"] = review_flags
+    if review_flags or ocr_pages:
+        from pdfmux.ocr_review import REVIEW_NOTE
+
+        output["review_note"] = REVIEW_NOTE
 
     return json.dumps(output, indent=2, ensure_ascii=False)
 

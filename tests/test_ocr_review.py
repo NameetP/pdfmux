@@ -202,7 +202,7 @@ class TestWarnings:
         ]
         warnings = flags_to_warnings(flags)
         assert len(warnings) == 11
-        assert warnings[-1].startswith("4 more OCR dates to check")
+        assert warnings[-1].startswith("4 more OCR dates or numbers to check")
 
     def test_long_lines_are_clipped(self):
         (w,) = flags_to_warnings(review_page(0, [("x" * 300, 0.1)], today=TODAY))
@@ -313,3 +313,330 @@ class TestStreaming:
         flags = ocr_pages[0].data["review_flags"]
         assert any(f["kind"] == IMPLAUSIBLE_DATE and "2096" in f["text"] for f in flags)
         assert "2096" in ocr_pages[0].data["text"]
+
+
+# ---------------------------------------------------------------------------
+# 1.9.0: anchors, ids, ambiguous dates, numbers, tables, key-value provenance
+# ---------------------------------------------------------------------------
+
+from pdfmux.ocr_review import (  # noqa: E402
+    AMBIGUOUS_DATE,
+    REVIEW_NOTE,
+    SUSPECT_NUMBER,
+    TABLE_CELL,
+    OCRLine,
+    ambiguous_dates,
+    detect_date_order,
+    number_problems,
+    pipe_tables,
+    review_document,
+    review_table,
+)
+
+
+class TestAnchorsAndIds:
+    def test_flag_carries_line_index_and_bbox(self):
+        line = OCRLine(7, "Collected on 12/03/2096", 0.99, (10.0, 20.0, 200.0, 32.0))
+        (flag,) = review_page(0, [line], today=TODAY)
+        d = flag.to_dict()
+        assert d["line_index"] == 7 and d["bbox"] == [10.0, 20.0, 200.0, 32.0]
+
+    def test_ids_are_stable_and_distinct(self):
+        lines = [OCRLine(0, "Collected 12/03/2096", 0.99), OCRLine(1, "TSH 2.5", 0.4)]
+        a = review_page(0, lines, today=TODAY)
+        b = review_page(0, lines, today=TODAY)
+        assert [f.id for f in a] == [f.id for f in b]
+        assert len({f.id for f in a}) == len(a) == 2
+        assert all(len(f.id) == 12 for f in a)
+
+    def test_id_depends_on_page_and_kind(self):
+        a = review_page(0, [("Collected 12/03/2096", 0.5)], today=TODAY)
+        b = review_page(1, [("Collected 12/03/2096", 0.5)], today=TODAY)
+        assert {f.id for f in a}.isdisjoint({f.id for f in b})
+        assert len({f.id for f in a}) == 2  # date + low confidence on one line
+
+    def test_identical_lines_get_distinct_ids(self):
+        flags = review_page(0, [("TSH 2.5", 0.4), ("TSH 2.5", 0.4)], today=TODAY)
+        assert len({f.id for f in flags}) == 2
+
+    def test_ocr_line_to_dict(self):
+        assert OCRLine(0, "x", 0.98765, (1.234, 2.0, 3.0, 4.0)).to_dict() == {
+            "index": 0,
+            "text": "x",
+            "score": 0.988,
+            "bbox": [1.2, 2.0, 3.0, 4.0],
+        }
+
+    def test_review_note_says_unflagged_is_not_verified(self):
+        assert "not a verified line" in REVIEW_NOTE and "never corrected" in REVIEW_NOTE
+
+
+class TestDateOrder:
+    @pytest.mark.parametrize(
+        "texts,order",
+        [
+            (["Collected 25/12/2025"], "dmy"),
+            (["Collected 12/25/2025"], "mdy"),
+            (["03/04/2026"], None),
+            (["25/12/2025", "12/25/2025"], "mixed"),
+            (["2026-03-04", "12 March 2026"], None),
+        ],
+    )
+    def test_detect(self, texts, order):
+        assert detect_date_order(texts) == order
+
+    def test_ambiguous_without_clue(self):
+        (reason,) = ambiguous_dates("Date: 03/04/2026", None)
+        assert "3 April 2026 or 4 March 2026" in reason
+
+    @pytest.mark.parametrize("line", ["Date: 25/12/2026", "Date: 03/03/2026", "2026-03-04"])
+    def test_not_ambiguous(self, line):
+        assert ambiguous_dates(line, None) == []
+
+    def test_settled_order_suppresses_ambiguity(self):
+        assert ambiguous_dates("Date: 03/04/2026", "dmy") == []
+        assert ambiguous_dates("Date: 03/04/2026", "mdy") == []
+
+    def test_mixed_order_says_so(self):
+        (reason,) = ambiguous_dates("Date: 03/04/2026", "mixed")
+        assert "mixes day-first and month-first" in reason
+
+    def test_settled_order_sharpens_future_check(self):
+        # 05/12/2026 is 5 Dec (future) day-first, 12 May (past) month-first.
+        assert date_problems("Collected 05/12/2026", TODAY, "dmy")
+        assert date_problems("Collected 05/12/2026", TODAY, "mdy") == []
+        assert date_problems("Collected 05/12/2026", TODAY, None) == []
+
+    def test_wrong_order_date_is_impossible(self):
+        problems = date_problems("Collected 05/13/2026", TODAY, "dmy")
+        assert problems and "not a real calendar date" in problems[0]
+
+    def test_document_pass_uses_clue_from_another_page(self):
+        from pdfmux.types import PageQuality, PageResult
+
+        pages = [
+            PageResult(0, "DOB 25/12/1980", 0.9, PageQuality.GOOD, "fast"),  # digital, clue
+            PageResult(1, "Date: 03/04/2026", 0.9, PageQuality.GOOD, "x", ocr_applied=True),
+        ]
+        assert review_document(pages, today=TODAY) == {1: ()}
+
+    def test_document_pass_flags_ambiguous_without_clue(self):
+        from pdfmux.types import PageQuality, PageResult
+
+        pages = [PageResult(0, "Date: 03/04/2026", 0.9, PageQuality.GOOD, "x", ocr_applied=True)]
+        (flag,) = review_document(pages, today=TODAY)[0]
+        assert flag.kind == AMBIGUOUS_DATE and flag.line_index == 0
+
+
+class TestNumbers:
+    @pytest.mark.parametrize(
+        "line,needle",
+        [
+            ("Glucose (fasting) 8:02 mmol/L 3.9-5.5", '"8:02" may be a decimal point'),
+            ("Haemoglobin 1O.2 g/dL", '"1O.2" mixes letters'),
+            ("Haemoglobin 13.l g/dL", '"13.l" mixes letters'),
+            ("Creatinine I.02 mg/dL", '"I.02" mixes letters'),
+        ],
+    )
+    def test_flagged(self, line, needle):
+        problems = number_problems(line, range_check=False)
+        assert problems and needle in problems[0]
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Glucose 8.02 mmol/L 3.9-5.5",
+            "Collected at 08:30",  # time, no unit
+            "Sample time 08:30 ml",  # time label wins even with a unit
+            "ANA titre 1:80",
+            "ANA 1:160 IU/mL",  # titre shape
+            "HbA1c 6.2 %",
+            "Vitamin B12 450 pg/mL",
+            "Ref no 12:30",  # no unit: not a result line
+            "WBC 7.1 x10^3/uL",
+        ],
+    )
+    def test_clean(self, line):
+        assert number_problems(line, range_check=False) == []
+
+    def test_range_check_is_opt_in(self, monkeypatch):
+        line = "Haemoglobin 132 g/dL 13-17"
+        monkeypatch.delenv("PDFMUX_OCR_RANGE_CHECK", raising=False)
+        assert number_problems(line) == []
+        monkeypatch.setenv("PDFMUX_OCR_RANGE_CHECK", "1")
+        (problem,) = number_problems(line)
+        assert "Haemoglobin 132" in problem and "13-17" in problem
+
+    @pytest.mark.parametrize(
+        "line",
+        ["Haemoglobin 13.2 g/dL 13-17", "Ferritin 900 ng/mL 30-400", "Glucose 5.1 mmol/L"],
+    )
+    def test_range_check_quiet_on_plausible_values(self, line):
+        assert number_problems(line, range_check=True) == []
+
+    def test_range_check_low_side(self):
+        assert number_problems("Haemoglobin 1.3 g/dL 13-17", range_check=True)
+
+    def test_number_flag_from_page_review(self):
+        (flag,) = review_page(0, [OCRLine(3, "Glucose 8:02 mmol/L", 0.99)], today=TODAY)
+        assert flag.kind == SUSPECT_NUMBER and flag.line_index == 3
+        assert "8:02" in flag.text  # never rewritten to 8.02
+
+
+H = ["Test", "Result", "Unit", "Range"]
+GOOD = [
+    ["Haemoglobin", "13.2", "g/dL", "13-17"],
+    ["WBC", "7.1", "10^3/uL", "4-11"],
+    ["Platelets", "250", "10^3/uL", "150-400"],
+    ["MCH", "29.1", "pg", "27-32"],
+]
+
+
+class TestTables:
+    def test_clean_table_has_no_flags(self):
+        assert review_table(0, 0, H, GOOD) == ()
+
+    def test_word_in_value_column(self):
+        rows = [*GOOD, ["RBC", "see note", "10^6/uL", "4.5-5.5"]]
+        (flag,) = review_table(0, 0, H, rows)
+        assert flag.kind == TABLE_CELL
+        assert flag.anchor == {"table": 0, "row": 4, "col": 1}
+        assert '"see note" in the number column "Result"' in flag.reason
+
+    def test_shifted_row_is_one_flag(self):
+        rows = [*GOOD, ["MCV", "fL", "80-100", ""]]  # value dropped, row slid left
+        (flag,) = review_table(0, 0, H, rows)
+        assert flag.anchor == {"table": 0, "row": 4}
+        assert "moved one column right" in flag.reason
+
+    def test_number_in_unit_column(self):
+        rows = [*GOOD, ["MCHC", "g/dL", "33.0", "32-36"]]  # swapped value and unit
+        flags = review_table(0, 0, H, rows)
+        assert {f.anchor["col"] for f in flags} == {1, 2}
+
+    def test_only_affected_cells_are_flagged(self):
+        rows = [*GOOD, ["RBC", "see note", "10^6/uL", "4.5-5.5"], *GOOD]
+        flags = review_table(0, 0, H, rows)
+        assert [f.anchor["row"] for f in flags] == [4]
+
+    def test_small_or_text_tables_are_skipped(self):
+        assert review_table(0, 0, H, GOOD[:2]) == ()
+        words = [["a", "b"], ["c", "d"], ["e", "f"], ["g", "h"]]
+        assert review_table(0, 0, ["x", "y"], words) == ()
+
+    def test_flags_like_h_and_l_are_numbers(self):
+        rows = [*GOOD, ["LDL", "4.9 H", "mmol/L", "0-3.0"], ["HDL", "<0.9", "mmol/L", ">1.0"]]
+        assert review_table(0, 0, H, rows) == ()
+
+    def test_pipe_tables_parse(self):
+        text = "Intro\n\n| Test | Result |\n|---|---|\n| Hb | 13.2 |\n| WBC | 7.1 |\n\nAfter"
+        assert pipe_tables(text) == [(["Test", "Result"], [["Hb", "13.2"], ["WBC", "7.1"]])]
+
+    def _table_page(self, ocr: bool):
+        from pdfmux.types import ExtractedTable, PageQuality, PageResult
+
+        rows = [*GOOD, ["RBC", "see note", "10^6/uL", "4.5-5.5"]]
+        table = ExtractedTable(0, tuple(H), tuple(tuple(r) for r in rows), bbox=(1, 2, 3, 4))
+        return PageResult(0, "t", 0.9, PageQuality.GOOD, "x", ocr_applied=ocr, tables=(table,))
+
+    def test_document_pass_checks_ocr_tables(self):
+        (flag,) = review_document([self._table_page(True)], today=TODAY)[0]
+        assert flag.kind == TABLE_CELL and flag.bbox == (1, 2, 3, 4)
+
+    def test_digital_tables_are_not_checked(self):
+        # Measured: 313 false flags on 31 digital filings before this rule.
+        assert review_document([self._table_page(False)], today=TODAY) == {}
+
+    def test_pipe_table_on_ocr_page(self):
+        from pdfmux.types import PageQuality, PageResult
+
+        text = "| Test | Result | Unit | Range |\n|---|---|---|---|\n" + "\n".join(
+            "| " + " | ".join(r) + " |" for r in [*GOOD, ["MCV", "fL", "80-100", ""]]
+        )
+        page = PageResult(0, text, 0.9, PageQuality.GOOD, "x", ocr_applied=True)
+        (flag,) = review_document([page], today=TODAY)[0]
+        assert flag.anchor == {"table": 0, "row": 4} and "moved one column right" in flag.reason
+
+    @pytest.mark.parametrize(
+        "cell",
+        ["(356)", "$1,234.50", "12%", "45†", "7¹", "1 234", "−3.2", "( 14 )", "<0.9", "4.9 H"],
+    )
+    def test_accounting_and_footnote_numbers(self, cell):
+        from pdfmux.ocr_review import _cell_type
+
+        assert _cell_type(cell) == "number"
+
+    @pytest.mark.parametrize("cell", ["$", ")%", "%", "—", "†", "(", "  "])
+    def test_fragments_are_ignored(self, cell):
+        from pdfmux.ocr_review import _cell_type
+
+        assert _cell_type(cell) is None
+
+    def test_financial_table_is_clean(self):
+        headers = ["Item", "2024", "2023", "Change"]
+        rows = [
+            ["Revenue", "$ 391,035", "$ 383,285", "2 %"],
+            ["Cost", "(210,352)", "(214,137)", "(2)%"],
+            ["Margin", "180,683", "169,148", "7%"],
+            ["Tax", "29,749", "16,741", "78 %"],
+        ]
+        assert review_table(0, 0, headers, rows) == ()
+
+
+class TestKeyValueProvenance:
+    def _page(self, lines, flags=()):
+        from pdfmux.types import PageQuality, PageResult
+
+        return PageResult(
+            0,
+            "\n".join(ln.text for ln in lines),
+            0.9,
+            PageQuality.GOOD,
+            "rapidocr",
+            ocr_applied=True,
+            ocr_lines=tuple(lines),
+            review_flags=tuple(flags),
+        )
+
+    def test_low_confidence_field_links_its_flag(self):
+        from pdfmux.pipeline import _kv_provenance
+        from pdfmux.types import KeyValuePair
+
+        lines = [OCRLine(0, "Policy number: AB-55I20", 0.61), OCRLine(1, "Name: A Person", 0.99)]
+        flags = review_page(0, lines, today=TODAY)
+        out = _kv_provenance(KeyValuePair("Policy number", "AB-55I20", 0), self._page(lines, flags))
+        assert out["confidence"] == 0.61 and out["line_index"] == [0]
+        assert out["flags"] == [flags[0].id]
+
+    def test_clean_field_has_high_score_and_no_flags(self):
+        from pdfmux.pipeline import _kv_provenance
+        from pdfmux.types import KeyValuePair
+
+        lines = [OCRLine(0, "Policy number: AB-55120", 0.99), OCRLine(1, "TSH 2.5", 0.4)]
+        flags = review_page(0, lines, today=TODAY)
+        out = _kv_provenance(KeyValuePair("Policy number", "AB-55120", 0), self._page(lines, flags))
+        assert out == {"flags": [], "confidence": 0.99, "line_index": [0]}
+
+    def test_digital_page_gets_nothing(self):
+        from pdfmux.pipeline import _kv_provenance
+        from pdfmux.types import KeyValuePair, PageQuality, PageResult
+
+        page = PageResult(0, "Policy number: X", 0.9, PageQuality.GOOD, "fast")
+        assert _kv_provenance(KeyValuePair("Policy number", "X", 0), page) == {}
+
+
+class TestEndToEndAnchors:
+    def test_every_flag_resolves_to_an_ocr_line(self, tmp_path):
+        pytest.importorskip("rapidocr")
+        from pdfmux.pipeline import process
+
+        result = process(TestPipelineIntegration()._scan(tmp_path), output_format="json")
+        data = json.loads(result.text)
+        lines = {ln["index"]: ln for ln in data["pages"][0]["ocr_lines"]}
+        assert data["review_flags"]
+        for flag in data["review_flags"]:
+            line = lines[flag["line_index"]]
+            assert line["text"] == flag["text"] and flag["bbox"] == line["bbox"]
+            x0, y0, x1, y1 = flag["bbox"]
+            assert 0 <= x0 < x1 <= 595 and 0 <= y0 < y1 <= 842  # on the page, in points
+        assert "not a verified line" in data["review_note"]

@@ -100,6 +100,8 @@ class PageResult:
     tokens_used: int = 0
     # OCR readings to check against the original (pdfmux.ocr_review.ReviewFlag).
     review_flags: tuple = ()
+    # Lines as the OCR engine read them, with score and bbox (pdfmux.ocr_review.OCRLine).
+    ocr_lines: tuple = ()
 
     @property
     def char_count(self) -> int:
