@@ -51,6 +51,15 @@ profiles_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(profiles_app, name="profiles")
+review_app = typer.Typer(
+    name="review",
+    help=(
+        "Track OCR review flags across a folder: scan, resolve, export. "
+        "Flags rank what to check; an unflagged line is not a verified line."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(review_app, name="review")
 console = Console()
 
 
@@ -2604,6 +2613,175 @@ def verify_manifest(
 
     if not result.valid:
         raise typer.Exit(4)
+
+
+# ---------------------------------------------------------------------------
+# pdfmux review — OCR review flags as tracked work
+# ---------------------------------------------------------------------------
+
+
+def _review_pdfs(targets: list[Path], recursive: bool) -> list[Path]:
+    found: list[Path] = []
+    for t in targets:
+        if t.is_dir():
+            it = t.rglob("*") if recursive else t.glob("*")
+            found.extend(p for p in it if p.is_file() and p.suffix.lower() == ".pdf")
+        elif t.is_file() and t.suffix.lower() == ".pdf":
+            found.append(t)
+        else:
+            console.print(f"[yellow]Skipping {rich_escape(str(t))}: not a PDF or folder[/yellow]")
+    return sorted(set(found))
+
+
+def _load_manifest_or_exit(path: Path) -> dict:
+    from pdfmux.review_manifest import ManifestError, load
+
+    try:
+        return load(path)
+    except ManifestError as e:
+        console.print(f"[red]{rich_escape(str(e))}[/red]")
+        raise typer.Exit(2) from None
+
+
+@review_app.command("scan")
+def review_scan(
+    targets: list[Path] = typer.Argument(..., help="PDF files and/or folders."),
+    manifest: Path | None = typer.Option(
+        None, "--manifest", "-m", help="Manifest file (default: <folder>/.pdfmux-review.json)."
+    ),
+    quality: str = typer.Option("standard", "--quality", "-q", help="fast | standard | high"),
+    recursive: bool = typer.Option(True, "--recursive/--no-recursive", help="Recurse folders."),
+    show: int = typer.Option(20, "--show", help="Flags to list per document (0 = none)."),
+) -> None:
+    """Convert PDFs and record their review flags; report only new and open ones."""
+    from pdfmux.review_manifest import default_manifest_path, file_sha256, record_run, save
+
+    pdfs = _review_pdfs(targets, recursive)
+    if not pdfs:
+        console.print("[yellow]No PDFs found.[/yellow]")
+        raise typer.Exit(1)
+    mpath = manifest or default_manifest_path(targets)
+    data = _load_manifest_or_exit(mpath)
+
+    table = Table(title=f"Review flags — {len(pdfs)} PDF(s)")
+    for col in ("document", "new", "open", "reopened", "resolved", "gone"):
+        table.add_column(col, justify="left" if col == "document" else "right")
+    totals = {"new": 0, "open": 0, "reopened": 0, "failed": 0}
+    listings = []
+    for pdf in pdfs:
+        try:
+            sha = file_sha256(pdf)
+            result = process(pdf, output_format="json", quality=quality)
+        except Exception as e:  # one bad file must not stop the folder
+            totals["failed"] += 1
+            console.print(f"[red]✗ {rich_escape(str(pdf))}: {rich_escape(str(e))}[/red]")
+            continue
+        summary = record_run(
+            data,
+            sha256=sha,
+            document=str(pdf),
+            flags=getattr(result, "review_flags", []) or [],
+            pdfmux_version=__version__,
+        )
+        totals["new"] += len(summary.new)
+        totals["open"] += len(summary.still_open)
+        totals["reopened"] += len(summary.reopened)
+        table.add_row(
+            rich_escape(str(pdf)),
+            str(len(summary.new)),
+            str(len(summary.still_open)),
+            str(len(summary.reopened)),
+            str(summary.resolved_skipped),
+            str(len(summary.gone)),
+        )
+        if summary.to_review and show:
+            listings.append(summary)
+        save(mpath, data)  # after every file: an interrupted folder run keeps its progress
+
+    console.print(table)
+    for summary in listings:
+        console.print(f"\n[bold]{rich_escape(summary.document)}[/bold]")
+        for f in summary.to_review[:show]:
+            tag = "new" if f in summary.new else "reopened" if f in summary.reopened else "open"
+            console.print(
+                f"  [{tag}] {f.get('id')}  p{f.get('page')}  {f.get('kind')}: "
+                f"{rich_escape(str(f.get('reason', '')))}"
+            )
+        hidden = len(summary.to_review) - show
+        if hidden > 0:
+            console.print(f"  … {hidden} more (pdfmux review export)")
+    console.print(
+        f"\n{totals['new']} new, {totals['reopened']} reopened, {totals['open']} still open. "
+        f"Manifest: {rich_escape(str(mpath))}"
+    )
+    console.print("[dim]Flags rank what to check first; an unflagged line is not verified.[/dim]")
+    if totals["failed"]:
+        raise typer.Exit(1)
+
+
+@review_app.command("resolve")
+def review_resolve(
+    ids: list[str] = typer.Argument(..., help="Flag ids (or unique prefixes of 6+ chars)."),
+    manifest: Path = typer.Option(
+        Path(".pdfmux-review.json"), "--manifest", "-m", help="Manifest file or its folder."
+    ),
+    note: str | None = typer.Option(None, "--note", help="Why it was cleared."),
+    reopen: bool = typer.Option(False, "--reopen", help="Set the flags back to open."),
+) -> None:
+    """Mark flags as checked, so later scans stop reporting them."""
+    from pdfmux.review_manifest import MANIFEST_NAME, save, set_state
+
+    mpath = manifest / MANIFEST_NAME if manifest.is_dir() else manifest
+    if not mpath.exists():
+        console.print(f"[red]No review manifest at {rich_escape(str(mpath))}[/red]")
+        raise typer.Exit(2)
+    data = _load_manifest_or_exit(mpath)
+    changed, unknown = set_state(data, ids, "open" if reopen else "resolved", note=note)
+    if changed:
+        save(mpath, data)
+    verb = "Reopened" if reopen else "Resolved"
+    console.print(f"{verb} {len(changed)} flag(s).")
+    for u in unknown:
+        console.print(f"[yellow]Unknown flag id: {rich_escape(u)}[/yellow]")
+    if unknown:
+        raise typer.Exit(1)
+
+
+@review_app.command("export")
+def review_export(
+    manifest: Path = typer.Argument(
+        Path("."), help="Manifest file, or the folder holding .pdfmux-review.json."
+    ),
+    fmt: str = typer.Option("csv", "--format", "-f", help="csv | json"),
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Write here (default: stdout)."
+    ),
+    state: str = typer.Option("open", "--state", help="open | resolved | gone | all"),
+) -> None:
+    """Export review flags as a spreadsheet-ready file, worst documents first."""
+    from pdfmux.review_manifest import MANIFEST_NAME, STATES, rows, to_csv, to_json
+
+    mpath = manifest / MANIFEST_NAME if manifest.is_dir() else manifest
+    if not mpath.exists():
+        console.print(
+            f"[red]No review manifest at {rich_escape(str(mpath))}. "
+            "Run `pdfmux review scan` first.[/red]"
+        )
+        raise typer.Exit(2)
+    if fmt not in ("csv", "json"):
+        console.print("[red]--format must be csv or json[/red]")
+        raise typer.Exit(2)
+    if state != "all" and state not in STATES:
+        console.print(f"[red]--state must be one of {', '.join(STATES)} or all[/red]")
+        raise typer.Exit(2)
+    data = _load_manifest_or_exit(mpath)
+    selected = rows(data, STATES if state == "all" else (state,))
+    text = to_csv(selected) if fmt == "csv" else to_json(selected)
+    if output:
+        output.write_text(text, encoding="utf-8")
+        console.print(f"Wrote {len(selected)} flag(s) to {rich_escape(str(output))}")
+    else:
+        typer.echo(text, nl=False)
 
 
 if __name__ == "__main__":

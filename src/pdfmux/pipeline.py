@@ -417,6 +417,9 @@ def process(
                 "page": p.page_num + 1,
                 "text": clean_text(p.text),
                 "ocr": p.ocr_applied or p.page_num in _ocr_set,
+                # Lines as the OCR engine read them: every review flag's line_index
+                # resolves here, including lines Markdown cleanup dropped from "text".
+                **({"ocr_lines": [ln.to_dict() for ln in p.ocr_lines]} if p.ocr_lines else {}),
             }
             for p in pages
         ]
@@ -1048,6 +1051,7 @@ def _multipass_extract(
     ocr_results: dict[int, str] = {}
     # Line-scored review flags for pages RapidOCR read (see pdfmux.ocr_review).
     ocr_line_flags: dict[int, tuple] = {}
+    ocr_lines_by_page: dict[int, tuple] = {}
     ocr_name = ""
     budget_warnings: list[str] = []
 
@@ -1130,6 +1134,7 @@ def _multipass_extract(
                     from pdfmux.ocr_review import review_page
 
                     ocr_line_flags[page_num] = review_page(page_num, page_ocr.lines)
+                    ocr_lines_by_page[page_num] = tuple(page_ocr.lines)
 
             ocr_name = "rapidocr"
     except Exception:
@@ -1217,6 +1222,7 @@ def _multipass_extract(
                     image_count=fp.image_count,
                     ocr_applied=True,
                     review_flags=flags,
+                    ocr_lines=ocr_lines_by_page.get(fp.page_num, ()),
                 )
             )
         else:
@@ -1246,25 +1252,63 @@ def _multipass_extract(
 
 
 def _ensure_review_flags(pages: list[PageResult], ocr_pages: list[int] | None) -> list[PageResult]:
-    """Date-check OCR'd pages that carry no review flags yet."""
+    """Whole-document OCR review: replace each OCR'd page's flags with the document pass.
+
+    The document pass reads the day/month order from every page and checks tables, so
+    it supersedes the per-page flags an extractor attached. Text is never changed.
+    """
     from dataclasses import replace
 
-    from pdfmux.ocr_review import review_text
+    from pdfmux.ocr_review import review_document
 
-    ocr_set = set(ocr_pages or [])
-    out: list[PageResult] = []
-    for p in pages:
-        if (p.ocr_applied or p.page_num in ocr_set) and not p.review_flags:
-            flags = review_text(p.page_num, p.text)
-            if flags:
-                p = replace(p, review_flags=flags)
-        out.append(p)
-    return out
+    try:
+        reviewed = review_document(pages, ocr_pages or [])
+    except Exception as e:  # review must never break extraction
+        logger.warning("OCR review skipped: %s", e)
+        return pages
+    return [
+        replace(p, review_flags=reviewed[p.page_num]) if p.page_num in reviewed else p
+        for p in pages
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Formatting
 # ---------------------------------------------------------------------------
+
+
+def _kv_provenance(kv, page: PageResult | None) -> dict:
+    """OCR confidence and review-flag links for a key-value pair on an OCR'd page.
+
+    ``confidence`` is the lowest score among the OCR lines the field came from;
+    ``flags`` lists the ids of review flags on those lines. Digital pages get nothing:
+    their text layer has no OCR score to report.
+    """
+    if page is None or not (page.ocr_applied or page.ocr_lines):
+        return {}
+
+    def norm(s: str) -> str:
+        return " ".join(s.split()).lower()
+
+    key, value = norm(kv.key), norm(str(kv.value))
+    lines = list(page.ocr_lines)
+    both = [ln for ln in lines if value and key and value in norm(ln.text) and key in norm(ln.text)]
+    by_value = [ln for ln in lines if len(value) >= 2 and value in norm(ln.text)]
+    by_key = [ln for ln in lines if len(key) >= 2 and key in norm(ln.text)]
+    matched = both or (by_value + [ln for ln in by_key if ln not in by_value])
+    idx = {ln.index for ln in matched}
+    flags = [
+        f.id
+        for f in page.review_flags
+        if (f.line_index is not None and f.line_index in idx)
+        or (len(value) >= 2 and value in norm(f.text))
+    ]
+    out: dict = {"flags": list(dict.fromkeys(flags))}
+    if lines:
+        scores = [ln.score for ln in matched if ln.score is not None]
+        out["confidence"] = round(min(scores), 3) if scores else None
+        out["line_index"] = sorted(idx)
+    return out
 
 
 def _extract_structured(
@@ -1302,6 +1346,8 @@ def _extract_structured(
             for t in all_tables
         ]
 
+    page_by_num = {p.page_num: p for p in pages}
+
     # Extract key-value pairs from all pages
     all_kvs = []
     for page in pages:
@@ -1330,6 +1376,7 @@ def _extract_structured(
             }
             if normalized != kv.value:
                 entry["normalized"] = normalized
+            entry.update(_kv_provenance(kv, page_by_num.get(kv.page_num)))
             kvs_json.append(entry)
 
     # Schema-guided mapping
@@ -1377,6 +1424,10 @@ def _format_output(
             )
             if warnings:
                 confidence_note += "\n" + "\n".join(f"- ⚠ {w}" for w in warnings)
+            if ocr_pages:
+                from pdfmux.ocr_review import REVIEW_NOTE
+
+                confidence_note += f"\n\n*{REVIEW_NOTE}*"
             result += confidence_note
         return result
 

@@ -16,6 +16,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from pdfmux.extractors import register
+from pdfmux.ocr_review import OCRLine
 from pdfmux.render import render_pixmap
 from pdfmux.types import PageQuality, PageResult
 
@@ -139,7 +140,7 @@ class RapidOCRExtractor:
 
         for page_num in page_range:
             lines = self._ocr_page_lines(doc, page_num)
-            text = "\n".join(t for t, _ in lines)
+            text = "\n".join(line.text for line in lines)
             has_text = len(text.strip()) > 10
 
             yield PageResult(
@@ -151,6 +152,7 @@ class RapidOCRExtractor:
                 image_count=len(doc[page_num].get_images(full=True)),
                 ocr_applied=True,
                 review_flags=review_page(page_num, lines),
+                ocr_lines=tuple(lines),
             )
 
     def extract_page(self, file_path: str | Path, page_num: int) -> str:
@@ -168,7 +170,7 @@ class RapidOCRExtractor:
         text = self._ocr_page(doc, page_num)
         return text
 
-    def extract_page_lines(self, file_path: str | Path, page_num: int) -> list[tuple[str, float]]:
+    def extract_page_lines(self, file_path: str | Path, page_num: int) -> list[OCRLine]:
         """OCR one page and keep each line's confidence score."""
         if self._engine is None:
             self._init_engine()
@@ -182,10 +184,14 @@ class RapidOCRExtractor:
 
     def _ocr_page(self, doc: fitz.Document, page_num: int) -> str:
         """Run OCR on a single page; text only."""
-        return "\n".join(t for t, _ in self._ocr_page_lines(doc, page_num))
+        return "\n".join(line.text for line in self._ocr_page_lines(doc, page_num))
 
-    def _ocr_page_lines(self, doc: fitz.Document, page_num: int) -> list[tuple[str, float]]:
-        """Run OCR on a single page at 200 DPI; (line, score) pairs in reading order."""
+    def _ocr_page_lines(self, doc: fitz.Document, page_num: int) -> list[OCRLine]:
+        """Run OCR on a single page at 200 DPI; lines in reading order with score and bbox.
+
+        ``bbox`` is in PDF points relative to the top-left of the visible page, so a
+        flag can be drawn on the page image even if its line never reaches the text.
+        """
         page = doc[page_num]
         pix = render_pixmap(page, 200)
         img_bytes = pix.tobytes("png")
@@ -203,7 +209,20 @@ class RapidOCRExtractor:
         if not result.txts:
             return []
         scores = result.scores or ()
-        return [
-            (str(t), float(scores[i]) if i < len(scores) else 1.0)
-            for i, t in enumerate(result.txts)
-        ]
+        boxes = result.boxes if result.boxes is not None else ()
+        # Pixel -> point scale for this render (the pixel cap may have lowered the DPI).
+        sx = page.rect.width / pix.width if pix.width else 0.0
+        sy = page.rect.height / pix.height if pix.height else 0.0
+        lines: list[OCRLine] = []
+        for i, t in enumerate(result.txts):
+            bbox = None
+            if i < len(boxes) and sx and sy:
+                try:
+                    xs = [float(pt[0]) for pt in boxes[i]]
+                    ys = [float(pt[1]) for pt in boxes[i]]
+                    bbox = (min(xs) * sx, min(ys) * sy, max(xs) * sx, max(ys) * sy)
+                except (TypeError, ValueError, IndexError):
+                    bbox = None
+            score = float(scores[i]) if i < len(scores) else None
+            lines.append(OCRLine(i, str(t), score, bbox))
+        return lines
