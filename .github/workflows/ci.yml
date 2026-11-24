@@ -66,3 +66,5 @@ jobs:
         with:
           name: dist
           path: dist/
+          # Build output, reproducible from the commit — no reason to keep it for 90 days.
+          retention-days: 7
