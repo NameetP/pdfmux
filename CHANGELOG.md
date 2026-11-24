@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — OCR review flags: low-confidence lines and dates that cannot be right
+
+### Added
+
+- **pdfmux now says which OCR readings to check against the original page.** Before, an OCR'd page got one fixed confidence (0.85) and the per-line scores from RapidOCR were thrown away. A scanned lab report dated 2026 came back as 2096 with no signal. Extracted text is never changed. The flags only rank what a person should check first.
+  - **Low-confidence lines.** RapidOCR's line scores are now kept (`PageOCRResult.lines`, `RapidOCRExtractor.extract_page_lines()`). Lines under 0.92 are flagged; `PDFMUX_OCR_MIN_LINE_SCORE` overrides, `0` disables. Calibrated on 12 degraded synthetic lab-report pages (5-8 pt, JPEG quality 15-60, 100-200 DPI; 755 lines): 83 of 130 misread lines flagged, 2 of 625 correct lines flagged.
+  - **Dates that cannot be right**, checked on every OCR'd page, including Surya and LLM-vision pages that have no line scores: impossible calendar dates, years before 1900, more than 10 years ahead, or later than today. A future date is judged by the nearest label before it on the line. "next", "due", "valid", "expiry", "until", "appointment" and "follow-up" make it expected. "collected", "DOB", "reported", "issued" or no label make it a likely misread. Numeric (`12/03/2026`, `2026-03-12`, `03/2026`) and written-out (`12 Mar 2026`, `March 12, 2026`) dates are recognised. "Batch 13/2026" is treated as a code, not a date.
+  - **Where they show up:** warnings (CLI, MCP, Markdown confidence note), a `review_flags` list in JSON output (present only when non-empty), `ConversionResult.review_flags`, and `PageResult.review_flags`. Low-confidence warnings are summarised per page with up to 3 examples. Date warnings list each date, up to 10.
+
 ## 1.8.9 (2026-11-24) — OCR on oversized scan pages: bounded render size, memory-safe concurrency
 
 ### Fixed

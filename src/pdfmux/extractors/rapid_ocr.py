@@ -135,8 +135,11 @@ class RapidOCRExtractor:
 
         page_range = pages if pages is not None else list(range(len(doc)))
 
+        from pdfmux.ocr_review import review_page
+
         for page_num in page_range:
-            text = self._ocr_page(doc, page_num)
+            lines = self._ocr_page_lines(doc, page_num)
+            text = "\n".join(t for t, _ in lines)
             has_text = len(text.strip()) > 10
 
             yield PageResult(
@@ -147,6 +150,7 @@ class RapidOCRExtractor:
                 extractor=self.name,
                 image_count=len(doc[page_num].get_images(full=True)),
                 ocr_applied=True,
+                review_flags=review_page(page_num, lines),
             )
 
     def extract_page(self, file_path: str | Path, page_num: int) -> str:
@@ -164,8 +168,24 @@ class RapidOCRExtractor:
         text = self._ocr_page(doc, page_num)
         return text
 
+    def extract_page_lines(self, file_path: str | Path, page_num: int) -> list[tuple[str, float]]:
+        """OCR one page and keep each line's confidence score."""
+        if self._engine is None:
+            self._init_engine()
+        try:
+            from pdfmux.pdf_cache import get_doc
+
+            doc = get_doc(Path(file_path))
+        except ImportError:
+            doc = fitz.open(str(file_path))
+        return self._ocr_page_lines(doc, page_num)
+
     def _ocr_page(self, doc: fitz.Document, page_num: int) -> str:
-        """Run OCR on a single page at 200 DPI."""
+        """Run OCR on a single page; text only."""
+        return "\n".join(t for t, _ in self._ocr_page_lines(doc, page_num))
+
+    def _ocr_page_lines(self, doc: fitz.Document, page_num: int) -> list[tuple[str, float]]:
+        """Run OCR on a single page at 200 DPI; (line, score) pairs in reading order."""
         page = doc[page_num]
         pix = render_pixmap(page, 200)
         img_bytes = pix.tobytes("png")
@@ -180,6 +200,10 @@ class RapidOCRExtractor:
 
         result = self._engine(img_bytes)
 
-        if result.txts:
-            return "\n".join(result.txts)
-        return ""
+        if not result.txts:
+            return []
+        scores = result.scores or ()
+        return [
+            (str(t), float(scores[i]) if i < len(scores) else 1.0)
+            for i, t in enumerate(result.txts)
+        ]

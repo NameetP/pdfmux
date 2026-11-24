@@ -209,6 +209,7 @@ def _dict_to_result(data: dict[str, Any]) -> Any:
         warnings=list(data.get("warnings") or []),
         classification=classification,
         ocr_pages=list(data.get("ocr_pages") or []),
+        review_flags=list(data.get("review_flags") or []),
     )
 
 

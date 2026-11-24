@@ -98,6 +98,8 @@ class PageResult:
     key_values: tuple[KeyValuePair, ...] = ()
     cost_usd: float = 0.0
     tokens_used: int = 0
+    # OCR readings to check against the original (pdfmux.ocr_review.ReviewFlag).
+    review_flags: tuple = ()
 
     @property
     def char_count(self) -> int:
