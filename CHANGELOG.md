@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — OCR on oversized scan pages: bounded render size, memory-safe concurrency
+## 1.8.9 (2026-11-24) — OCR on oversized scan pages: bounded render size, memory-safe concurrency
 
 ### Fixed
 
