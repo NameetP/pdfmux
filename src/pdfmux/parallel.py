@@ -8,6 +8,7 @@ than process overhead for our workload (shared file handle, small payloads).
 from __future__ import annotations
 
 import logging
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -24,6 +25,38 @@ OCR_EVERY_PAGE_BELOW = 100
 # so we don't want too many concurrent inferences competing for CPU.
 # 4 is the sweet spot on 4-8 core machines.
 DEFAULT_WORKERS = 4
+_WORKERS_ENV = "PDFMUX_OCR_WORKERS"
+
+# One RapidOCR engine plateaus at ~1.3 GB on a 2000 px page, and each extra
+# concurrent inference adds activation memory on top. Under a tight memory
+# limit a page can fail with an allocation error only because its neighbours
+# were running at the same time. Those pages are retried one at a time.
+_ALLOC_MARKERS = ("bad_alloc", "failed to allocate", "out of memory", "cannot allocate")
+
+
+def ocr_workers() -> int:
+    """Concurrent OCR pages; ``PDFMUX_OCR_WORKERS`` overrides the default of 4.
+
+    Set it to 1 on memory-constrained hosts: peak drops from ~1.6 GB to ~1.2 GB.
+    """
+    raw = os.environ.get(_WORKERS_ENV)
+    if raw:
+        try:
+            value = int(raw)
+        except ValueError:
+            logger.warning("Ignoring non-integer %s=%r", _WORKERS_ENV, raw)
+        else:
+            if value >= 1:
+                return value
+            logger.warning("Ignoring %s=%r (must be >= 1)", _WORKERS_ENV, raw)
+    return DEFAULT_WORKERS
+
+
+def _is_memory_error(exc: BaseException) -> bool:
+    if isinstance(exc, MemoryError):
+        return True
+    text = str(exc).lower()
+    return any(marker in text for marker in _ALLOC_MARKERS)
 
 
 @dataclass(frozen=True)
@@ -42,7 +75,7 @@ def parallel_ocr(
     page_nums: list[int],
     extractor,  # duck-typed: has extract_page(path, page_num) -> str
     *,
-    max_workers: int = DEFAULT_WORKERS,
+    max_workers: int | None = None,
 ) -> dict[int, PageOCRResult]:
     """OCR multiple pages in parallel using ThreadPoolExecutor.
 
@@ -50,7 +83,7 @@ def parallel_ocr(
         file_path: Path to PDF.
         page_nums: 0-indexed page numbers to OCR.
         extractor: Object with extract_page(file_path, page_num) -> str.
-        max_workers: Thread pool size.
+        max_workers: Thread pool size (default: ``ocr_workers()``).
 
     Returns:
         Dict mapping page_num -> PageOCRResult.
@@ -61,7 +94,8 @@ def parallel_ocr(
         return results
 
     # Clamp workers to page count (no point having 4 threads for 2 pages)
-    workers = min(max_workers, len(page_nums))
+    workers = min(max_workers if max_workers is not None else ocr_workers(), len(page_nums))
+    retry_serial: list[int] = []
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         future_to_page = {
@@ -76,6 +110,10 @@ def parallel_ocr(
                 result = future.result()
                 results[page_num] = result
             except Exception as e:
+                if workers > 1 and _is_memory_error(e):
+                    retry_serial.append(page_num)
+                    done += 1
+                    continue
                 logger.warning(f"OCR failed for page {page_num}: {e}")
                 results[page_num] = PageOCRResult(
                     page_num=page_num,
@@ -89,6 +127,27 @@ def parallel_ocr(
             # up to 100 pages and ~2% steps beyond that.
             if should_log(done, total, every_page_below=OCR_EVERY_PAGE_BELOW):
                 logger.info("OCR: %d/%d pages", done, total)
+
+    if retry_serial:
+        logger.warning(
+            "OCR ran out of memory on %d page(s) with %d workers; retrying them one at a time "
+            "(set %s=1 to avoid this)",
+            len(retry_serial),
+            workers,
+            _WORKERS_ENV,
+        )
+        for page_num in sorted(retry_serial):
+            try:
+                results[page_num] = _ocr_one_page(extractor, file_path, page_num)
+            except Exception as e:
+                logger.warning(f"OCR failed for page {page_num} on serial retry: {e}")
+                results[page_num] = PageOCRResult(
+                    page_num=page_num,
+                    text="",
+                    runtime_seconds=0.0,
+                    success=False,
+                    error=str(e),
+                )
 
     return results
 

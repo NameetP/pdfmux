@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — OCR on oversized scan pages: bounded render size, memory-safe concurrency
+
+### Fixed
+
+- **Scans from phone-scanner apps rendered at up to 8400 x 11200 px per page.** Every OCR and vision path (`rapid_ocr`, Surya `ocr`, `llm`, region OCR, image-table OCR) called `page.get_pixmap()` at a fixed DPI. DPI is relative to the page's *point* size, and phone-scanner apps and `img2pdf` place a 12 MP photo at 1 px = 1 pt, so the page is 3024 x 4032 pt (42 x 56 inches). At 200 DPI that is 282 MB of raw RGB per page before PNG encoding. RapidOCR then shrinks it back to 2000 px anyway, so the extra pixels bought nothing.
+  - **Fix:** one renderer, `pdfmux.render.render_pixmap()`, keeps the requested DPI for normal pages and lowers it only when a render would exceed 16 MP (`PDFMUX_MAX_RENDER_PIXELS` overrides). A4 and Letter at 300 DPI and A3 at 200 DPI render unchanged. A test fails if any module calls `get_pixmap()` directly again.
+  - **Measured** on a 4-page phone-scan PDF: 37.6 s → 4.3 s with 4 workers, and peak memory 1756 → 1303 MB with 1 worker.
+- **A page that ran out of memory during parallel OCR came back empty.** It is now retried on its own after the pool finishes. Allocation errors (`MemoryError`, ONNX `bad_alloc` / "failed to allocate") are retried. Every other error is reported as before.
+
+### Added
+
+- **`PDFMUX_OCR_WORKERS`** sets how many pages OCR runs at once (default 4). One RapidOCR engine needs about 1.2-1.3 GB on a full page, so 4 workers peak around 1.6 GB. On hosts with less than 2 GB of memory, set it to 1.
+
+### Not changed, on purpose
+
+- **RapidOCR's internal 2000 px resize is kept.** It is the main memory cost, but shrinking it loses small print. Token recall on a degraded 5 pt lab-report scan was 0.998 at 2000 px, 0.946 at 1400 px and 0.839 at 1200 px. Medical and financial reports carry 5-6 pt footnotes and reference ranges.
+
 ## 1.8.8 (2026-11-19) — Security: size, page and time limits now apply before any page is read (GHSA-332c-cq58-rx3x)
 
 ### Security

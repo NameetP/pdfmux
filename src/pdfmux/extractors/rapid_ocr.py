@@ -16,6 +16,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from pdfmux.extractors import register
+from pdfmux.render import render_pixmap
 from pdfmux.types import PageQuality, PageResult
 
 logger = logging.getLogger(__name__)
@@ -166,7 +167,7 @@ class RapidOCRExtractor:
     def _ocr_page(self, doc: fitz.Document, page_num: int) -> str:
         """Run OCR on a single page at 200 DPI."""
         page = doc[page_num]
-        pix = page.get_pixmap(dpi=200)
+        pix = render_pixmap(page, 200)
         img_bytes = pix.tobytes("png")
 
         # Stash file+page provenance for _PdfmuxRapidOCRFilter so any upstream
