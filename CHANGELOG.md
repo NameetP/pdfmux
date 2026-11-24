@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — OCR review flags: low-confidence lines and dates that cannot be right
+## 1.8.10 (2026-11-24) — OCR review flags: low-confidence lines and dates that cannot be right
 
 ### Added
 
