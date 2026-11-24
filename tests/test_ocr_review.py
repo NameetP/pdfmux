@@ -640,3 +640,169 @@ class TestEndToEndAnchors:
             x0, y0, x1, y1 = flag["bbox"]
             assert 0 <= x0 < x1 <= 595 and 0 <= y0 < y1 <= 842  # on the page, in points
         assert "not a verified line" in data["review_note"]
+
+
+# ---------------------------------------------------------------------------
+# 1.9.1: visual rows and scanned tables rebuilt from OCR box positions
+# ---------------------------------------------------------------------------
+
+from pdfmux.ocr_review import find_ocr_tables, visual_rows  # noqa: E402
+
+COLS = (50.0, 220.0, 320.0, 420.0)
+
+
+def _boxed(rows, top=120.0, step=24.0, score=0.99):
+    """OCR lines laid out like a columned lab report: one box per cell."""
+    out, i = [], 0
+    for r, cells in enumerate(rows):
+        y = top + r * step
+        for c, text in enumerate(cells):
+            if text is None:
+                continue
+            x = COLS[c]
+            out.append(OCRLine(i, text, score, (x, y, x + 8 + 6 * len(text), y + 14)))
+            i += 1
+    return out
+
+
+LAB = [
+    ("Test", "Result", "Unit", "Reference range"),
+    ("Haemoglobin", "13.2", "g/dL", "13.0 - 17.0"),
+    ("Glucose (fasting)", "5.1", "mmol/L", "3.9 - 5.5"),
+    ("HbA1c", "6.2", "%", "4.0 - 5.6"),
+    ("TSH", "2.41", "mIU/L", "0.4 - 4.0"),
+    ("Ferritin", "210", "ng/mL", "30 - 400"),
+]
+
+
+def _with(row, col, text):
+    rows = [list(r) for r in LAB]
+    rows[row][col] = text
+    return rows
+
+
+class TestVisualRows:
+    def test_groups_by_baseline_and_sorts_left_to_right(self):
+        lines = list(reversed(_boxed(LAB[:2])))
+        rows = visual_rows(lines)
+        assert [[c.text for c in r] for r in rows] == [list(LAB[0]), list(LAB[1])]
+
+    def test_unboxed_lines_are_ignored(self):
+        assert visual_rows([OCRLine(0, "no box", 0.9)]) == []
+
+    def test_slightly_misaligned_boxes_share_a_row(self):
+        a = OCRLine(0, "Glucose", 0.99, (50, 100, 100, 114))
+        b = OCRLine(1, "5.1", 0.99, (220, 103, 240, 116))  # 3pt lower
+        assert len(visual_rows([a, b])) == 1
+
+
+class TestOcrTables:
+    def test_lab_table_is_rebuilt_with_header(self):
+        (t,) = find_ocr_tables(_boxed(LAB))
+        assert t.header and len(t.rows) == 6 and len(t.columns) == 4
+        assert t.rows[2][1].text == "5.1" and t.rows[2][1].score == 0.99
+        d = t.to_dict()
+        assert d["rows"][2][1]["bbox"] and d["index"] == 0
+
+    def test_clean_table_has_no_flags(self):
+        assert review_page(0, _boxed(LAB), today=TODAY) == ()
+
+    def test_word_in_value_column_is_flagged_on_its_cell(self):
+        lines = _boxed(_with(4, 1, "see note"))
+        (flag,) = review_page(0, lines, today=TODAY)
+        cell = next(ln for ln in lines if ln.text == "see note")
+        assert flag.kind == TABLE_CELL
+        assert flag.anchor == {"ocr_table": 0, "row": 4, "col": 1}
+        assert flag.bbox == cell.bbox and flag.line_index == cell.index
+        assert "scanned table 1" in flag.reason
+
+    def test_misread_unit_is_flagged(self):
+        # Real RapidOCR output for g/dL on a 200 DPI scan, scored 0.952.
+        (flag,) = review_page(0, _boxed(_with(1, 2, "7p/6")), today=TODAY)
+        assert '"7p/6" in the unit column "Unit"' in flag.reason
+
+    def test_two_columns_or_two_rows_are_not_tables(self):
+        assert find_ocr_tables(_boxed([r[:2] for r in LAB])) == []
+        assert find_ocr_tables(_boxed(LAB[:2])) == []
+
+    def test_large_vertical_gap_splits_tables(self):
+        lines = _boxed(LAB[:4]) + _boxed(LAB[:4], top=600.0)
+        lines = [OCRLine(i, ln.text, ln.score, ln.bbox) for i, ln in enumerate(lines)]
+        assert len(find_ocr_tables(lines)) == 2
+
+    def test_headerless_table(self):
+        (t,) = find_ocr_tables(_boxed(LAB[1:]))
+        assert not t.header
+
+    def test_two_boxes_in_one_cell_are_joined(self):
+        lines = _boxed(LAB)
+        extra = OCRLine(99, "(fasting)", 0.8, (100, 168, 140, 182))  # same cell as "Glucose..."
+        (t,) = find_ocr_tables([*lines, extra])
+        cell = t.rows[2][0]
+        assert "(fasting)" in cell.text and cell.score == 0.8
+
+
+class TestRowNumbers:
+    def test_colon_decimal_across_boxes_carries_the_label(self):
+        lines = _boxed(_with(2, 1, "8:02"))
+        flags = review_page(0, lines, today=TODAY)
+        num = [f for f in flags if f.kind == SUSPECT_NUMBER]
+        assert len(num) == 1
+        assert num[0].reason.startswith('Glucose (fasting): "8:02" may be a decimal point')
+        cell = next(ln for ln in lines if ln.text == "8:02")
+        assert num[0].line_index == cell.index and num[0].bbox == cell.bbox
+        assert "8:02" in num[0].text  # never rewritten
+
+    def test_same_line_finding_is_not_duplicated(self):
+        line = OCRLine(0, "Glucose 8:02 mmol/L", 0.99, (50, 100, 200, 114))
+        other = OCRLine(1, "3.9 - 5.5", 0.99, (300, 100, 360, 114))
+        num = [f for f in review_page(0, [line, other], today=TODAY) if f.kind == SUSPECT_NUMBER]
+        assert len(num) == 1 and num[0].reason.startswith("Glucose:")
+
+    def test_no_unit_in_row_no_flag(self):
+        a = OCRLine(0, "Ref no", 0.99, (50, 100, 90, 114))
+        b = OCRLine(1, "12:30", 0.99, (220, 100, 250, 114))
+        assert review_page(0, [a, b], today=TODAY) == ()
+
+    def test_number_problems_labels_line_findings(self):
+        assert number_problems("Glucose 8:02 mmol/L", range_check=False)[0].startswith(
+            'Glucose: "8:02"'
+        )
+
+
+class TestScannedLabEndToEnd:
+    def _lab_scan(self, tmp_path, rows):
+        import fitz
+
+        src = fitz.open()
+        page = src.new_page(width=595, height=842)
+        for i, r in enumerate(rows):
+            for x, c in zip(COLS, r, strict=False):
+                page.insert_text((x, 130 + i * 24), c, fontsize=11)
+        pix = page.get_pixmap(dpi=200)
+        scan = fitz.open()
+        sp = scan.new_page(width=595, height=842)
+        sp.insert_image(sp.rect, pixmap=pix)
+        out = tmp_path / "lab.pdf"
+        scan.save(str(out))
+        return out
+
+    def test_faults_flagged_correct_cells_not(self, tmp_path):
+        pytest.importorskip("rapidocr")
+        from pdfmux.pipeline import process
+
+        rows = _with(2, 1, "8:02")
+        rows[4][1] = "see note"
+        data = json.loads(process(self._lab_scan(tmp_path, rows), output_format="json").text)
+        flags = data["review_flags"]
+        assert any(
+            f["kind"] == SUSPECT_NUMBER and f["reason"].startswith("Glucose (fasting):")
+            for f in flags
+        )
+        cells = {
+            (f["anchor"]["row"], f["anchor"].get("col")) for f in flags if f["kind"] == TABLE_CELL
+        }
+        assert (4, 1) in cells and (2, 1) in cells
+        # Correct value cells (rows 1, 3, 5 of the Result column) are never flagged.
+        assert not cells & {(1, 1), (3, 1), (5, 1)}
+        assert data["pages"][0]["ocr_tables"][0]["rows"][2][1]["text"] == "8:02"

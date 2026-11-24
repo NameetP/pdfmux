@@ -369,41 +369,68 @@ def ambiguous_dates(line: str, order: str | None) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def number_problems(line: str, *, range_check: bool | None = None) -> list[str]:
-    """Numbers on a result line that look misread. Never rewrites anything."""
-    if not _UNIT_RE.search(line):
+def _label_before(text: str, start: int) -> str:
+    """The words before a value on its line or row: the analyte or field name."""
+    label = re.sub(r"[\s:|\-–—]+$", "", text[:start]).strip()
+    return label if re.search(r"[A-Za-z]{2}", label) else ""
+
+
+def _number_findings(text: str, *, range_check: bool | None = None) -> list[tuple[int, str, str]]:
+    """(start, matched text, message) for each suspect number on a result line or row."""
+    if not _UNIT_RE.search(text):
         return []
-    problems: list[str] = []
-    if not _TIME_WORDS.search(line):
-        for m in _COLON_NUM.finditer(line):
+    found: list[tuple[int, str, str]] = []
+    if not _TIME_WORDS.search(text):
+        for m in _COLON_NUM.finditer(text):
             if m.group(1) == "1" and int(m.group(2)) >= 2:
                 continue  # 1:80 is a titre, not a decimal
-            problems.append(f'"{m.group(0)}" may be a decimal point read as a colon')
-    for m in _LETTER_NUM.finditer(line):
-        problems.append(f'"{m.group(0)}" mixes letters into a number (O for 0, l or I for 1)')
+            found.append(
+                (m.start(), m.group(0), f'"{m.group(0)}" may be a decimal point read as a colon')
+            )
+    for m in _LETTER_NUM.finditer(text):
+        found.append(
+            (
+                m.start(),
+                m.group(0),
+                f'"{m.group(0)}" mixes letters into a number (O for 0, l or I for 1)',
+            )
+        )
     if range_check if range_check is not None else range_check_enabled():
-        problems.extend(_range_problems(line))
-    return problems
+        found.extend(_range_findings(text))
+    return found
 
 
-def _range_problems(line: str) -> list[str]:
+def number_problems(line: str, *, range_check: bool | None = None) -> list[str]:
+    """Numbers on a result line that look misread, each prefixed with its label.
+
+    Never rewrites anything.
+    """
+    out = []
+    for start, _, message in _number_findings(line, range_check=range_check):
+        label = _label_before(line, start)
+        out.append(f"{label}: {message}" if label and not message.startswith(label) else message)
+    return out
+
+
+def _range_findings(line: str) -> list[tuple[int, str, str]]:
     vm = _VALUE_AFTER_LABEL.search(line)
     if not vm:
         return []
-    rm = None
-    for cand in _RANGE.finditer(line, vm.end()):
-        rm = cand
-        break
+    rm = next(_RANGE.finditer(line, vm.end()), None)
     if not rm:
         return []
     value, lo, hi = float(vm.group("v")), float(rm.group("lo")), float(rm.group("hi"))
     if hi <= 0 or lo > hi:
         return []
-    label = line[: vm.start("v")].strip(" :-") or "value"
+    label = _label_before(line, vm.start("v")) or "value"
     if value > hi * 5 or (lo > 0 and value < lo / 5):
         return [
-            f"{label} {vm.group('v')} is more than 5x outside its reference range "
-            f"{rm.group(0)} (a dropped or extra decimal point?)"
+            (
+                vm.start("v"),
+                vm.group("v"),
+                f"{label} {vm.group('v')} is more than 5x outside its reference range "
+                f"{rm.group(0)} (a dropped or extra decimal point?)",
+            )
         ]
     return []
 
@@ -540,6 +567,227 @@ def pipe_tables(text: str) -> list[tuple[list[str], list[list[str]]]]:
 
 
 # ---------------------------------------------------------------------------
+# Visual rows and scanned tables
+# ---------------------------------------------------------------------------
+#
+# OCR engines return one box per run of text. In a columned lab report every cell
+# is its own box ("Glucose", "8:02", "mmol/L", "3.9 - 5.5"), so a check that needs
+# a unit on the same line never fires, and no table exists to check. The boxes'
+# positions rebuild both: boxes sharing a baseline band form a visual row, and a
+# run of rows whose boxes line up in the same x-bands forms a table.
+
+
+def visual_rows(lines: Sequence[OCRLine]) -> list[list[OCRLine]]:
+    """Group boxed OCR lines into visual rows, top to bottom, cells left to right."""
+    boxed = [ln for ln in lines if ln.bbox is not None and ln.text.strip()]
+    boxed.sort(key=lambda ln: ((ln.bbox[1] + ln.bbox[3]) / 2, ln.bbox[0]))  # type: ignore[index]
+    rows: list[list[OCRLine]] = []
+    band: tuple[float, float] | None = None
+    for ln in boxed:
+        top, bottom = ln.bbox[1], ln.bbox[3]  # type: ignore[index]
+        mid = (top + bottom) / 2
+        if band is not None and band[0] <= mid <= band[1]:
+            rows[-1].append(ln)
+            band = (min(band[0], top), max(band[1], bottom))
+        else:
+            rows.append([ln])
+            band = (top, bottom)
+    for row in rows:
+        row.sort(key=lambda ln: ln.bbox[0])  # type: ignore[index]
+    return rows
+
+
+@dataclass(frozen=True)
+class OCRTable:
+    """A table rebuilt from OCR box positions. Cells keep their own score and bbox."""
+
+    index: int
+    columns: tuple[tuple[float, float], ...]  # x-extent of each column, PDF points
+    rows: tuple[tuple[OCRLine | None, ...], ...]  # grid; None = empty cell
+    header: bool  # first row is a header (no numbers in it)
+
+    @property
+    def bbox(self) -> tuple[float, float, float, float]:
+        cells = [c for r in self.rows for c in r if c is not None and c.bbox]
+        return (
+            min(c.bbox[0] for c in cells),  # type: ignore[index]
+            min(c.bbox[1] for c in cells),  # type: ignore[index]
+            max(c.bbox[2] for c in cells),  # type: ignore[index]
+            max(c.bbox[3] for c in cells),  # type: ignore[index]
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "index": self.index,
+            "bbox": [round(v, 1) for v in self.bbox],
+            "header": self.header,
+            "rows": [[None if c is None else c.to_dict() for c in r] for r in self.rows],
+        }
+
+
+def _column_bands(rows: Sequence[Sequence[OCRLine]], pad: float) -> list[tuple[float, float]]:
+    spans = sorted((c.bbox[0], c.bbox[2]) for r in rows for c in r)  # type: ignore[index]
+    bands: list[list[float]] = []
+    for x0, x1 in spans:
+        if bands and x0 <= bands[-1][1] + pad:
+            bands[-1][1] = max(bands[-1][1], x1)
+        else:
+            bands.append([x0, x1])
+    return [(a, b) for a, b in bands]
+
+
+def _grid(row: Sequence[OCRLine], bands: Sequence[tuple[float, float]]) -> list[OCRLine | None]:
+    cells: list[OCRLine | None] = [None] * len(bands)
+    for c in row:
+        x0, x1 = c.bbox[0], c.bbox[2]  # type: ignore[index]
+        overlaps = [max(0.0, min(x1, b1) - max(x0, b0)) for b0, b1 in bands]
+        col = max(range(len(bands)), key=lambda i: overlaps[i])
+        if cells[col] is None:
+            cells[col] = c
+        else:  # two boxes in one cell: keep reading order, join text
+            prev = cells[col]
+            assert prev is not None
+            cells[col] = OCRLine(
+                prev.index,
+                f"{prev.text} {c.text}",
+                min(s for s in (prev.score, c.score) if s is not None)
+                if prev.score is not None or c.score is not None
+                else None,
+                (
+                    min(prev.bbox[0], c.bbox[0]),  # type: ignore[index]
+                    min(prev.bbox[1], c.bbox[1]),  # type: ignore[index]
+                    max(prev.bbox[2], c.bbox[2]),  # type: ignore[index]
+                    max(prev.bbox[3], c.bbox[3]),  # type: ignore[index]
+                ),
+            )
+    return cells
+
+
+def find_ocr_tables(lines: Sequence[OCRLine]) -> list[OCRTable]:
+    """Tables rebuilt from OCR box positions: 3+ rows of 3+ cells sharing column bands."""
+    rows = visual_rows(lines)
+    if not rows:
+        return []
+    heights = sorted(
+        c.bbox[3] - c.bbox[1]  # type: ignore[index]
+        for r in rows
+        for c in r
+    )
+    h = heights[len(heights) // 2] or 10.0
+    tables: list[OCRTable] = []
+    run: list[list[OCRLine]] = []
+
+    def row_top(r: Sequence[OCRLine]) -> float:
+        return min(c.bbox[1] for c in r)  # type: ignore[index]
+
+    def row_bottom(r: Sequence[OCRLine]) -> float:
+        return max(c.bbox[3] for c in r)  # type: ignore[index]
+
+    def close() -> None:
+        if len(run) >= 3:
+            bands = _column_bands(run, pad=h * 0.6)
+            if len(bands) >= 3:
+                grid = [_grid(r, bands) for r in run]
+                filled = sum(1 for g in grid if sum(c is not None for c in g) >= len(bands) - 1)
+                if filled / len(grid) >= 0.6:
+                    first = [c.text for c in grid[0] if c is not None]
+                    header = not any(_cell_type(t) in ("number", "range") for t in first)
+                    tables.append(
+                        OCRTable(
+                            len(tables),
+                            tuple(bands),
+                            tuple(tuple(g) for g in grid),
+                            header,
+                        )
+                    )
+        run.clear()
+
+    for r in rows:
+        if len(r) >= 3 and (not run or row_top(r) - row_bottom(run[-1]) <= h * 2.5):
+            run.append(r)
+        else:
+            close()
+            if len(r) >= 3:
+                run.append(r)
+    close()
+    return tables
+
+
+def _review_ocr_table(page_num: int, table: OCRTable) -> list[ReviewFlag]:
+    """Column checks on a scanned table, anchored to the exact cell box."""
+    texts = [[c.text if c is not None else "" for c in r] for r in table.rows]
+    headers, body = (texts[0], texts[1:]) if table.header else ([], texts)
+    offset = 1 if table.header else 0
+    out = []
+    for f in review_table(page_num, table.index, headers, body):
+        anchor = dict(f.anchor or {})
+        anchor.pop("table", None)
+        r = anchor["row"] + offset
+        cells = [c for c in table.rows[r] if c is not None]
+        target = table.rows[r][anchor["col"]] if "col" in anchor else None
+        if target is not None:
+            bbox, line_index, score = target.bbox, target.index, target.score
+        else:  # shifted row: the whole row's box
+            bbox = (
+                min(c.bbox[0] for c in cells),  # type: ignore[index]
+                min(c.bbox[1] for c in cells),  # type: ignore[index]
+                max(c.bbox[2] for c in cells),  # type: ignore[index]
+                max(c.bbox[3] for c in cells),  # type: ignore[index]
+            )
+            line_index, score = cells[0].index, None
+        out.append(
+            ReviewFlag(
+                page_num,
+                TABLE_CELL,
+                f.text,
+                f.reason.replace(f"table {table.index + 1}", f"scanned table {table.index + 1}"),
+                score=score,
+                line_index=line_index,
+                bbox=bbox,
+                anchor={
+                    "ocr_table": table.index,
+                    "row": r,
+                    **({"col": anchor["col"]} if "col" in anchor else {}),
+                },
+            )
+        )
+    return out
+
+
+def _row_number_flags(
+    page_num: int, row: Sequence[OCRLine], seen: set[tuple[int, str]]
+) -> list[ReviewFlag]:
+    """Number checks across a visual row, so a value and its unit in separate boxes meet."""
+    if len(row) < 2:
+        return []
+    text, starts = "", []
+    for c in row:
+        starts.append(len(text))
+        text += c.text.strip() + "   "
+    out = []
+    for start, matched, message in _number_findings(text):
+        cell = max(i for i, s0 in enumerate(starts) if s0 <= start)
+        line = row[cell]
+        if (line.index, matched) in seen:
+            continue  # the line-level check already caught it
+        seen.add((line.index, matched))
+        label = _label_before(text, starts[cell]) if cell else _label_before(text, start)
+        reason = f"{label}: {message}" if label and not message.startswith(label) else message
+        out.append(
+            ReviewFlag(
+                page_num,
+                SUSPECT_NUMBER,
+                " | ".join(c.text.strip() for c in row),
+                reason,
+                score=line.score,
+                line_index=line.index,
+                bbox=line.bbox,
+            )
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Pages and documents
 # ---------------------------------------------------------------------------
 
@@ -587,7 +835,9 @@ def review_page(
     """
     cutoff = min_line_score() if min_score is None else min_score
     flags: list[ReviewFlag] = []
-    for line in _as_lines(lines):
+    seen_numbers: set[tuple[int, str]] = set()
+    lines = _as_lines(lines)
+    for line in lines:
         text = line.text.strip()
         if not text:
             continue
@@ -601,8 +851,11 @@ def review_page(
         if check_ambiguous:
             for problem in ambiguous_dates(text, date_order):
                 flags.append(ReviewFlag(page_num, AMBIGUOUS_DATE, text, problem, **anchor))
-        for problem in number_problems(text):
-            flags.append(ReviewFlag(page_num, SUSPECT_NUMBER, text, problem, **anchor))
+        for start, matched, message in _number_findings(text):
+            label = _label_before(text, start)
+            reason = f"{label}: {message}" if label and not message.startswith(label) else message
+            flags.append(ReviewFlag(page_num, SUSPECT_NUMBER, text, reason, **anchor))
+            seen_numbers.add((line.index, matched))
         if line.score is not None and line.score < cutoff:
             flags.append(
                 ReviewFlag(
@@ -613,6 +866,12 @@ def review_page(
                     **anchor,
                 )
             )
+    # Boxed lines (RapidOCR): rebuild visual rows and scanned tables from positions.
+    if any(ln.bbox is not None for ln in lines):
+        for row in visual_rows(lines):
+            flags.extend(_row_number_flags(page_num, row, seen_numbers))
+        for table in find_ocr_tables(lines):
+            flags.extend(_review_ocr_table(page_num, table))
     return _number(flags)
 
 
